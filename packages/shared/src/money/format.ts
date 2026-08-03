@@ -31,6 +31,14 @@ export type FormatCentsOptions = {
   showCents?: boolean
   /** Renders a leading `+` on positive values. For deltas, where direction is the point. */
   signDisplay?: 'auto' | 'exceptZero'
+  /**
+   * Abbreviates large values: `$2.6M`, `$824K`.
+   *
+   * For chart axes, where five full-precision labels stacked down the left edge are unreadable and
+   * the exact figure is not the point — the axis conveys scale, and the precise number is shown
+   * above the chart. Never use this where the amount itself is the information.
+   */
+  compact?: boolean
 }
 
 /**
@@ -48,14 +56,26 @@ type StringNumberFormat = { format(value: string): string }
  * that round trip cannot happen by accident.
  */
 export function formatCents(cents: bigint, options: FormatCentsOptions = {}): string {
-  const { currency = 'USD', locale = 'en-US', showCents = true, signDisplay = 'auto' } = options
+  const {
+    currency = 'USD',
+    locale = 'en-US',
+    showCents = true,
+    signDisplay = 'auto',
+    compact = false,
+  } = options
 
   const formatter = new Intl.NumberFormat(locale, {
     style: 'currency',
     currency,
-    minimumFractionDigits: showCents ? 2 : 0,
-    maximumFractionDigits: showCents ? 2 : 0,
     signDisplay,
+    // Compact notation picks its own precision; forcing fraction digits alongside it produces
+    // "$2.60M" where "$2.6M" is wanted.
+    ...(compact
+      ? { notation: 'compact' as const, maximumFractionDigits: 2 }
+      : {
+          minimumFractionDigits: showCents ? 2 : 0,
+          maximumFractionDigits: showCents ? 2 : 0,
+        }),
   }) as unknown as StringNumberFormat
 
   return formatter.format(centsToDecimalString(cents))

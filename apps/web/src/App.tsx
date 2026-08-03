@@ -7,6 +7,7 @@ import { MobileShell } from './shells/mobile/MobileShell.js'
 import { useIsDesktop } from './shells/use-shell.js'
 import { Placeholder } from './screens/Placeholder.js'
 import { TabSettings } from './screens/TabSettings.js'
+import { TransitionPrototype } from './screens/TransitionPrototype.js'
 
 /**
  * TanStack Query is the in-memory view over the client's working set.
@@ -53,6 +54,8 @@ function Routes(): ReactNode {
   return (
     <Switch>
       <Route path="/settings" component={TabSettings} />
+      {/* Not in the destination registry: a workbench for judging the transition, not a screen. */}
+      <Route path="/prototype/transition" component={TransitionPrototype} />
 
       {DESTINATIONS.filter((destination) => destination.key !== 'settings').map((destination) => (
         <Route key={destination.key} path={destination.path}>

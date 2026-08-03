@@ -32,3 +32,28 @@
     }
   }
 }
+
+/*
+ * The category crossfade. Keyframes rather than a transition, because the two layers mount and
+ * unmount rather than persisting — there is no from-state for a transition to interpolate.
+ *
+ * The global prefers-reduced-motion rule above collapses these to ~0ms, so the swap still happens,
+ * it just happens instantly.
+ */
+@keyframes beans-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes beans-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
