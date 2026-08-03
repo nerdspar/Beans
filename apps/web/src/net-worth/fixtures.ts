@@ -1,5 +1,5 @@
 import type { AccountType, NetWorthSection } from '@beans/shared'
-import { sectionForType } from '@beans/shared'
+import { addDays, sectionForType, toIsoDate } from '@beans/shared'
 import type { SeriesPoint } from '../charts/AreaChart.js'
 
 /**
@@ -27,7 +27,14 @@ export type FixtureAccount = {
   isManual?: boolean
 }
 
-const DAYS = 90
+/**
+ * Two years, so every range in the control has something to show.
+ *
+ * Ninety days was enough while ranges were trailing day counts that silently clamped to whatever
+ * existed. Now that a range resolves to a real date window, a fixture shorter than the longest range
+ * makes "last year" legitimately empty — correct behaviour, useless for looking at the screen.
+ */
+const DAYS = 730
 
 function wobble(seed: number, index: number): number {
   const value = Math.sin(seed * 12.9898 + index * 78.233) * 43758.5453
@@ -43,18 +50,21 @@ export function buildSeries(
 ): SeriesPoint[] {
   const points: SeriesPoint[] = []
   const end = Number(endCents)
+  // Ends today rather than on a fixed date, so the fixture cannot drift into looking stale — and so
+  // the chart's right-hand axis label is genuinely today's date, as it will be with real data.
+  const lastDay = toIsoDate(new Date())
   let value = end - driftPerDay * DAYS
 
   for (let index = 0; index < DAYS; index += 1) {
     value += driftPerDay + wobble(seed, index) * volatility
     points.push({
-      date: new Date(Date.UTC(2026, 4, 5 + index)).toISOString().slice(0, 10),
+      date: addDays(lastDay, index - (DAYS - 1)),
       value: BigInt(Math.round(value)),
     })
   }
 
   // Pin the final point so the chart's last value matches the total shown above it exactly.
-  points[points.length - 1] = { date: '2026-08-02', value: endCents }
+  points[points.length - 1] = { date: lastDay, value: endCents }
   return points
 }
 
@@ -275,15 +285,27 @@ export type SectionGroup = {
   series: SeriesPoint[]
 }
 
-/** Volatility per section, so each chart has a plausible personality rather than the same shape. */
+/**
+ * Volatility per section, so each chart has a plausible personality rather than the same shape.
+ *
+ * Both numbers are per-day and both compound over the whole span, so they were retuned when the
+ * fixture went from 90 days to 730. Drift is the trickier one: since a series is generated backwards
+ * from today's balance, a drift that looks mild per day decides where the series *started*, and
+ * `credit_card` at its old rate started at a positive balance — a credit card holding money.
+ *
+ * Volatility is a random-walk step rather than noise around a trend, so it spreads with the square
+ * root of the span; scaled by roughly √(90/730) to keep each series looking like itself.
+ */
 const SHAPE: Record<NetWorthSection, { drift: number; volatility: number; seed: number }> = {
-  cash: { drift: -18_000, volatility: 700_000, seed: 2 },
-  investment: { drift: 55_000, volatility: 1_400_000, seed: 3 },
-  credit_card: { drift: -3_000, volatility: 90_000, seed: 4 },
-  loan: { drift: 8_000, volatility: 0, seed: 6 },
+  cash: { drift: -6_000, volatility: 250_000, seed: 2 },
+  investment: { drift: 20_000, volatility: 500_000, seed: 3 },
+  // Positive: the card is being paid down. Negative drift over two years would have to start from a
+  // positive balance to land on today's, which is not a thing a credit card does.
+  credit_card: { drift: 1_200, volatility: 25_000, seed: 4 },
+  loan: { drift: 3_000, volatility: 0, seed: 6 },
   mortgage: { drift: 11_000, volatility: 0, seed: 5 },
-  other_assets: { drift: 31_000, volatility: 120_000, seed: 7 },
-  other_liabilities: { drift: 2_000, volatility: 40_000, seed: 8 },
+  other_assets: { drift: 31_000, volatility: 42_000, seed: 7 },
+  other_liabilities: { drift: 800, volatility: 12_000, seed: 8 },
 }
 
 /** Groups the fixture into sections, dropping any that are empty — as the real screen must. */

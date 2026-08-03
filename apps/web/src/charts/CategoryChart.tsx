@@ -36,7 +36,13 @@ export type CategoryChartProps = {
   className?: string
 }
 
-const TRANSITION_MS = 220
+/**
+ * Short on purpose. This fires on every section crossing during an ordinary scroll, so it is one of
+ * the most repeated animations in the app — and a duration that reads as elegant the first time
+ * reads as lag by the tenth. Long enough to register as a swap rather than a jump cut, and no
+ * longer.
+ */
+const TRANSITION_MS = 140
 
 type Layer = {
   key: string
@@ -91,7 +97,7 @@ export function CategoryChart({
         <div
           key={outgoing.key}
           className="absolute inset-0 motion-reduce:hidden"
-          style={{ animation: `beans-fade-out ${TRANSITION_MS}ms ease forwards` }}
+          style={{ animation: `beans-fade-out ${TRANSITION_MS}ms ease-out forwards` }}
         >
           <AreaChart
             series={outgoing.series}
@@ -105,7 +111,7 @@ export function CategoryChart({
       <div
         key={current.key}
         className="absolute inset-0"
-        style={{ animation: `beans-fade-in ${TRANSITION_MS}ms ease forwards` }}
+        style={{ animation: `beans-fade-in ${TRANSITION_MS}ms ease-out forwards` }}
       >
         <AreaChart
           series={current.series}

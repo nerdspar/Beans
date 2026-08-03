@@ -10,7 +10,14 @@ import {
   toChartSeries,
 } from '../net-worth/display.js'
 import { buildSections, householdSeries, type FixtureAccount } from '../net-worth/fixtures.js'
-import { RangeControl, rangeDays, type RangeKey } from '../net-worth/RangeControl.js'
+import { RangeControl } from '../net-worth/RangeControl.js'
+import {
+  DEFAULT_RANGE,
+  resolveWindow,
+  sliceToWindow,
+  todayIso,
+  type RangeSelection,
+} from '../net-worth/range.js'
 import { useActiveSection } from '../net-worth/use-active-section.js'
 
 /**
@@ -30,7 +37,7 @@ import { useActiveSection } from '../net-worth/use-active-section.js'
 const CHART_BLOCK_HEIGHT = 320
 
 export function NetWorth(): ReactNode {
-  const [range, setRange] = useState<RangeKey>('90-days')
+  const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE)
 
   const sections = useMemo(() => buildSections(), [])
   const sectionKeys = useMemo(() => sections.map((group) => group.section), [sections])
@@ -46,8 +53,9 @@ export function NetWorth(): ReactNode {
    * That is what makes changing the range feel instant.
    */
   const sliced = useMemo(() => {
-    const days = rangeDays(range)
-    const take = <T,>(series: readonly T[]): T[] => series.slice(Math.max(0, series.length - days))
+    const window = resolveWindow(range, todayIso())
+    const take = <T extends { date: string }>(series: readonly T[]): T[] =>
+      sliceToWindow(series, window)
 
     return {
       household: take(household),
@@ -139,12 +147,26 @@ export function NetWorth(): ReactNode {
       </div>
 
       <div className="mt-4">
-        {sections.map((group) => {
+        {sections.map((group, index) => {
           const isActive = group.section === activeKey
           const sectionColor = SECTION_COLORS[group.section]
+          const isLast = index === sections.length - 1
 
           return (
-            <section key={group.section} ref={registerSection(group.section)}>
+            <section
+              key={group.section}
+              ref={registerSection(group.section)}
+              /*
+               * The last section needs enough height to scroll its own top up to the detection
+               * line. Without it the page runs out of scroll while the final section is still
+               * below the line, and that one category can never be selected by scrolling at all —
+               * it is simply unreachable, which is easy to miss because every other section works.
+               *
+               * `dvh` rather than `vh`: on mobile the two differ by the height of the browser
+               * chrome, and `vh` would under-reserve exactly when the address bar is showing.
+               */
+              style={isLast ? { minHeight: `calc(100dvh - ${CHART_BLOCK_HEIGHT}px)` } : undefined}
+            >
               <h2
                 className={cn(
                   'sticky z-10 flex items-center justify-between px-5 py-2.5 text-sm font-semibold',

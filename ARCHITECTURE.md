@@ -472,7 +472,10 @@ Empower actually does; the axis rescale is what carries the "this is a different
 meaning.
 
 At milestone 7 the transition is **prototyped in isolation first**. Only then is the renderer
-question opened.
+question opened. Outcome: hand-rolled SVG, crossfade at **140ms**. Recharts was declined — it owns
+its own DOM and animation scheduling, and almost everything it provides beyond one filled path goes
+unused here. The duration is short because this fires on every section crossing during an ordinary
+scroll; a duration that reads as elegant once reads as lag by the tenth time.
 
 Note for whoever revisits this: **uPlot does not solve the transition.** It is canvas and very fast at
 drawing, but it has essentially no animation model — it buys draw speed, not smooth transitions. A
@@ -481,10 +484,26 @@ driving the tween on rAF.
 
 Scroll-linked section behavior is driven by an **IntersectionObserver** rooted to the bottom edge of
 the chart, never raw scroll offsets — scroll math breaks on variable row heights and on mobile
-browser chrome resizing. Hysteresis prevents strobing through categories on a fast scroll.
-`prefers-reduced-motion` swaps without animation. Section headers are focusable and activating one
-scopes the chart directly, announced via a live region, so there is a non-scroll path to the same
-result.
+browser chrome resizing. `prefers-reduced-motion` swaps without animation. Section headers are
+focusable and activating one scopes the chart directly, announced via a live region, so there is a
+non-scroll path to the same result.
+
+**Hysteresis is a pixel deadzone, not a settle delay.** The first implementation waited for scrolling
+to stop before changing section, reading the spec's "change decisively, once, per crossing" as *once
+per gesture*. It is not: the spec is about not oscillating at a boundary. Waiting for the scroll to
+settle means a slow deliberate scroll changes nothing until the user stops, which reads as lag — and
+was the first thing noticed in use. A new section now takes over as soon as it clears the line, but
+must clear it by ~12px, which is what stops a pixel of movement toggling the chart back and forth.
+
+Two consequences worth knowing:
+
+- The **last section needs enough height to reach the detection line**, or the page runs out of
+  scroll while it is still below the line and that category becomes unreachable by scrolling — with
+  no visible symptom except one section that never activates.
+- Measurement is coalesced to one `requestAnimationFrame`. The pending-frame handle **must** be
+  cleared, not just cancelled, on cleanup: the guard that prevents double-measuring treats a set
+  handle as "already queued", so a cancelled-but-recorded frame latches it closed and the hook goes
+  silent forever. StrictMode's double-invoked mount effect triggers this on the first render.
 
 ---
 

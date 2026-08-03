@@ -17,19 +17,21 @@ export type ActiveSectionOptions = {
   /** Distance from the top of the viewport to the detection line — the chart's bottom edge. */
   lineOffset: number
   /**
-   * How long a crossing must settle before it counts.
+   * The hysteresis, in pixels.
    *
-   * This is the hysteresis. A fling through four sections fires four crossings in well under the
-   * chart's 220ms transition, and animating each one in turn would strobe the chart through every
-   * category on the way past. Waiting for the scroll to settle means the chart changes **once, to
-   * where the user actually stopped**.
+   * A new section must clear the line by this much before it takes over. That stops the flip-flop
+   * when the user parks exactly on a boundary and a pixel of movement — or an address bar
+   * collapsing — would otherwise toggle the chart back and forth.
    *
-   * Short enough to feel immediate on a deliberate scroll; long enough to swallow a fling.
+   * Deliberately **not** a time delay. Waiting for the scroll to settle makes the chart change once
+   * per *gesture*, which reads as lag on a slow deliberate scroll: you move into a section and
+   * nothing happens until you stop. The spec asks for once per *crossing*, which is what this
+   * gives — immediate, and stable at the boundary.
    */
-  settleMs?: number
+  hysteresisPx?: number
 }
 
-const DEFAULT_SETTLE_MS = 90
+const DEFAULT_HYSTERESIS_PX = 12
 
 export function useActiveSection<K extends string>(
   keys: readonly K[],
@@ -41,11 +43,12 @@ export function useActiveSection<K extends string>(
   /** Scrolls a section to the detection line. The keyboard path to the same result. */
   scrollToSection: (key: K) => void
 } {
-  const { lineOffset, settleMs = DEFAULT_SETTLE_MS } = options
+  const { lineOffset, hysteresisPx = DEFAULT_HYSTERESIS_PX } = options
 
   const [activeKey, setActiveKey] = useState<K | null>(null)
   const elements = useRef(new Map<K, HTMLElement>())
-  const settleTimer = useRef<number | undefined>(undefined)
+  const frame = useRef<number | undefined>(undefined)
+  const current = useRef<K | null>(null)
 
   const registerSection = useCallback(
     (key: K) => (element: HTMLElement | null) => {
@@ -75,27 +78,39 @@ export function useActiveSection<K extends string>(
       if (element === undefined) continue
 
       const rect = element.getBoundingClientRect()
-      // The section straddling the line, or the last one to have passed above it.
-      if (rect.top <= lineOffset && rect.top > bestTop) {
+
+      /*
+       * The deadzone. A section that is merely level with the line does not displace the current
+       * one — it has to clear it by `hysteresisPx`. Sitting exactly on a boundary therefore holds
+       * whatever is already showing instead of toggling on every stray pixel.
+       */
+      const threshold = key === current.current ? lineOffset + hysteresisPx : lineOffset
+
+      if (rect.top <= threshold && rect.top > bestTop) {
         bestTop = rect.top
         found = key
       }
     }
 
     return found
-  }, [keys, lineOffset])
+  }, [keys, lineOffset, hysteresisPx])
 
   useEffect(() => {
+    /*
+     * Coalesced to one measurement per frame. Scroll fires far more often than the screen repaints,
+     * and measuring more than once between paints is pure work for an identical answer.
+     */
     const settle = (): void => {
-      window.clearTimeout(settleTimer.current)
-      settleTimer.current = window.setTimeout(() => {
-        setActiveKey((previous) => {
-          const next = measure()
-          // Returning the identical value skips the re-render, so a scroll that stays inside one
-          // section costs nothing.
-          return next === previous ? previous : next
-        })
-      }, settleMs)
+      if (frame.current !== undefined) return
+
+      frame.current = window.requestAnimationFrame(() => {
+        frame.current = undefined
+        const next = measure()
+        if (next !== current.current) {
+          current.current = next
+          setActiveKey(next)
+        }
+      })
     }
 
     const observer = new IntersectionObserver(settle, {
@@ -113,9 +128,9 @@ export function useActiveSection<K extends string>(
 
     /*
      * A fling can carry the page past several sections between observer callbacks, and momentum
-     * scrolling on iOS can end without a final intersection at all. Listening to scroll as well
-     * means the settle timer is always re-armed while movement continues, so the measurement
-     * happens after it stops rather than at the last crossing.
+     * scrolling on iOS can end without a final intersection at all. Scroll drives a measurement of
+     * its own so the active section tracks the page continuously rather than only at the moments
+     * the observer happens to fire.
      */
     window.addEventListener('scroll', settle, { passive: true })
     window.addEventListener('resize', settle, { passive: true })
@@ -127,9 +142,18 @@ export function useActiveSection<K extends string>(
       observer.disconnect()
       window.removeEventListener('scroll', settle)
       window.removeEventListener('resize', settle)
-      window.clearTimeout(settleTimer.current)
+      /*
+       * Clearing the handle matters as much as cancelling it. `settle` treats a set `frame.current`
+       * as "a measurement is already queued" and returns early, so a cancelled frame left recorded
+       * here latches that guard closed permanently — the hook would go silent and never update
+       * again. StrictMode's double-invoked mount effect hits this on the very first render.
+       */
+      if (frame.current !== undefined) {
+        window.cancelAnimationFrame(frame.current)
+        frame.current = undefined
+      }
     }
-  }, [keys, lineOffset, measure, settleMs])
+  }, [keys, lineOffset, measure])
 
   const scrollToSection = useCallback(
     (key: K) => {

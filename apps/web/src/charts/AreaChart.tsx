@@ -37,6 +37,25 @@ export type AreaChartProps = {
 
 const GRID_LINES = 5
 
+/** Room under the plot for the date labels. Taken out of `height`, so the box stays its stated size. */
+const AXIS_HEIGHT = 18
+
+const AXIS_DATE = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  /*
+   * Forced to UTC. A `YYYY-MM-DD` handed to `Date` is parsed as UTC midnight but formatted in local
+   * time, so anywhere west of Greenwich every label renders as the previous day — the same
+   * off-by-one the `date` type parser guards against on the server side.
+   */
+  timeZone: 'UTC',
+})
+
+function formatAxisDate(date: string): string {
+  return AXIS_DATE.format(new Date(`${date}T00:00:00Z`))
+}
+
 /**
  * Picks tick values a person would choose.
  *
@@ -111,19 +130,46 @@ export function AreaChart({
     const max = rawMax + pad
 
     const width = 1000
+    const plotHeight = Math.max(1, height - AXIS_HEIGHT)
     const x = (index: number): number =>
       series.length === 1 ? width / 2 : (index / (series.length - 1)) * width
-    const y = (value: number): number => height - ((value - min) / (max - min)) * height
+    const y = (value: number): number =>
+      plotHeight - ((value - min) / (max - min)) * plotHeight
 
     const line = values.map((value, index) => `${x(index)},${y(value)}`).join(' ')
-    const area = `M0,${height} L${line.replaceAll(' ', ' L')} L${width},${height} Z`
+    const area = `M0,${plotHeight} L${line.replaceAll(' ', ' L')} L${width},${plotHeight} Z`
 
+    /*
+     * `y` is where the gridline goes; `labelY` is where its text goes. They differ only at the
+     * extremes: a label is centred on its line, so the bottom-most one hangs half its height below
+     * the plot and lands on the date labels. Clamping keeps every label inside the plot box, a few
+     * pixels off its line rather than colliding with the axis beneath it.
+     */
+    const halfLabel = 9
     const ticks = niceTicks(min, max, GRID_LINES).map((value) => ({
       value: BigInt(Math.round(value)),
       y: y(value),
+      labelY: Math.min(Math.max(y(value), halfLabel), plotHeight - halfLabel),
     }))
 
-    return { width, area, line, ticks }
+    /*
+     * The range endpoints, read off the series rather than recomputed from the selected range. The
+     * chart is then guaranteed to label the data it actually drew — if a slice comes back short
+     * because history does not reach that far back, the axis says so instead of claiming a start
+     * date with no point at it.
+     */
+    const startDate = series[0]?.date
+    const endDate = series[series.length - 1]?.date
+
+    return {
+      width,
+      plotHeight,
+      area,
+      line,
+      ticks,
+      start: startDate === undefined ? null : formatAxisDate(startDate),
+      end: endDate === undefined ? null : formatAxisDate(endDate),
+    }
   }, [series, height])
 
   if (geometry === null) {
@@ -140,10 +186,10 @@ export function AreaChart({
   return (
     <div className={cn('relative', className)}>
       <svg
-        viewBox={`0 0 ${geometry.width} ${height}`}
+        viewBox={`0 0 ${geometry.width} ${geometry.plotHeight}`}
         preserveAspectRatio="none"
         className="w-full"
-        style={{ height }}
+        style={{ height: geometry.plotHeight }}
         // Decorative: every chart has a table fallback beside it, which is what a screen reader
         // should read instead.
         aria-hidden
@@ -170,7 +216,7 @@ export function AreaChart({
            * The transition is on the path data itself, which browsers do not interpolate — so this
            * is a crossfade, not a morph. See CategoryChart for why that is the right shape.
            */
-          style={{ transition: 'fill 220ms ease' }}
+          style={{ transition: 'fill 140ms ease-out' }}
         />
 
         <polyline
@@ -179,12 +225,30 @@ export function AreaChart({
           stroke={color}
           strokeWidth={2}
           vectorEffect="non-scaling-stroke"
-          style={{ transition: 'stroke 220ms ease' }}
+          style={{ transition: 'stroke 140ms ease-out' }}
         />
       </svg>
 
-      {/* Axis labels, positioned over the grid lines rather than drawn in SVG so they stay crisp. */}
-      <div className="pointer-events-none absolute inset-0" aria-hidden>
+      {/*
+        The range, spelled out at the ends of the x-axis. Two labels rather than a full set of
+        ticks: the question this chart answers is "over what period", and the endpoints answer it
+        completely. Intermediate dates would crowd a phone-width axis to say much less.
+      */}
+      <div
+        className="flex justify-between px-1 text-[11px] tabular-nums text-slate-500 dark:text-slate-400"
+        style={{ height: AXIS_HEIGHT }}
+        aria-hidden
+      >
+        <span>{geometry.start}</span>
+        <span>{geometry.end}</span>
+      </div>
+
+      {/* Value labels, positioned over the grid lines rather than drawn in SVG so they stay crisp. */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0"
+        style={{ height: geometry.plotHeight }}
+        aria-hidden
+      >
         {geometry.ticks.map((tick) => (
           <span
             key={tick.y}
@@ -197,7 +261,7 @@ export function AreaChart({
               'absolute left-0 -translate-y-1/2 rounded px-1 text-[11px] tabular-nums',
               'bg-slate-50/80 text-slate-500 dark:bg-slate-950/80 dark:text-slate-400',
             )}
-            style={{ top: tick.y }}
+            style={{ top: tick.labelY }}
           >
             {formatValue(tick.value)}
           </span>

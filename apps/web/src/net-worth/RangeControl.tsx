@@ -1,7 +1,16 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { Calendar, Check } from 'lucide-react'
+import { Calendar, Check, ChevronLeft } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { cn } from '../lib/cn.js'
+import {
+  PRESETS,
+  rangeDetail,
+  rangeLabel,
+  resolveWindow,
+  todayIso,
+  validateCustomRange,
+  type RangeSelection,
+} from './range.js'
 
 /**
  * The time range control.
@@ -11,34 +20,26 @@ import { cn } from '../lib/cn.js'
  * here is async on purpose.
  */
 
-export type RangeKey =
-  'this-month' | 'last-month' | '90-days' | '1-year' | 'ytd' | 'last-year' | 'custom'
-
-export const RANGES: ReadonlyArray<{ key: RangeKey; label: string }> = [
-  { key: 'this-month', label: 'This month' },
-  { key: 'last-month', label: 'Last month' },
-  { key: '90-days', label: '90 days' },
-  { key: '1-year', label: '1 year' },
-  { key: 'ytd', label: 'YTD' },
-  { key: 'last-year', label: 'Last year' },
-  { key: 'custom', label: 'Custom' },
-]
-
-export function rangeLabel(key: RangeKey): string {
-  return RANGES.find((range) => range.key === key)?.label ?? '90 days'
-}
-
 export function RangeControl({
   value,
   onChange,
 }: {
-  value: RangeKey
-  onChange: (value: RangeKey) => void
+  value: RangeSelection
+  onChange: (value: RangeSelection) => void
 }): ReactNode {
   const [open, setOpen] = useState(false)
+  const [showCustom, setShowCustom] = useState(false)
 
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        // Always reopen on the preset list. Landing back inside the custom form because that is
+        // where the sheet was last closed is disorienting.
+        if (!next) setShowCustom(false)
+      }}
+    >
       <Dialog.Trigger
         className={cn(
           'inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium',
@@ -66,70 +67,202 @@ export function RangeControl({
             <div className="h-1 w-10 rounded-full bg-slate-300 dark:bg-slate-700" />
           </div>
 
-          <Dialog.Title className="px-5 pt-3 text-base font-semibold">
-            Select date range
+          <Dialog.Title className="flex items-center gap-1 px-5 pt-3 text-base font-semibold">
+            {showCustom && (
+              <button
+                type="button"
+                onClick={() => setShowCustom(false)}
+                className="-ml-2 rounded p-1 focus-visible:outline-2 focus-visible:outline-sky-500"
+                aria-label="Back to preset ranges"
+              >
+                <ChevronLeft className="size-5" aria-hidden />
+              </button>
+            )}
+            {showCustom ? 'Custom range' : 'Select date range'}
           </Dialog.Title>
           <Dialog.Description className="sr-only">
             Choose the period the totals and chart cover.
           </Dialog.Description>
 
-          <ul className="p-3">
-            {RANGES.map((range) => {
-              const selected = range.key === value
-              return (
-                <li key={range.key}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onChange(range.key)
-                      setOpen(false)
-                    }}
-                    className={cn(
-                      'flex min-h-12 w-full items-center justify-between rounded-xl px-4 text-left text-sm',
-                      'hover:bg-slate-100 dark:hover:bg-slate-800',
-                      'focus-visible:outline-2 focus-visible:outline-sky-500',
-                      selected && 'font-semibold',
-                    )}
-                  >
-                    {range.label}
-                    {/* A tick as well as weight — colour and boldness alone are not a state. */}
-                    {selected && (
-                      <Check
-                        className="size-4 text-sky-600 dark:text-sky-400"
-                        aria-label="Selected"
-                      />
-                    )}
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
+          {showCustom ? (
+            <CustomRangeForm
+              value={value}
+              onApply={(selection) => {
+                onChange(selection)
+                setOpen(false)
+                setShowCustom(false)
+              }}
+            />
+          ) : (
+            <ul className="p-3">
+              {PRESETS.map((preset) => {
+                const selected = value.kind === 'preset' && preset.key === value.key
+                return (
+                  <li key={preset.key}>
+                    <RangeOption
+                      label={preset.label}
+                      selected={selected}
+                      onClick={() => {
+                        onChange({ kind: 'preset', key: preset.key })
+                        setOpen(false)
+                      }}
+                    />
+                  </li>
+                )
+              })}
+              <li>
+                <RangeOption
+                  label="Custom"
+                  detail={rangeDetail(value)}
+                  selected={value.kind === 'custom'}
+                  onClick={() => setShowCustom(true)}
+                />
+              </li>
+            </ul>
+          )}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
   )
 }
 
+function RangeOption({
+  label,
+  detail,
+  selected,
+  onClick,
+}: {
+  label: string
+  /** The concrete dates behind the label, for Custom. */
+  detail?: string | null
+  selected: boolean
+  onClick: () => void
+}): ReactNode {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex min-h-12 w-full items-center justify-between rounded-xl px-4 text-left text-sm',
+        'hover:bg-slate-100 dark:hover:bg-slate-800',
+        'focus-visible:outline-2 focus-visible:outline-sky-500',
+        selected && 'font-semibold',
+      )}
+    >
+      <span className="flex items-baseline gap-2">
+        {label}
+        {detail !== null && detail !== undefined && (
+          <span className="text-xs font-normal text-slate-500 dark:text-slate-400">{detail}</span>
+        )}
+      </span>
+      {/* A tick as well as weight — colour and boldness alone are not a state. */}
+      {selected && <Check className="size-4 text-sky-600 dark:text-sky-400" aria-label="Selected" />}
+    </button>
+  )
+}
+
+const ERROR_TEXT = {
+  order: 'The end date is before the start date.',
+  future: 'The end date is in the future.',
+} as const
+
 /**
- * How many trailing days a range covers.
+ * Two native date inputs.
  *
- * Approximate for the calendar-relative options while this runs on fixtures; the real slice comes
- * from the working set once it exists, where "this month" means the actual month boundary rather
- * than a day count.
+ * Native rather than a hand-built calendar: `<input type="date">` already gives the iOS wheel, the
+ * Android picker, keyboard entry, locale-correct display and screen reader support, and its value is
+ * `YYYY-MM-DD` — the exact shape the range model wants, with no parsing in between. A custom
+ * calendar would be several hundred lines to arrive back here with worse accessibility.
  */
-export function rangeDays(key: RangeKey): number {
-  switch (key) {
-    case 'this-month':
-      return 30
-    case 'last-month':
-      return 60
-    case '90-days':
-      return 90
-    case 'ytd':
-      return 215
-    case '1-year':
-    case 'last-year':
-    case 'custom':
-      return 365
-  }
+function CustomRangeForm({
+  value,
+  onApply,
+}: {
+  value: RangeSelection
+  onApply: (selection: RangeSelection) => void
+}): ReactNode {
+  const today = todayIso()
+  // Seeded from the window currently on screen, so opening this is a starting point rather than a
+  // blank form — most custom ranges are an adjustment of what the user is already looking at.
+  const initial = resolveWindow(value, today)
+
+  const [start, setStart] = useState(initial.start)
+  const [end, setEnd] = useState(initial.end)
+
+  const error = validateCustomRange(start, end, today)
+  const incomplete = start === '' || end === ''
+
+  return (
+    <form
+      className="p-3 pt-1"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (error !== null || incomplete) return
+        onApply({ kind: 'custom', start, end })
+      }}
+    >
+      <div className="flex gap-3">
+        <DateField label="Start" value={start} max={today} onChange={setStart} />
+        <DateField label="End" value={end} max={today} onChange={setEnd} />
+      </div>
+
+      {/*
+        Live so the message is announced when it appears, and the button is disabled as well — an
+        error that only shows on submit means finding out after committing to the change.
+      */}
+      <p
+        role="status"
+        className={cn(
+          'mt-2 min-h-5 px-1 text-xs',
+          error === null ? 'text-transparent' : 'text-rose-600 dark:text-rose-400',
+        )}
+      >
+        {error === null ? '.' : ERROR_TEXT[error]}
+      </p>
+
+      <button
+        type="submit"
+        disabled={error !== null || incomplete}
+        className={cn(
+          'mt-1 min-h-12 w-full rounded-xl text-sm font-semibold',
+          'bg-sky-600 text-white hover:bg-sky-500',
+          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500',
+          'disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400',
+          'dark:disabled:bg-slate-800 dark:disabled:text-slate-600',
+        )}
+      >
+        Apply
+      </button>
+    </form>
+  )
+}
+
+function DateField({
+  label,
+  value,
+  max,
+  onChange,
+}: {
+  label: string
+  value: string
+  max: string
+  onChange: (value: string) => void
+}): ReactNode {
+  return (
+    <label className="flex-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+      {label}
+      <input
+        type="date"
+        value={value}
+        max={max}
+        onChange={(event) => onChange(event.target.value)}
+        className={cn(
+          'mt-1 block min-h-11 w-full rounded-lg border px-3 text-sm',
+          'border-slate-300 bg-white text-slate-900',
+          'dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100',
+          'focus-visible:outline-2 focus-visible:outline-sky-500',
+        )}
+      />
+    </label>
+  )
 }
