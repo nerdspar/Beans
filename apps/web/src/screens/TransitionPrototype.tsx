@@ -4,6 +4,7 @@ import { CategoryChart } from '../charts/CategoryChart.js'
 import type { SeriesPoint } from '../charts/AreaChart.js'
 import { cn } from '../lib/cn.js'
 import { SECTION_COLORS } from '../net-worth/colors.js'
+import { describeChange, formatSectionTotal, toChartSeries } from '../net-worth/display.js'
 
 /**
  * The category transition, in isolation.
@@ -46,7 +47,7 @@ function buildSeries(
 
 const FIXTURES = [
   {
-    key: 'net-worth',
+    key: 'household',
     label: 'Net worth',
     color: SECTION_COLORS.household,
     // ~$2.6M, gently upward, moderately noisy.
@@ -90,6 +91,11 @@ export function TransitionPrototype(): ReactNode {
   const first = active.series[0]?.value ?? 0n
   const change = total - first
 
+  // Liabilities chart as the amount owed, so paying one down slopes downward.
+  const section = active.key as Parameters<typeof toChartSeries>[1]
+  const chartSeries = toChartSeries(active.series, section)
+  const described = describeChange(change, section)
+
   return (
     <div className="mx-auto max-w-2xl p-6">
       <h1 className="text-lg font-semibold tracking-tight">Transition prototype</h1>
@@ -99,24 +105,26 @@ export function TransitionPrototype(): ReactNode {
       </p>
 
       <div className="mt-6">
-        <div className="text-3xl font-semibold tabular-nums">{formatCents(total)}</div>
+        <div className="text-3xl font-semibold tabular-nums">
+          {formatSectionTotal(total, section)}
+        </div>
         <div
           className={cn(
             'mt-1 text-sm font-medium tabular-nums',
             // Calm and factual either way. No colour-coded celebration, no commiseration.
-            change < 0n
-              ? 'text-rose-600 dark:text-rose-400'
-              : 'text-emerald-600 dark:text-emerald-400',
+            described.favourable
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : 'text-rose-600 dark:text-rose-400',
           )}
         >
-          {formatCents(change, { signDisplay: 'exceptZero' })} over 90 days
+          {described.text} over 90 days
         </div>
       </div>
 
       <CategoryChart
         className="mt-4"
         categoryKey={active.key}
-        series={active.series}
+        series={chartSeries}
         color={active.color}
         formatValue={(cents) => formatCents(cents, { compact: true })}
         height={240}
