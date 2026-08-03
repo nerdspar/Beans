@@ -43,16 +43,12 @@ export const ACCOUNT_COPY = {
  * These are the empty and loading states, so they are the places the copy rules allow a voice — and
  * the only ones on this screen that take it. `loading` is the exception even among those: it is read
  * for a few hundred milliseconds and a joke that lands the first time is an obstacle the twentieth.
+ *
+ * Signed-out and no-household are **not** here: `Gate` resolves both before this screen renders, and
+ * their copy lives with the screens that actually show it in `AUTH_COPY`.
  */
 export const NET_WORTH_STATE_COPY = {
   loading: 'Counting the beans.',
-
-  signedOut: 'Sign in to see your accounts',
-  signedOutDetail: 'Your balances stay on your own server. Beans just needs to know it is you.',
-
-  noHousehold: 'No household yet',
-  noHouseholdDetail:
-    'A household is what your accounts belong to, and what you share with anyone you invite. Create one to get started.',
 
   empty: 'Nothing to add up yet',
   emptyDetail: 'Connect an institution and Beans will start keeping track. Nothing here is manual.',

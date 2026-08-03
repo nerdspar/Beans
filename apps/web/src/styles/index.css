@@ -14,7 +14,15 @@
   }
 
   body {
-    @apply antialiased;
+    /*
+     * The base colours live here, not only on the shells.
+     *
+     * Anything rendered outside a shell — the sign-in screen, household creation, a Radix portal —
+     * would otherwise inherit the browser default and land dark-on-dark in dark mode. Making the
+     * shells the only place that sets these means every new top-level surface has to remember to,
+     * and the failure is invisible until someone looks at it in the wrong theme.
+     */
+    @apply antialiased bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100;
   }
 
   /*

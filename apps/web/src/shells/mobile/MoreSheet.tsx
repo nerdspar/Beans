@@ -1,6 +1,9 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { type ReactNode } from 'react'
+import { LogOut } from 'lucide-react'
 import { Link } from 'wouter'
+import { AUTH_COPY } from '@beans/shared'
+import { useSignOut } from '../../auth/use-session.js'
 import { cn } from '../../lib/cn.js'
 import type { Destination } from '../../navigation/destinations.js'
 
@@ -24,6 +27,8 @@ export function MoreSheet({
   onOpenChange: (open: boolean) => void
   destinations: readonly Destination[]
 }): ReactNode {
+  const { signOut, isPending } = useSignOut()
+
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
@@ -83,6 +88,30 @@ export function MoreSheet({
               )
             })}
           </ul>
+
+          {/*
+            Separated from the destinations above by a rule, because it is the one item here that
+            does something rather than going somewhere — and the one that is disruptive to hit by
+            accident while reaching for a tab.
+          */}
+          <div className="border-t border-slate-200 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-slate-800">
+            <button
+              type="button"
+              // The sheet is not closed first: signing out unmounts the whole shell, and closing
+              // it here only creates a window in which this component can disappear mid-request.
+              onClick={signOut}
+              disabled={isPending}
+              className={cn(
+                'flex min-h-12 w-full items-center gap-3 rounded-xl px-4 text-sm font-medium',
+                'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800',
+                'focus-visible:outline-2 focus-visible:outline-sky-500',
+                'disabled:opacity-50',
+              )}
+            >
+              <LogOut className="size-5 text-slate-500 dark:text-slate-400" aria-hidden />
+              {AUTH_COPY.signOut}
+            </button>
+          </div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

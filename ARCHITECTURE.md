@@ -331,6 +331,20 @@ every device the user has logged in from. Mitigations: clear the store on logout
 expiry, and document it. This moves exposure rather than eliminating it, and that tradeoff was made
 knowingly.
 
+### 7.4a Clearing, as built
+
+`clearWorkingSet` is called on **sign-out**, on **session expiry** (a working-set request answering
+401 while the tab is open), and when the server demands a full resync.
+
+Sign-out then does a **full page reload**. Emptying the query cache and letting the session refetch
+should be enough, and it is the tidier thing to write — but it leaves what survives to React Query's
+lifecycle rules, and the first implementation lost that argument: its cleanup lived in `onSettled`,
+the sheet that owned the mutation unmounted, React Query skipped the callback, and the previous
+user's balances stayed on screen after a successful sign-out. IndexedDB had been cleared; the
+in-memory copy had not. The reload is not a workaround for that bug — it is the stronger guarantee,
+and for an app whose storage argument is "the plaintext leaves when the session does", the blunt
+instrument is the correct one.
+
 ### 7.5 As built
 
 `GET /api/working-set` is the only endpoint that returns financial data. Repository in
@@ -652,6 +666,26 @@ Recorded so a future session doesn't "restore" them:
 | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | "Transaction lists stay server-paginated and do refetch." | **Superseded** by §7. Encryption makes SQL-side filter/sort impossible; the working set moved to the client.                    |
 | "Swap to uPlot if time-series scrubbing gets sluggish."   | **Amended** by §12.1. uPlot has no animation model and does not address the category transition. Transition design comes first. |
+
+### 16.0 Authentication surfaces
+
+`Gate` in `App.tsx` decides whether the app is reachable: no session renders `SignIn`, a session
+without a household renders `CreateHousehold`, and only then does the shell mount. Both render
+**outside the shell** — bottom tabs a user cannot use are noise at best and imply something behind
+them at worst.
+
+Consequently the net worth screen does **not** handle signed-out or no-household states. Branches for
+them would be unreachable, and unreachable branches only drift.
+
+Base colours (`bg-slate-50 text-slate-900 dark:…`) live on `body`, not only on the shells. Anything
+rendered outside a shell — these two screens, any Radix portal — otherwise inherits the browser
+default and lands dark-on-dark in dark mode, which is invisible until somebody opens it in the wrong
+theme.
+
+A **server failure is never reported as a bad password.** A 5xx or an unreachable API says so; only
+Better Auth's own rejection blames the credentials. Sending somebody to reset a password that was
+never the problem is the worse failure, and on a self-hosted app "the server is not answering" is
+genuinely actionable.
 
 ### 16.1 Development-only configuration
 

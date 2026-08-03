@@ -1,5 +1,8 @@
 import { type ReactNode } from 'react'
+import { LogOut } from 'lucide-react'
 import { Link, useLocation } from 'wouter'
+import { AUTH_COPY } from '@beans/shared'
+import { useSignOut } from '../../auth/use-session.js'
 import { cn } from '../../lib/cn.js'
 import { DESTINATIONS, destinationForPath } from '../../navigation/destinations.js'
 
@@ -21,6 +24,8 @@ import { DESTINATIONS, destinationForPath } from '../../navigation/destinations.
 export function DesktopShell({ children }: { children: ReactNode }): ReactNode {
   const [location] = useLocation()
   const active = destinationForPath(location)
+
+  const { signOut, isPending } = useSignOut()
 
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
@@ -58,6 +63,23 @@ export function DesktopShell({ children }: { children: ReactNode }): ReactNode {
             )
           })}
         </ul>
+
+        {/* Pinned to the bottom of the sidebar, away from the destinations it is not one of. */}
+        <div className="border-t border-slate-200 p-3 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={signOut}
+            disabled={isPending}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium',
+              'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
+              'focus-visible:outline-2 focus-visible:outline-sky-500 disabled:opacity-50',
+            )}
+          >
+            <LogOut className="size-4.5" aria-hidden />
+            {AUTH_COPY.signOut}
+          </button>
+        </div>
       </nav>
 
       <main className="min-w-0 flex-1">{children}</main>

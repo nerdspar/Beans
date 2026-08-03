@@ -6,3 +6,4 @@ export {
 } from './connection.js'
 
 export { ACCOUNT_COPY, NET_WORTH_STATE_COPY, carriedNotice } from './account.js'
+export { AUTH_COPY } from './auth.js'

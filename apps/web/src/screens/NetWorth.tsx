@@ -48,23 +48,13 @@ const CHART_BLOCK_HEIGHT = 320
 export function NetWorth(): ReactNode {
   const workingSet = useWorkingSet()
 
+  /*
+   * Signed-out and no-household are not handled here. `Gate` resolves both before this screen is
+   * ever rendered, so branches for them would be unreachable code whose only possible future is
+   * drifting out of agreement with the ones that actually run.
+   */
   if (workingSet.isLoading) return <StateMessage title={NET_WORTH_STATE_COPY.loading} />
-  if (workingSet.needsSignIn) {
-    return (
-      <StateMessage
-        title={NET_WORTH_STATE_COPY.signedOut}
-        detail={NET_WORTH_STATE_COPY.signedOutDetail}
-      />
-    )
-  }
-  if (workingSet.needsHousehold) {
-    return (
-      <StateMessage
-        title={NET_WORTH_STATE_COPY.noHousehold}
-        detail={NET_WORTH_STATE_COPY.noHouseholdDetail}
-      />
-    )
-  }
+
   if (workingSet.data === null || workingSet.isEmpty) {
     return (
       <StateMessage

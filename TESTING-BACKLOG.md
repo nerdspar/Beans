@@ -127,13 +127,13 @@ behavior is a separate question.
       Backward reconstruction is already wrong for them (§4), and a flat line through a month of
       market movement is visibly false in a different way than it is for a credit card. May want to
       stop the series at the last observation rather than carry it.
-- [ ] **There is no sign-in UI.** The auth API works — sign-up, sign-in and session cookies were all
-      exercised by hand against the dev server — but nothing in the frontend renders a form, so the
-      only way in is a fetch from the console. The net worth screen already handles the signed-out
-      and no-household states; they just have nothing to navigate to.
-- [ ] **Clearing the working set on sign-out and session expiry.** `clearWorkingSet` exists and is
-      called on a full-resync signal, but nothing calls it on sign-out, because there is no sign-out.
-      This is the §7.4 mitigation for plaintext at rest in the browser profile, so it is not optional.
+- [ ] **Google sign-in has never run.** The button is rendered only when the server reports
+      `googleSignIn`, which needs real OAuth credentials and a public HTTPS origin — Google rejects
+      redirect URIs on bare IPs and `.local` names. Verify the round trip, and that a Google account
+      matching an existing email links rather than creating a second user.
+- [ ] Session expiry clearing the working set. The code path exists and is exercised by a 401 from
+      the working-set endpoint, but only ever seen by signing out — never by an actually expired
+      session, which needs waiting out the real TTL.
 - [ ] Delta sync against data that changes *while a client is connected* — a sync landing mid-session,
       an account being removed in another tab. Covered at the repository layer with explicit cursors;
       never observed live.

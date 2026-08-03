@@ -5,7 +5,11 @@ import { DESTINATIONS } from './navigation/destinations.js'
 import { DesktopShell } from './shells/desktop/DesktopShell.js'
 import { MobileShell } from './shells/mobile/MobileShell.js'
 import { useIsDesktop } from './shells/use-shell.js'
+import { useWorkingSet } from './working-set/use-working-set.js'
+import { useSession } from './auth/use-session.js'
 import { AccountDetail } from './screens/AccountDetail.js'
+import { CreateHousehold } from './screens/CreateHousehold.js'
+import { SignIn } from './screens/SignIn.js'
 import { NetWorth } from './screens/NetWorth.js'
 import { Placeholder } from './screens/Placeholder.js'
 import { TabSettings } from './screens/TabSettings.js'
@@ -33,10 +37,33 @@ const queryClient = new QueryClient({
 export function App(): ReactNode {
   return (
     <QueryClientProvider client={queryClient}>
-      <Shell>
-        <Routes />
-      </Shell>
+      <Gate />
     </QueryClientProvider>
+  )
+}
+
+/**
+ * Decides whether the app is reachable at all.
+ *
+ * Sign-in and household creation render **outside the shell**: bottom tabs the user cannot use are
+ * noise at best, and at worst suggest there is something behind them. Both are also full-height
+ * centred layouts, which the shell's scroll container would fight.
+ */
+function Gate(): ReactNode {
+  const session = useSession()
+  const workingSet = useWorkingSet()
+
+  // Nothing at all while the session is unknown. A flash of the sign-in screen for an already
+  // signed-in user is worse than a blank moment, and this resolves in one request.
+  if (session.isLoading) return null
+
+  if (session.user === null) return <SignIn />
+  if (workingSet.needsHousehold) return <CreateHousehold />
+
+  return (
+    <Shell>
+      <Routes />
+    </Shell>
   )
 }
 

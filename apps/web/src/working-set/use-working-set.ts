@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
-import { readAll } from './db.js'
+import { SESSION_KEY } from '../auth/use-session.js'
+import { clearWorkingSet, readAll } from './db.js'
 import { deriveWorkingSet, type DerivedWorkingSet } from './derive.js'
 import { NoHouseholdYetError, NotSignedInError, syncWorkingSet } from './sync.js'
 
@@ -69,6 +70,22 @@ export function useWorkingSet(): WorkingSetState {
   }, [stored.data])
 
   const syncError = sync.error instanceof Error ? sync.error : null
+
+  /*
+   * A session that expired while the tab was open is a sign-out that nobody clicked, and §7.4 makes
+   * no distinction: the decrypted working set must not outlive the session. Without this the store
+   * would sit in the browser profile until the user happened to sign in and out again.
+   */
+  const expired = syncError instanceof NotSignedInError
+  useEffect(() => {
+    if (!expired) return
+
+    void clearWorkingSet().then(() => {
+      // Re-read the session so the app falls back to the sign-in screen rather than sitting on a
+      // populated view it can no longer refresh.
+      void queryClient.invalidateQueries({ queryKey: SESSION_KEY })
+    })
+  }, [expired, queryClient])
 
   return {
     data: derived,
