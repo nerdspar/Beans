@@ -4,7 +4,12 @@ import { CategoryChart } from '../charts/CategoryChart.js'
 import type { SeriesPoint } from '../charts/AreaChart.js'
 import { cn } from '../lib/cn.js'
 import { SECTION_COLORS } from '../net-worth/colors.js'
-import { describeChange, formatSectionTotal, toChartSeries } from '../net-worth/display.js'
+import {
+  describeChange,
+  formatAxisValue,
+  formatSectionTotal,
+  toChartSeries,
+} from '../net-worth/display.js'
 
 /**
  * The category transition, in isolation.
@@ -126,7 +131,7 @@ export function TransitionPrototype(): ReactNode {
         categoryKey={active.key}
         series={chartSeries}
         color={active.color}
-        formatValue={(cents) => formatCents(cents, { compact: true })}
+        formatValue={(cents) => formatAxisValue(cents, section)}
         height={240}
       />
 

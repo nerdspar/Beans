@@ -90,16 +90,36 @@ export function describeChange(
 /**
  * The headline figure for a section.
  *
- * Liabilities read as the amount owed, matching the chart beneath them. The account rows in the
- * list keep their stored negative sign, which is deliberate: a row is a line item in a total, and a
- * total that does not visibly subtract is harder to reconcile than one that does.
+ * **Liabilities always display negative.** A debt is money that subtracts from what the household
+ * has, and showing `$818,100` for a mortgage invites reading it as something owned. The stored
+ * value is already negative, so this is simply the stored value.
+ *
+ * Note this is independent of the *plot*, which uses magnitude so the area is tall when the debt is
+ * large. The two agree once the axis is labelled — see {@link formatAxisValue}.
  */
 export function formatSectionTotal(
   totalCents: bigint,
-  section: NetWorthSection | 'household',
+  _section: NetWorthSection | 'household',
 ): string {
-  if (section !== 'household' && isLiabilitySection(section)) {
-    return formatCents(totalCents < 0n ? -totalCents : totalCents)
-  }
   return formatCents(totalCents)
+}
+
+/**
+ * Formats one axis label.
+ *
+ * Liability series are plotted as magnitudes, so the tick values arriving here are positive. They
+ * are negated for display, which is what reconciles the two halves of the design:
+ *
+ * - the **area** is tall when the debt is large, and shrinks as it is paid down
+ * - the **labels** read `-$828K` at the top through `-$818K` at the bottom, so every number on
+ *   screen is negative and unmistakably a debt
+ *
+ * Which means the axis descends toward zero rather than away from it. That is the right way round
+ * for a debt: nobody pictures a mortgage as a bar that grows as they pay it off.
+ */
+export function formatAxisValue(cents: bigint, section: NetWorthSection | 'household'): string {
+  const display =
+    section !== 'household' && isLiabilitySection(section) && cents > 0n ? -cents : cents
+
+  return formatCents(display, { compact: true })
 }
