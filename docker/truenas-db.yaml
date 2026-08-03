@@ -1,0 +1,64 @@
+# Beans — Postgres only, for the TrueNAS Apps UI (Install via YAML / Custom App).
+#
+# Paste this into the TrueNAS Apps YAML editor after replacing the two REPLACE_ values below.
+#
+# Why this file exists separately from the repo's docker-compose.yml:
+# TrueNAS runs custom-app YAML from its own managed project directory, so there is no `.env`
+# alongside it. `${VAR}` substitution resolves to empty, and `build:` is unsupported. Everything
+# here is therefore literal and image-only. The root docker-compose.yml stays the canonical file
+# for local development and for the eventual full deployment.
+#
+# Prerequisite: /mnt/NAS/Data/beans/initdb/01-init.sh must exist on disk before first start.
+# It runs exactly once, on an empty data directory, and creates the non-superuser application role.
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+
+    # Pinned to the postgres user's own uid, and the host directory is chowned to match:
+    #     chown -R 999:999 /mnt/NAS/Data/beans/db
+    #
+    # Normally the postgres entrypoint starts as root, creates PGDATA, chowns it, then drops to
+    # the postgres user via gosu. TrueNAS Apps runs custom apps as its `apps` user (568), so that
+    # root step never happens and the entrypoint fails with:
+    #     mkdir: cannot create directory '/var/lib/postgresql/data': Permission denied
+    #
+    # Pinning the uid removes the dependency on the root step entirely: the container runs as 999
+    # and the directory is already owned by 999, so nothing needs elevating.
+    user: '999:999'
+
+    # Postgres uses shared memory for parallel query and sorts. Docker's 64mb default is tight.
+    shm_size: 256mb
+
+    environment:
+      # The superuser. The application deliberately does NOT connect as this role — superusers
+      # bypass row-level security entirely, which would silently disable tenant isolation.
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: REPLACE_SUPERUSER_PASSWORD
+      POSTGRES_DB: beans
+
+      # A subdirectory, not the mount root. A bind-mounted ZFS dataset is never truly empty and
+      # initdb refuses to initialize a non-empty directory.
+      PGDATA: /var/lib/postgresql/data/pgdata
+
+      # Read by initdb/01-init.sh.
+      BEANS_DB_USER: beans_app
+      BEANS_DB_PASSWORD: REPLACE_APP_PASSWORD
+      BEANS_DB_NAME: beans
+      BEANS_TEST_DB_NAME: beans_test
+
+    ports:
+      # LAN-only. Never forward this through Nginx Proxy Manager or expose it to the internet.
+      - '5432:5432'
+
+    volumes:
+      - /mnt/NAS/Data/beans/db:/var/lib/postgresql/data
+      - /mnt/NAS/Data/beans/initdb:/docker-entrypoint-initdb.d:ro
+
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d beans']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s

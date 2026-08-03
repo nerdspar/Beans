@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  // Tests are included deliberately. They are the main consumer of these types, so excluding them
+  // from typecheck would hide exactly the breakage that matters.
+  "include": ["src/**/*"]
+}

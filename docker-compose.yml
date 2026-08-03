@@ -1,0 +1,102 @@
+# Beans.
+#
+# Database only (what development uses, and the first thing to stand up on TrueNAS):
+#     docker compose up -d db
+#
+# The app runs natively via `pnpm dev` against it, which keeps HMR and the debugger fast while
+# still developing against the exact Postgres that production uses.
+#
+# Full deployment, once there is a frontend to build:
+#     docker compose up -d
+#
+# TLS is terminated by Nginx Proxy Manager in front of this stack, at https://beans.nerdspar.com —
+# the app does not terminate TLS itself.
+#
+# Storage lives under $BEANS_DATA_DIR, which is a ZFS dataset on TrueNAS
+# (/mnt/NAS/Data/beans) and a local ./data directory otherwise. Bind mounts rather than named
+# volumes, so the data is visible to ZFS snapshots and replication.
+
+services:
+  db:
+    image: postgres:16
+    container_name: beans-db
+    restart: unless-stopped
+    shm_size: 256mb # Postgres uses shared memory for parallel query; Docker's 64mb default is tight.
+    environment:
+      # The superuser. The application deliberately does NOT connect as this role — superusers
+      # bypass row-level security entirely, which would silently disable tenant isolation.
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?set POSTGRES_SUPERUSER_PASSWORD in .env}
+      POSTGRES_DB: ${BEANS_DB_NAME:-beans}
+
+      # A subdirectory, not the mount root. A bind-mounted ZFS dataset is never truly empty, and
+      # initdb refuses to initialize a non-empty directory.
+      PGDATA: /var/lib/postgresql/data/pgdata
+
+      # Consumed by initdb/01-init.sh to create the non-superuser application role.
+      BEANS_DB_USER: ${BEANS_DB_USER:-beans_app}
+      BEANS_DB_PASSWORD: ${BEANS_DB_PASSWORD:?set BEANS_DB_PASSWORD in .env}
+      BEANS_DB_NAME: ${BEANS_DB_NAME:-beans}
+      BEANS_TEST_DB_NAME: ${BEANS_TEST_DB_NAME:-beans_test}
+    ports:
+      # LAN-only. Never forward this through the reverse proxy or expose it to the internet.
+      # Set POSTGRES_BIND to the TrueNAS LAN address to narrow it from all interfaces.
+      - '${POSTGRES_BIND:-0.0.0.0}:${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - ${BEANS_DATA_DIR:-./data}/db:/var/lib/postgresql/data
+      # Runs only on the first initialization of an empty data directory.
+      - ${BEANS_DATA_DIR:-./data}/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${POSTGRES_SUPERUSER:-postgres} -d ${BEANS_DB_NAME:-beans}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: beans-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgres://${BEANS_DB_USER:-beans_app}:${BEANS_DB_PASSWORD}@db:5432/${BEANS_DB_NAME:-beans}
+      # Referenced by path, never by value. See ARCHITECTURE.md §5.
+      MASTER_KEY_FILE: /run/secrets/beans_master_key
+      PUBLIC_URL: ${PUBLIC_URL:-https://beans.nerdspar.com}
+      BETTER_AUTH_URL: ${PUBLIC_URL:-https://beans.nerdspar.com}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    secrets:
+      - beans_master_key
+    ports:
+      - '${APP_PORT:-3000}:3000'
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "fetch(\"http://localhost:3000/health\").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+secrets:
+  beans_master_key:
+    # Generate with: pnpm generate:master-key > secrets/master.key
+    #
+    # BACK THIS UP SEPARATELY FROM THE DATABASE. A Postgres dump without this file is
+    # unrecoverable — that is the entire point of the encryption design, and it cuts both ways.
+    file: ${BEANS_DATA_DIR:-.}/secrets/master.key

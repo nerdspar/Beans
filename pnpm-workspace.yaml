@@ -1,0 +1,6 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+allowBuilds:
+  # Vite/Vitest's bundler. Its postinstall links the platform-native binary.
+  esbuild: true

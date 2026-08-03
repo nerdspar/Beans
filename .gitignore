@@ -1,0 +1,21 @@
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Environment and secrets. Never commit these.
+.env
+.env.*
+!.env.example
+secrets/
+*.key
+
+# The master key must never be in git. See ARCHITECTURE.md.
+master.key
+
+.DS_Store
+*.log
+.vite/
+playwright-report/
+test-results/

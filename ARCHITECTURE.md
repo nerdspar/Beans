@@ -1,0 +1,603 @@
+# Beans — Architecture
+
+Decisions and the reasoning behind them. If you are a future session picking this up, read this
+before changing anything structural. Several decisions here look wrong until you know why they were
+made; the reasoning is recorded specifically so they don't get "fixed."
+
+Last updated: 2026-08-03 (milestone 1)
+
+---
+
+## 1. What Beans is
+
+A self-hosted, multi-tenant personal finance app replacing Empower Personal Dashboard. It tracks
+account balances over time, shows transactions, and reports cash flow for a household. It runs as a
+Docker container on TrueNAS at `https://beans.nerdspar.com`.
+
+Tenancy boundary is the **household**. Every piece of financial data hangs off one. No ordinary code
+path can render another household's data.
+
+---
+
+## 2. Naming
+
+The product is called Beans. **That is the only themed name in the codebase.** Modules, tables,
+services and functions get plain descriptive names: `accounts`, `transactions`, `households`,
+`sync-worker`, `balance-history`. No jars, pods, pots, sprouts, or counters.
+
+Interface copy has personality, confined to empty / loading / error / confirmation states. All
+user-facing strings live in one module (`packages/shared/src/copy/`) so the voice is reviewable in
+one place.
+
+**Hard rule: Beans is never funny about a number moving the wrong way.** No jokes when net worth
+drops, a balance goes negative, spending exceeds income, or a card is maxed. In those moments copy is
+calm, factual, and gets out of the way. This is enforced by convention and by review of the copy
+module, not by a lint rule — but it is not negotiable.
+
+---
+
+## 3. Money
+
+**Storage: integer minor units (cents) as `bigint` in the domain, `bytea` on disk.**
+
+- Never floats. Never `numeric`. Never JavaScript `number` for money in transit.
+- SimpleFIN returns amounts as decimal **strings**. They are parsed to integer cents by string
+  manipulation, never `parseFloat`.
+- Every account carries an ISO 4217 currency code. v1 assumes USD and **refuses to aggregate across
+  currencies**, but the column exists from day one.
+- Transaction dates are `date`, not `timestamptz`. A transaction posted on the 3rd is on the 3rd
+  regardless of anyone's timezone. Sync timestamps and audit fields are `timestamptz`.
+
+### 3.1 bigint vs bytea — the reconciliation
+
+Amounts are encrypted (§5), so the physical column is `bytea` ciphertext. `bigint` cents is the
+**domain / TypeScript type**; the crypto codec serializes the bigint to bytes and back.
+
+The consequence is larger than it first appears: **SQL cannot sum, sort, or range-filter on any
+monetary column.** This is not a limitation to work around — it is what drives the client-side
+working set in §7. Do not add plaintext "shadow" amount columns to make SQL math possible. Do not add
+blind indexes or order-preserving encryption; OPE on amounts leaks essentially the entire
+distribution, which is most of what we are protecting.
+
+### 3.2 Sign convention — decided once, applied at the edges
+
+**Every amount is stored signed so that it adds directly to net worth.**
+
+| Thing             | Stored as |
+| ----------------- | --------- |
+| Asset balance     | positive  |
+| Liability balance | negative  |
+| Income            | positive  |
+| Spending          | negative  |
+
+So net worth is a plain sum. A mortgage with $824,871.23 owed is stored as `-82487123n`.
+
+Normalization to this convention happens **once, at the SimpleFIN ingest edge**. No screen, query, or
+component ever decides a sign.
+
+**Assets and liabilities are classified by `accounts.type`, never by sign.** An overdrawn checking
+account has a negative balance and is still a cash asset. Sign is only sign. Classifying by sign
+would silently move an overdrawn account into the liabilities bar.
+
+### 3.3 Credit card ingest is the highest-risk code in the app
+
+SimpleFIN institutions are inconsistent about whether a card balance arrives as a negative number or
+as a positive magnitude of what is owed. Getting it backwards puts net worth off by **twice** the
+card balance, in a plausible-looking direction, with no error raised anywhere.
+
+Defenses, all three required:
+
+1. **Per-type normalization rules** in one module, with the rule that fired recorded on the sync run.
+2. **Sign sanity checks** that flag rather than silently accept:
+
+   | Type                                      | Expected    | On violation                                                |
+   | ----------------------------------------- | ----------- | ----------------------------------------------------------- |
+   | `mortgage`, `loan`                        | ≤ 0         | Hard flag — near-certainly a flipped sign                   |
+   | `credit`                                  | ≤ 0         | Flag (real credit balances from refunds exist but are rare) |
+   | `depository`, `investment`, `other_asset` | ≥ 0 typical | Flag if negative; overdrafts are legitimate                 |
+
+3. **Connection-time confirmation.** Discovered accounts are shown with their interpreted balances
+   and nothing is committed until the user confirms. Flagged accounts sort to the top with the raw
+   provider value shown beside our interpretation. This catches a flip in the one moment a human is
+   already reading the numbers.
+
+Post-confirmation, a sign flip relative to established history **holds the balance update** rather
+than applying it, and surfaces on connection health. Silently doubling a net-worth error is worse
+than briefly stale data.
+
+---
+
+## 4. Balance history
+
+SimpleFIN returns a **current** balance plus a window of transactions. It does not return historical
+daily balances. We construct them three ways and converge them into one uniform daily series.
+
+| Method                                                                                            | Applies to                   | `source`   |
+| ------------------------------------------------------------------------------------------------- | ---------------------------- | ---------- |
+| **Backward reconstruction** — balance at T = current balance − sum of transactions posted after T | cash, credit, loan, mortgage | `derived`  |
+| **Forward snapshots** — daily observation, history starts at connection                           | investment                   | `observed` |
+| **Imported** — CSV fills the period before either can reach                                       | any                          | `imported` |
+| **Carried** — last known balance held flat while a sync is broken                                 | any                          | `carried`  |
+
+Backward reconstruction works for the first four types because those balances only move when
+transactions post. It is **mathematically wrong for investment accounts**, whose value moves with the
+market, so they get forward snapshots instead.
+
+### 4.1 Authority: `current_balance` is the input, snapshots are derived output
+
+`balance_snapshots` is a **pure function** of
+`(current_balance, balance_as_of, transactions, manual_balance_updates, imported history)`.
+
+It is a materialization. It is never edited independently. It is always recomputable from scratch.
+**If the two ever disagree, `current_balance` wins and the series is recomputed** — divergence is a
+bug in reconstruction, never a data conflict to merge.
+
+Invariant, tested: **for every account, `snapshot(balance_as_of) == current_balance` exactly.**
+
+`available_balance` deliberately has **no snapshot equivalent**. It is a right-now field shown only on
+account detail, never charted. Do not "fix" this asymmetry.
+
+### 4.2 Reconstruction only rewrites forward from the affected date
+
+When a late transaction posts dated in the past, only snapshots **from that transaction's date
+forward** change. Dates before it are provably unchanged: the shift in `current_balance` and the
+shift in the transaction sum cancel exactly. This bounds delta-sync volume (§7) to how far back late
+postings reach — days to weeks, not the whole series.
+
+### 4.3 Coverage boundary
+
+Every account records `coverage_start_date`, the earliest date for which its history is trustworthy.
+The API returns it with every balance series and the UI shows it.
+
+**Never draw a chart line to the left of the coverage boundary.** Implying we know things we don't is
+the worst thing this app can do with a chart.
+
+Stale accounts carry forward flat (`carried`) so household net worth stays summable when one
+account's sync is broken — but the UI says so explicitly ("2 accounts stale, carried forward since
+7/28") rather than presenting it as observed fact.
+
+---
+
+## 5. Encryption
+
+**Envelope encryption. Not zero-knowledge.** The goal is that a stolen database dump or backup is
+useless, and that no ordinary code path renders another household's data. It is explicitly _not_ a
+defense against the operator deliberately using the master key.
+
+- Each household has a randomly generated **data encryption key (DEK)**.
+- The DEK is stored wrapped by a **master key** held in a Docker secret mounted as a file, referenced
+  by path via environment variable. The master key never lives in Postgres and never appears inline
+  in the compose file.
+- Wrapped DEKs carry a `key_version` so the master key can rotate without downtime.
+- **AES-256-GCM**, with the **household id bound in as additional authenticated data (AAD)** so a row
+  cannot be moved between tenants.
+- Unwrapped DEKs live in a bounded in-memory LRU cache with a TTL. Never logged, never serialized,
+  excluded from error reporting.
+
+**Encrypted columns:** all monetary amounts, account display and provider names, account masks,
+institution names, transaction descriptions, payees, memos, category rule match text and amounts, and
+the SimpleFIN access URL.
+
+**Plaintext columns:** ids, foreign keys, dates, account type, currency code, boolean flags. Needed
+for indexing and filtering; they leak little.
+
+### 5.1 KeyProvider
+
+All key handling sits behind a single `KeyProvider` interface with `wrapDEK` / `unwrapDEK`,
+implemented now as `LocalMasterKeyProvider`.
+
+This is the **one permitted single-implementation abstraction** in the codebase, and it exists for a
+stated reason: user-password-derived keys (true zero-knowledge) may be wanted later. Containing that
+decision to one file keeps it a possible future. Do not add other speculative interfaces.
+
+### 5.2 Aggregation happens in application code
+
+Because amounts are encrypted, `SUM()` over them is impossible. Aggregation happens after decryption.
+A household has tens of thousands of rows at most; this is milliseconds. See §7 for where it happens.
+
+---
+
+## 6. Tenancy and isolation
+
+**Two independent layers, deliberately redundant.**
+
+1. **Repository layer.** Every query goes through a repository that _requires_ a household context.
+   There is no way to call a data function without one.
+2. **Postgres row-level security.** RLS policies on every tenant table, driven by session variables
+   set inside the request transaction:
+   - `app.current_household` → household-scoped tables
+   - `app.current_user_id` → `user_preferences`
+
+The application connects as a **non-superuser, non-`BYPASSRLS` role**. This matters: RLS is silently
+bypassed for superusers and table owners, so getting the role wrong disables layer 2 without any
+visible symptom.
+
+**Three things are required for RLS to actually be enforced. Missing any one is silent:**
+
+1. **Policies exist** — generated from the schema (`householdIsolationPolicy`), migration `0000`.
+2. **`FORCE ROW LEVEL SECURITY`** — migration `0002`. Postgres exempts a table's _owner_ from RLS by
+   default, and migrations create the tables, so whichever role runs them owns them. Without FORCE,
+   every policy is skipped for exactly the role the app uses. No error, no warning.
+3. **A non-superuser, non-`BYPASSRLS` role** — created by `docker/initdb/01-init.sh` with explicit
+   `NOSUPERUSER NOBYPASSRLS`. Superusers bypass RLS even with FORCE.
+
+**A fourth, discovered by the integration tests:** the policy must read
+`nullif(current_setting('app.current_household', true), '')::uuid`, not `current_setting(...)::uuid`.
+
+Once a custom GUC has been set on a connection, ending the transaction reverts it to the **empty
+string** rather than unsetting it. On a pooled connection that previously served a request,
+`current_setting` therefore returns `''`, and `''::uuid` raises `invalid input syntax for type uuid`
+instead of comparing. That does not leak data — but it fails with a 500 rather than an empty result,
+and a fail-closed guarantee resting on an exception is a far weaker guarantee than one resting on a
+comparison. Fixed in migration `0003`.
+
+The tenant isolation tests assert all three, including that `relforcerowsecurity` is set on every
+household-scoped table. A new tenant table needs its policy, its FORCE, and its `updated_at` trigger
+added together, in the same migration.
+
+`auth_*` tables are exempt from household RLS — identity is cross-household by nature.
+
+**Cross-tenant isolation tests are the most important tests in the repo.** They attempt to read
+another household's data both through the repository layer and through raw SQL under RLS, and assert
+failure.
+
+### 6.1 Better Auth table naming
+
+Better Auth's default tables (`user`, `session`, `account`, `verification`) are prefixed **`auth_`**
+→ `auth_user`, `auth_session`, `auth_account`, `auth_verification`.
+
+Reason: Better Auth's `account` means "OAuth provider link," which would collide conceptually and
+namespace-wise with our financial `accounts`. The prefix keeps the two worlds unambiguous.
+
+### 6.2 One household per user in v1
+
+`household_members` is a pure join table with a `unique(user_id)` constraint enforcing one household
+in v1. Removing that single constraint is the entire migration to many-to-many — no restructuring.
+
+---
+
+## 7. Data sync architecture — client-side working set
+
+**This supersedes the spec line "Transaction lists stay server-paginated and do refetch."** That line
+was written before the encryption consequences were fully worked through. Do not restore it.
+
+### 7.1 Why
+
+Because amounts and descriptions are ciphertext (§3.1), Postgres cannot search, sort, or range-filter
+them. Something must hold plaintext to do that work. The options were server memory or the browser.
+**The browser wins:**
+
+- Server memory stays flat regardless of how many households are active. A per-household server cache
+  means every active household's decrypted finances resident in RAM simultaneously — a far larger
+  blast radius in a heap dump than one household per request.
+- Filtering, sorting and search become instant with no round trip. This is the same reason the
+  balance series is already client-side; two mechanisms doing one job is worse than one.
+- The mobile PWA gets offline support nearly free.
+
+### 7.2 Shape
+
+- Endpoints are **"everything changed since cursor X"**, not paginated queries.
+- Cache is **IndexedDB**, with delta sync on open.
+- **Default window is ~2 years**, with older data fetched on demand when the user extends the range
+  past it. Eager-loading a decade across fifteen accounts is a ~60MB initial payload — fine on
+  desktop, awful on cellular.
+- **One cache, not two.** IndexedDB is the only _persistent_ cache. TanStack Query is the in-memory
+  view over it — no persister plugin layered on top, no second TTL. Two caching layers with
+  independent TTLs is where staleness bugs live.
+
+### 7.3 Cursor and deletions
+
+- `updated_at timestamptz` on every client-cached table, maintained by a **database trigger**, not
+  application code, so no write path can forget it. Indexed `(household_id, updated_at)`.
+  This matters most for `balance_snapshots`: reconstruction rewrites history when a late transaction
+  posts, so old rows change without anything being inserted.
+- Deletions are the other half. A `deletions` tombstone log (`household_id`, `entity_type`,
+  `entity_id`, `deleted_at`) covers hard deletes — import reversal, account removal — which otherwise
+  leave the client holding rows the server no longer has, with no way to learn that.
+- The cursor is a timestamptz replayed with a **small overlap** rather than a strict `>`; the client
+  upserts by id, so replay is idempotent. Avoids clock-skew and same-timestamp edges without needing
+  a monotonic sequence.
+- **Tombstone retention is 90 days.** If a client's cursor predates the floor, the server cannot prove
+  what was deleted and must respond **"full resync required"** rather than returning a silently
+  incomplete delta.
+
+### 7.4 The cost, stated plainly
+
+IndexedDB is **plaintext at rest in the browser profile**. Envelope encryption protects a stolen
+database dump, which is the stated goal — but a decrypted household working set now also sits on
+every device the user has logged in from. Mitigations: clear the store on logout and on session
+expiry, and document it. This moves exposure rather than eliminating it, and that tradeoff was made
+knowingly.
+
+---
+
+## 8. Categories
+
+- Household-scoped, seeded with a sensible default set each household can edit.
+- **`slug`** — stable, unique per household, **immutable for system categories**. Rules and CSV import
+  presets reference the slug, never the display label, so renaming "Groceries" to "Food" breaks
+  nothing.
+- **`name`** — display label, freely renameable.
+- **`kind`** — `income` | `expense` | `transfer`.
+- **Two levels maximum.** A category with a parent may not itself be a parent.
+
+Uniqueness is `unique(household_id, parent_id, name)` with **`NULLS NOT DISTINCT`** (PG16). Without
+that clause Postgres treats NULLs as distinct and two top-level categories named "Other" would both
+be permitted. Scoping by parent is what lets "Other" exist under both Income and Expenses.
+
+The two-level cap **cannot be expressed as a `CHECK`** (it requires looking at another row), so it is
+enforced by a trigger _and_ a repository invariant, with a test that nests three deep and asserts
+failure. Belt and braces, because unconstrained self-reference gets ambiguous once real data exists
+and every UI then has to handle arbitrary depth.
+
+---
+
+## 9. Transfers
+
+A confirmed transfer is a **linked pair** in `transfer_matches` (from-transaction ↔ to-transaction,
+status `proposed` | `confirmed` | `rejected`). A transfer to an account Beans doesn't track stays an
+ordinary transaction with the built-in **Transfers** category and forms no pair.
+
+- **`rejected` is sticky**, keyed on a canonical `pair_key`, so the matcher cannot re-propose a
+  dismissed pair after every sync. Otherwise the user learns to ignore the prompt.
+- Partial unique indexes on `from_transaction_id` and `to_transaction_id` `WHERE status='confirmed'`,
+  so a transaction belongs to at most one confirmed pair.
+- Those two indexes are _sufficient_, not merely convenient: `from` is always the outflow (negative)
+  and `to` the inflow (positive), enforced at insert. A transaction has one sign, so it can never be
+  `from` in one pair and `to` in another. The cross case is impossible by construction.
+
+**Exclusion is written once, in one function** in `packages/shared`: a transaction is excluded from
+cash flow if it is **in a confirmed pair OR its category kind is `transfer`**. Cash flow, Phase 4
+budgeting, and every export call that one function. Do not reimplement it per screen.
+
+Invariant, tested: **every confirmed transfer pair sums to exactly zero.**
+
+### 9.1 Mortgage payments are NOT transfers — do not "improve" this
+
+A payment to a mortgage servicer leaves checking as one amount, but the mortgage balance drops by
+only the **principal** portion. The remainder is interest, which is a real expense.
+
+Because the two amounts don't match, the auto-matcher correctly declines to pair them. **This is
+load-bearing, not accidental.** The obvious "improvement" of loosening amount tolerance would break
+it and start silently erasing interest expense from cash flow.
+
+**Do not fuzzy-match amounts across a liability boundary.** Principal-versus-interest splitting is out
+of scope for now.
+
+Credit card payments are the highest-volume transfer case and get their own fixture set.
+
+---
+
+## 10. SimpleFIN
+
+**Every user brings their own connection.** Beans never shares one across households — a Bridge
+account exposes every institution linked inside it, so sharing would put other people's bank data
+under one person's login and defeat the encryption entirely.
+
+- The user pastes a **setup token** (base64-encoded claim URL). We POST to it **exactly once** and
+  receive a long-lived **access URL** with embedded basic auth. Setup tokens are single-use, so claim
+  failures are handled carefully and a claim is **never retried blindly**.
+- The access URL is a credential: encrypted at rest, never returned to the client, not even partially.
+- Sync calls `GET /accounts` with `start-date` / `end-date`. First sync pulls as much history as the
+  endpoint gives. Later syncs **overlap by ~2 weeks** to catch late-posting and amended transactions.
+- **Quota: 24 or fewer requests per day per token.** Budgeted explicitly — a few scheduled syncs per
+  day with jitter, a UI-rate-limited manual refresh, and hard backoff on errors. A retry loop must
+  never burn the daily quota.
+- **Deduplicate on the SimpleFIN transaction id.** Amounts, descriptions and pending status all change
+  after first appearance, so **upsert** rather than insert and keep row identity stable.
+- Pending transactions can vanish, change amount, or convert to posted with a _different_ id at some
+  institutions. Policy is explicit in code and tested; vanished pendings become `status='void'` rather
+  than being deleted.
+- Responses include a structured `errlist`. **Surface those to the user rather than swallowing them.**
+
+**Sync health is a first-class feature.** Per-connection and per-account status of `healthy` | `stale`
+| `error` with last successful sync time. Silent sync failure is the worst possible bug in this app,
+because the numbers quietly go stale and everything still looks fine.
+
+**Reconnecting must preserve history.** Re-authorization replaces the stored access URL on the
+_existing_ connection and re-matches accounts to existing rows via `simplefin_account_id`. Under no
+circumstances may reconnecting create duplicate accounts or orphan balance history.
+
+---
+
+## 11. Importing history
+
+A **generic CSV mapper**, not an Empower-specific parser: auto-detect delimiter and header row,
+present column mapping with a best-guess prefill, preview, then commit. Empower ships as a preset;
+Monarch, Mint and YNAB are then just configuration.
+
+- Supports both transaction history and balance/net-worth history.
+- Staged in `import_rows` first — the user sees what will happen before anything touches real tables,
+  and an import is reversible **as a unit**.
+- **Seam handling:** imported and synced data overlap, and the same transaction appears in both with
+  different descriptions. Overlap is detected by date proximity and amount, then presented for
+  **manual confirmation**. Never silently merge; never silently duplicate. Once confirmed, a per-account
+  **cutover date** is established: imported data owns everything before it, synced data everything after.
+- After import, balance reconstruction reruns so the daily series is continuous across the seam.
+
+**Retention:** `imports.reversible_until = committed_at + 30 days`. A scheduled job then **deletes the
+`import_rows`** and keeps the `imports` header with its counts for audit. Reversal is impossible after
+the window, which is the point — a five-year import is tens of thousands of staged rows carrying two
+encrypted JSONB blobs each, and they would otherwise persist forever.
+
+Real target data: the user's Empower transaction export runs back to **2019**.
+
+---
+
+## 12. Frontend
+
+Two genuinely different layouts sharing all data logic, hooks and formatting — **not** one component
+tree littered with breakpoint conditionals, which is how both layouts end up mediocre. The shell is
+picked once at a breakpoint and each is allowed to be good at its own job.
+
+- **Mobile:** installable PWA — full manifest, service worker, offline shell, standalone display, iOS
+  splash/icon sets, safe-area insets. Fixed bottom tab bar with exactly five slots; the fifth is
+  always **More**. The first four are user-configurable and reordered from settings, persisted
+  **server-side per user** (`user_preferences`) so they follow across devices.
+- **Desktop:** persistent left sidebar, multi-pane. Where mobile stacks a chart above a list, desktop
+  fixes the chart beside the scrolling list so it stays visible. Denser tables, sortable headers,
+  multi-select, keyboard navigation.
+
+### 12.1 Charts and the net worth transition
+
+All chart code sits behind a thin wrapper so the renderer can be swapped.
+
+**Decide what the transition is before deciding what can render it.** A true path morph between
+categories will often look strange — morphing a dead-flat mortgage line into a jagged cash line
+produces intermediate frames that mean nothing. The leading candidate is a **crossfade with an
+animated y-axis rescale**, which is cheaper, reads more clearly, and is probably closer to what
+Empower actually does; the axis rescale is what carries the "this is a different, smaller number"
+meaning.
+
+At milestone 7 the transition is **prototyped in isolation first**. Only then is the renderer
+question opened.
+
+Note for whoever revisits this: **uPlot does not solve the transition.** It is canvas and very fast at
+drawing, but it has essentially no animation model — it buys draw speed, not smooth transitions. A
+genuine morph means SVG with a path interpolator (e.g. flubber) or a hand-rolled canvas renderer
+driving the tween on rAF.
+
+Scroll-linked section behavior is driven by an **IntersectionObserver** rooted to the bottom edge of
+the chart, never raw scroll offsets — scroll math breaks on variable row heights and on mobile
+browser chrome resizing. Hysteresis prevents strobing through categories on a fast scroll.
+`prefers-reduced-motion` swaps without animation. Section headers are focusable and activating one
+scopes the chart directly, announced via a live region, so there is a non-scroll path to the same
+result.
+
+---
+
+## 13. Deployment
+
+- Multi-stage Dockerfile producing **one image** serving the API and the built static frontend.
+- `docker-compose.yml` with app, Postgres 16, healthchecks, named volumes, and the master key as a
+  **Docker secret**.
+- Migrations run on startup, **idempotently**.
+- Config entirely through environment variables, documented in `.env.example`.
+- `/health` checks database connectivity and reports sync worker status.
+- Structured JSON logging with a **redaction list** — amounts, names, tokens and keys never reach logs.
+- Backup script dumping Postgres, documented clearly: **a dump is worthless without the master key,
+  and the master key must be backed up separately.**
+
+### 13.1 TLS and hostname
+
+Hosted at `https://beans.nerdspar.com`, behind Nginx Proxy Manager terminating TLS. The app does not
+terminate TLS itself.
+
+A real hostname with a valid certificate is **required**, not cosmetic:
+
+- Google OAuth redirect URIs reject IPs and `.local` names. Callback is
+  `https://beans.nerdspar.com/api/auth/callback/google`.
+- Service workers require a secure context. `localhost` is exempt; a LAN IP is not.
+
+### 13.2 Development
+
+Postgres runs in Docker **on TrueNAS** from day one, so dev and production are the same instance
+family and the app service slots into that same compose file later. The app itself runs natively via
+`pnpm dev` for fast iteration — developing inside a container means slow rebuilds, awkward debugger
+attach, and fighting file-watch across a bind mount.
+
+Two databases: `beans` and `beans_test`. Integration tests truncate tables and must never point at
+dev data.
+
+The Postgres port must stay **LAN-only** — never forwarded through the reverse proxy.
+
+---
+
+## 14. Testing
+
+The suite must be runnable at any point with the math trusted. Not a checkbox at the end; tests are
+written alongside each feature.
+
+**Must have real coverage:**
+
+- **Money parsing** — decimal strings to integer cents: negatives, thousands separators, missing
+  decimals, more than two decimal places. Property-based over generated inputs.
+- **Balance reconstruction** — exact against known fixtures. Boundary date, out-of-order postings,
+  amended transactions, accounts with zero transactions in the window, and a fixture where
+  reconstruction and later observed snapshots must agree at the seam.
+- **Import seam** — imported plus synced history produces one continuous series, no double counting,
+  no gap at cutover.
+- **Transfer detection** — real pairs matched, near-miss coincidences not matched, confirmed transfers
+  excluded from cash flow, and mortgage payments never paired.
+- **Aggregation** — net worth, group subtotals, cash flow totals against hand-computed fixtures.
+  Assets minus liabilities equals net worth in every fixture.
+- **Encryption** — round trip for every encrypted column type, AAD binding rejecting a row moved
+  between households, key rotation preserving readability of old rows.
+- **Tenant isolation** — deliberate cross-household reads through the repository layer and through raw
+  SQL under RLS, asserted to fail. **The most important tests in the repo.**
+- **Sync idempotency** — same payload twice changes nothing; a pending transaction becoming posted
+  updates in place rather than duplicating; reconnecting duplicates no accounts and orphans no history.
+
+**Practices:** unit tests run against no database; integration tests run against real Postgres, never
+a mock or SQLite. Deterministic fixtures with fixed dates — **never `new Date()` in a test**. A
+dedicated `pnpm test:math` covers parsing, reconstruction, aggregation and transfers so the critical
+path runs in seconds.
+
+---
+
+## 15. Ground rules
+
+- Write tests as you go, not at the end.
+- Keep this file current with decisions **and their reasoning**. Maintain `CLAUDE.md` with conventions.
+- **No feature flags for things nobody asked for. No abstraction layers with a single implementation**,
+  other than `KeyProvider`, which exists for the reason stated in §5.1.
+- When something in the spec turns out to be wrong once in the code, **say so** rather than working
+  around it.
+
+---
+
+## 16. Superseded spec lines
+
+Recorded so a future session doesn't "restore" them:
+
+| Original                                                  | Status                                                                                                                          |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| "Transaction lists stay server-paginated and do refetch." | **Superseded** by §7. Encryption makes SQL-side filter/sort impossible; the working set moved to the client.                    |
+| "Swap to uPlot if time-series scrubbing gets sluggish."   | **Amended** by §12.1. uPlot has no animation model and does not address the category transition. Transition design comes first. |
+
+## 17. Library versions and their gotchas
+
+Verified against the live registries and docs at milestone 1, not from memory. Several of these
+libraries changed enough recently that older knowledge is actively wrong.
+
+| Package       | Pinned      | Why it's pinned / what bites                                                                                                                                                                    |
+| ------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `drizzle-orm` | **0.45.2**  | orm.drizzle.team now documents **v1 (RC)**, which is not what `npm i` gives you. v1-only APIs absent from stable: `bytea`, `pgTable.withRLS()`, `getColumns()`, `defineRelations()`.            |
+| `drizzle-kit` | **0.31.10** | `migrate()` **requires** a config argument on this line; the docs' `migrate(db)` is v1-only.                                                                                                    |
+| `pg-boss`     | **12.x**    | v12 dropped the default export — `import { PgBoss }`, not `import PgBoss`. Queues must be created explicitly before `send()`. Handlers always receive an **array**. Requires Node ≥22.12.       |
+| `better-auth` | **1.6.x**   | CLI is now `npx auth@latest generate` (not `@better-auth/cli`, frozen at 1.4.21). Drizzle adapter moved to `@better-auth/drizzle-adapter`. Generated columns are **snake_case** by default now. |
+| `vitest`      | 4.x         | —                                                                                                                                                                                               |
+| `typescript`  | 5.9.x       | TS 7 (the native port) is published but the tooling around Drizzle/Vite hasn't caught up. Revisit later.                                                                                        |
+
+Specific traps already hit or avoided:
+
+- **`nullsNotDistinct()` exists only on `unique()` table constraints, not on `uniqueIndex()`** — and
+  therefore **cannot be combined with a partial index**, since constraints take no `WHERE`. Our
+  schema happens not to need that combination (`categories` needs NULLS NOT DISTINCT with no WHERE;
+  `transfer_matches` needs partial uniques with no NULL semantics), but a future table might. If so,
+  hand-write the `CREATE UNIQUE INDEX ... NULLS NOT DISTINCT ... WHERE ...` in a custom migration.
+- **Drizzle cannot express triggers.** `updated_at`, the two-level category cap, and the system-slug
+  guard are all hand-written in `0001_triggers.sql` via `drizzle-kit generate --custom`. drizzle-kit
+  never introspects triggers, so it will not drop them — but write them `CREATE OR REPLACE` /
+  `DROP ... IF EXISTS` so re-runs stay safe.
+- **Drizzle _can_ express RLS** (`pgPolicy` + `.enableRLS()`), and does emit it. But not FORCE — see §6.
+- **pg-boss gets its own connection pool, not the app's.** Our RLS design sets `app.current_household`
+  as session state on connections; sharing a pool would leak that state into pg-boss's own queries.
+  A separate small pool sidesteps the whole class of problem.
+- **Better Auth defaults to scrypt, not Argon2id.** Argon2id is configured explicitly via
+  `emailAndPassword.password.{hash,verify}` with `@node-rs/argon2`. This must be decided **before**
+  any user exists — existing scrypt hashes will not verify under an Argon2-only verifier.
+- **Fastify + Better Auth: do not copy the documented header loop verbatim.** `reply.header()`
+  overwrites on repeat keys, which collapses multiple `Set-Cookie` headers (session token plus
+  `dont_remember`, or OAuth state). Use `reply.raw.setHeader('set-cookie', response.headers.getSetCookie())`.
+- **Migrations are not concurrency-safe across simultaneously booting replicas.** Startup migration
+  is wrapped in a `pg_advisory_lock`.
+
+## 18. Open items
+
+| Item                                        | Status                                                                                                                                                                                                                                                                            |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Holdings / allocation (Phase 2)             | Schema seam exists: `securities`, `holdings`, `security_prices` hang off investment `accounts` by stable id. Not built.                                                                                                                                                           |
+| Budgeting (Phase 4)                         | Seam exists: `category_targets(category_id, month, amount)` attaches to stable `categories`. Not built.                                                                                                                                                                           |
+| Retirement (Phase 5), Tax profile (Phase 6) | New household-keyed tables. Depend on `tax_treatment` being populated and cash flow being clean, which is why both are handled properly in phase 1.                                                                                                                               |
+| Institution logos                           | If added, they go in a **separate global public table keyed by domain with no household reference**. The household-scoped row keeps its own encrypted name. Do not add a global FK from households to institutions — that would reveal which institutions a household banks with. |

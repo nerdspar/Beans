@@ -1,0 +1,6 @@
+export { DataKey, DEK_LENGTH_BYTES } from './data-key.js'
+export { DataKeyCache, type DataKeyCacheOptions } from './data-key-cache.js'
+export { DecryptionError, SEALED_OVERHEAD_BYTES, open, seal } from './envelope.js'
+export { HouseholdCipher } from './household-cipher.js'
+export { LocalMasterKeyProvider, MasterKeyError } from './local-master-key-provider.js'
+export type { KeyProvider, WrappedDataKey } from './key-provider.js'
