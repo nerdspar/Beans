@@ -2,6 +2,7 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
 import * as schema from './schema/index.js'
+import { registerPostgresTypeParsers } from './type-parsers.js'
 
 /**
  * Database connections.
@@ -21,6 +22,8 @@ export type Database = NodePgDatabase<typeof schema>
  * pg-boss in particular gets its own pool for exactly this reason (ARCHITECTURE.md §17).
  */
 export function createPool(connectionString: string): Pool {
+  registerPostgresTypeParsers()
+
   return new Pool({
     connectionString,
     // Session state (the RLS GUCs) is set per transaction and reset on release, so a modest pool

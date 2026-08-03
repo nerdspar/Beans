@@ -78,6 +78,14 @@ behavior is a separate question.
       backwards and net worth is off by twice the card balance, in a plausible direction, with no
       error raised. Check every card institution individually.
 - [ ] Pending transactions: confirm whether ids stay stable when they post, per institution
+- [ ] **Whether any institution inverts transaction amounts as well as the balance.** We apply
+      `provider_sign_inverted` to the balance only, reasoning that the protocol _does_ specify a
+      transaction sign (positive = money in) and institutions generally follow a spec where one
+      exists, while saying nothing about balances — which is why balances vary. If some institution
+      inverts both, that account's derived history will **drift steadily rather than fail loudly**,
+      because backward reconstruction subtracts transactions from the current balance and needs both
+      in the same sign space. The milestone 4 reconstruction check should catch it; verify against
+      real data for every card institution.
 - [ ] `errlist` surfaces to the UI rather than being swallowed
 - [ ] Reconnect preserves history and creates no duplicate accounts
 - [ ] Confirm the daily request budget is not exceeded under the real schedule
