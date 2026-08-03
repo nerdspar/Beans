@@ -13,6 +13,7 @@ import { accountRoutes } from './routes/accounts.js'
 import { connectionRoutes } from './routes/connections.js'
 import { householdRoutes } from './routes/households.js'
 import { preferenceRoutes } from './routes/preferences.js'
+import { staticSiteRoutes } from './routes/static-site.js'
 import { workingSetRoutes } from './routes/working-set.js'
 import type { Pool } from 'pg'
 
@@ -112,6 +113,12 @@ export async function buildServer({
       emailDelivery: config.mail.kind !== 'disabled',
     })
   })
+
+  /*
+   * Last, deliberately. It installs the not-found handler that falls back to `index.html`, so every
+   * real route must already be registered or a deep link would shadow it.
+   */
+  await fastify.register(staticSiteRoutes)
 
   return fastify
 }

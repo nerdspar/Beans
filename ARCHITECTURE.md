@@ -580,6 +580,35 @@ missed.
 
 ## 13. Deployment
 
+### 13.1 As built
+
+One image serves the API and the built frontend from **one origin**, which is why production needs
+no CORS and keeps `EXTRA_TRUSTED_ORIGINS` empty. `staticSiteRoutes` registers **last**, because its
+not-found handler is the SPA fallback and would otherwise shadow real routes.
+
+Three details that are easy to get wrong and silent when wrong:
+
+- **`index.html` is served `no-cache`; fingerprinted assets are `immutable` for a year.** Vite
+  fingerprints every asset, so long caching is safe for them — but `index.html` is the one file whose
+  name never changes, and caching it pins every client to the build it first loaded. `sendFile`
+  applies the plugin's configured cache options and overwrites a header set beforehand, so
+  `cacheControl: false` has to be passed explicitly.
+- **A request for `/` with `index: false` returns 403, not 404**, because it resolves to a directory
+  and the static plugin refuses rather than declining — so it never reaches the fallback. An exact
+  `/` route handles it.
+- **An unknown `/api/*` path returns a JSON 404, not the SPA.** Falling back to HTML there answers a
+  fetch with a page, and the client fails on a JSON parse rather than a status code.
+
+The health check reports the database *and* the sync worker, and returns 503 when the worker has
+stopped. A stopped worker means balances quietly stop updating while every request still succeeds —
+precisely the failure that must not read as healthy.
+
+CI runs typecheck and the full suite against a **real Postgres service container**, with
+`TEST_DATABASE_URL` set so the integration tests run rather than skipping. A suite that silently
+skips its cross-tenant isolation tests is worse than one that fails.
+
+
+
 - Multi-stage Dockerfile producing **one image** serving the API and the built static frontend.
 - `docker-compose.yml` with app, Postgres 16, healthchecks, named volumes, and the master key as a
   **Docker secret**.
