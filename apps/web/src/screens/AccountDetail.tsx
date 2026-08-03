@@ -1,27 +1,25 @@
 import {
   ACCOUNT_COPY,
+  NET_WORTH_STATE_COPY,
   carriedNotice,
   compareDates,
   defaultTaxTreatment,
   formatCents,
   isLiabilitySection,
+  type AccountType,
   type NetWorthSection,
   type TaxTreatment,
 } from '@beans/shared'
 import { AlertTriangle, ChevronLeft, Info } from 'lucide-react'
-import { useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'wouter'
 import { accountHealth, formatLastUpdated } from '../accounts/display.js'
 import { CategoryChart } from '../charts/CategoryChart.js'
 import { cn } from '../lib/cn.js'
 import { SECTION_COLORS, SECTION_LABELS } from '../net-worth/colors.js'
 import { describeChange, formatAxisValue, toChartSeries } from '../net-worth/display.js'
-import {
-  buildSections,
-  findAccount,
-  observedThrough,
-  type FixtureAccountSeries,
-} from '../net-worth/fixtures.js'
+import type { DerivedAccount } from '../working-set/derive.js'
+import { useWorkingSet } from '../working-set/use-working-set.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
 import { DEFAULT_RANGE, resolveWindow, sliceToWindow, todayIso, type RangeSelection } from '../net-worth/range.js'
 
@@ -41,15 +39,20 @@ const MIN_CARRIED_DAYS_TO_MENTION = 3
 
 export function AccountDetail({ params }: { params: { id: string } }): ReactNode {
   const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE)
+  const workingSet = useWorkingSet()
 
-  const sections = useMemo(() => buildSections(), [])
-  const found = useMemo(() => findAccount(sections, params.id), [sections, params.id])
+  if (workingSet.isLoading) {
+    return <div className="p-6 text-sm text-slate-500">{NET_WORTH_STATE_COPY.loading}</div>
+  }
 
-  if (found === null) {
+  const account = workingSet.data?.byId.get(params.id)
+  if (account === undefined) {
     return <NotFound />
   }
 
-  return <AccountView account={found.account} section={found.section} range={range} onRange={setRange} />
+  return (
+    <AccountView account={account} section={account.section} range={range} onRange={setRange} />
+  )
 }
 
 function AccountView({
@@ -58,7 +61,7 @@ function AccountView({
   range,
   onRange,
 }: {
-  account: FixtureAccountSeries
+  account: DerivedAccount
   section: NetWorthSection
   range: RangeSelection
   onRange: (value: RangeSelection) => void
@@ -77,7 +80,7 @@ function AccountView({
    * couple of pixels — captioning that is noise, and noise is what makes the caption ignorable in
    * the cases that matter.
    */
-  const lastReal = observedThrough(account)
+  const lastReal = account.observedThrough
   const carriedDays =
     lastReal === null
       ? 0
@@ -85,7 +88,12 @@ function AccountView({
 
   const carriedFrom = carriedDays >= MIN_CARRIED_DAYS_TO_MENTION ? formatLastUpdated(account) : null
 
-  const total = series.at(-1)?.value ?? account.balanceCents
+  const formatValue = useCallback(
+    (cents: bigint, digits: number) => formatAxisValue(cents, section, digits),
+    [section],
+  )
+
+  const total = series.at(-1)?.value ?? account.currentBalanceCents ?? 0n
   const change = total - (series[0]?.value ?? total)
   const described = describeChange(change, section)
 
@@ -106,7 +114,7 @@ function AccountView({
       </div>
 
       <div className="px-5 pt-2">
-        <h1 className="text-xl font-semibold">{account.institution}</h1>
+        <h1 className="text-xl font-semibold">{account.institutionName ?? account.name}</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {account.name}
           {account.mask !== null && ` - Ending in ${account.mask}`}
@@ -124,7 +132,7 @@ function AccountView({
         />
       )}
 
-      {account.isManual === true && (
+      {account.isManual && (
         <Note>
           <span className="font-medium">{ACCOUNT_COPY.manualAccount}.</span>{' '}
           {ACCOUNT_COPY.manualAccountDetail}
@@ -157,7 +165,7 @@ function AccountView({
           categoryKey={account.id}
           series={toChartSeries(series, section)}
           color={SECTION_COLORS[section]}
-          formatValue={(cents) => formatAxisValue(cents, section)}
+          formatValue={formatValue}
           height={CHART_HEIGHT}
         />
       </div>
@@ -170,13 +178,19 @@ function AccountView({
 
       <h2 className="px-5 pb-1 pt-6 text-sm font-semibold">{ACCOUNT_COPY.detailsHeading}</h2>
       <dl className="px-5">
-        <Field label={ACCOUNT_COPY.institution} value={account.institution} />
+        <Field
+          label={ACCOUNT_COPY.institution}
+          value={account.institutionName ?? ACCOUNT_COPY.manualAccount}
+        />
         <Field label={ACCOUNT_COPY.accountType} value={SECTION_LABELS[section]} />
         <Field
           label={ACCOUNT_COPY.accountNumber}
           value={account.mask === null ? ACCOUNT_COPY.noAccountNumber : `Ending in ${account.mask}`}
         />
-        <Field label={ACCOUNT_COPY.taxTreatment} value={TAX_LABELS[defaultTaxTreatment(account.type)]} />
+        <Field
+          label={ACCOUNT_COPY.taxTreatment}
+          value={TAX_LABELS[defaultTaxTreatment(account.type as AccountType)]}
+        />
         <Field label={ACCOUNT_COPY.lastUpdated} value={formatLastUpdated(account)} />
       </dl>
 

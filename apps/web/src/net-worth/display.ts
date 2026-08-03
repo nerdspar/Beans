@@ -117,9 +117,13 @@ export function formatSectionTotal(
  * Which means the axis descends toward zero rather than away from it. That is the right way round
  * for a debt: nobody pictures a mortgage as a bar that grows as they pay it off.
  */
-export function formatAxisValue(cents: bigint, section: NetWorthSection | 'household'): string {
+export function formatAxisValue(
+  cents: bigint,
+  section: NetWorthSection | 'household',
+  fractionDigits = 2,
+): string {
   const display =
     section !== 'household' && isLiabilitySection(section) && cents > 0n ? -cents : cents
 
-  return formatCents(display, { compact: true })
+  return formatCents(display, { compact: true, compactFractionDigits: fractionDigits })
 }

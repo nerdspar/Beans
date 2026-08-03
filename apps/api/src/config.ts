@@ -29,6 +29,18 @@ const schema = z.object({
    */
   PUBLIC_URL: NON_EMPTY,
 
+  /**
+   * Extra origins allowed to call the auth endpoints, comma-separated.
+   *
+   * Empty in production, where one container serves the API and the built frontend from a single
+   * origin and `PUBLIC_URL` is already it. **Development is the case this exists for**: the web app
+   * runs on Vite's port and the API on its own, so every auth request arrives cross-origin and
+   * Better Auth rejects it as `INVALID_ORIGIN`.
+   *
+   * Enumerated rather than wildcarded on purpose — this list is the CSRF boundary.
+   */
+  EXTRA_TRUSTED_ORIGINS: z.string().optional(),
+
   BETTER_AUTH_SECRET: z
     .string()
     .min(32, 'BETTER_AUTH_SECRET must be at least 32 characters. Generate: openssl rand -hex 32'),
@@ -55,6 +67,8 @@ export type Config = {
   databaseUrl: string
   masterKeyFile: string
   publicUrl: string
+  /** Always includes `publicUrl`. Anything else comes from `EXTRA_TRUSTED_ORIGINS`. */
+  trustedOrigins: string[]
   betterAuthSecret: string
   /** Null when unconfigured, which hides the Google button rather than showing a broken one. */
   google: { clientId: string; clientSecret: string } | null
@@ -103,6 +117,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     databaseUrl: raw.DATABASE_URL,
     masterKeyFile: raw.MASTER_KEY_FILE,
     publicUrl: raw.PUBLIC_URL.replace(/\/+$/, ''),
+    trustedOrigins: [
+      raw.PUBLIC_URL.replace(/\/+$/, ''),
+      ...(raw.EXTRA_TRUSTED_ORIGINS ?? '')
+        .split(',')
+        .map((origin) => origin.trim().replace(/\/+$/, ''))
+        .filter((origin) => origin.length > 0),
+    ],
     betterAuthSecret: raw.BETTER_AUTH_SECRET,
     google:
       isSet(googleClientId) && isSet(googleClientSecret)

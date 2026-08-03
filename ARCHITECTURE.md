@@ -331,6 +331,31 @@ every device the user has logged in from. Mitigations: clear the store on logout
 expiry, and document it. This moves exposure rather than eliminating it, and that tradeoff was made
 knowingly.
 
+### 7.5 As built
+
+`GET /api/working-set` is the only endpoint that returns financial data. Repository in
+`apps/api/src/repositories/working-set.ts`, client store in `apps/web/src/working-set/`.
+
+- **Unconfirmed accounts are excluded at the query**, not in the UI. An unconfirmed account has not
+  had its balance sign checked by a human (§3.3), so there is no path by which one reaches a screen.
+- **The cursor is read before the reads and rewound five seconds.** Taken afterwards, a row committed
+  while the reads run would fall before the new cursor and never be sent again. Re-sending is free —
+  the client upserts by id — and skipping is permanent.
+- **Ordering carries an `id` tiebreaker.** Accounts written in one transaction share a `created_at`
+  to the microsecond, and without it Postgres may return them in a different order each time, which
+  reaches the user as rows that shuffle between refreshes.
+- **Section order is canonical**, from `NET_WORTH_SECTIONS`, not the order accounts arrived in.
+- The client parses money to `bigint` cents **once, at ingest**, and stores it that way — IndexedDB
+  holds bigint natively, so no component ever sees a money string it might `parseFloat`.
+- A delta applies in **one IndexedDB transaction across all stores including the cursor**. A partial
+  apply that still advanced the cursor would skip the rest of that batch permanently.
+- Deleting an account **cascades on the client by hand**. The server logs one tombstone for the
+  account rather than thousands for its rows, so a client that deleted only the account row would
+  keep every balance beneath it forever and silently inflate net worth.
+
+Measured on the seeded household: first load ~745KB for 10 accounts and 6,329 daily snapshots, and
+**154 bytes** for a subsequent no-op delta.
+
 ---
 
 ## 8. Categories
@@ -627,6 +652,20 @@ Recorded so a future session doesn't "restore" them:
 | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | "Transaction lists stay server-paginated and do refetch." | **Superseded** by §7. Encryption makes SQL-side filter/sort impossible; the working set moved to the client.                    |
 | "Swap to uPlot if time-series scrubbing gets sluggish."   | **Amended** by §12.1. uPlot has no animation model and does not address the category transition. Transition design comes first. |
+
+### 16.1 Development-only configuration
+
+`EXTRA_TRUSTED_ORIGINS` exists because Better Auth's CSRF check compares the request origin against
+`trustedOrigins`, which was `[PUBLIC_URL]` — the API's own origin. In production one container serves
+the API and the built frontend from that origin and the check passes. **In development the two run on
+different ports**, so every auth request is cross-origin and returns `INVALID_ORIGIN`. Enumerated
+rather than wildcarded: this list is the CSRF boundary. Empty in production.
+
+`pnpm --filter @beans/api dev:seed <email>` fills a household with plausible accounts and two years
+of daily snapshots. It goes through `withHouseholdContext` because every money and name column is
+encrypted with the household's own key — none of this is seedable from psql.
+
+---
 
 ## 17. Library versions and their gotchas
 

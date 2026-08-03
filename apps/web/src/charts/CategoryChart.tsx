@@ -31,7 +31,7 @@ export type CategoryChartProps = {
   categoryKey: string
   series: readonly SeriesPoint[]
   color: string
-  formatValue: (cents: bigint) => string
+  formatValue: (cents: bigint, fractionDigits: number) => string
   height?: number
   className?: string
 }

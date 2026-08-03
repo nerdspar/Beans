@@ -29,13 +29,43 @@ export type AreaChartProps = {
   series: readonly SeriesPoint[]
   /** Drives the fill and stroke. Categories each carry their own. */
   color: string
-  /** Rendered as the value axis, in the same units the caller formats elsewhere. */
-  formatValue: (cents: bigint) => string
+  /**
+   * Rendered as the value axis.
+   *
+   * Takes the number of decimal places to use, because the chart is the only thing that knows how
+   * close together its own ticks are. See {@link labelPrecision}.
+   */
+  formatValue: (cents: bigint, fractionDigits: number) => string
   className?: string
   height?: number
 }
 
 const GRID_LINES = 5
+
+/** How far the axis will go to keep its labels distinct before giving up. */
+const MAX_LABEL_DIGITS = 4
+
+/**
+ * The fewest decimal places that keep every tick label different from its neighbours.
+ *
+ * Compact notation collapses on a narrow domain: an axis running $1.006M to $1.021M renders every
+ * tick as `$1.01M` at two places, and four gridlines end up sharing one label. Rather than pick a
+ * precision globally — too much everywhere else, to fix the worst case here — the axis tries
+ * increasing precision until its own labels separate.
+ *
+ * Duplicates can survive: a genuinely flat series has identical ticks and no precision fixes that.
+ * Stopping at a bound rather than looping is what makes that harmless.
+ */
+function labelPrecision(values: readonly bigint[], format: (cents: bigint, digits: number) => string): number {
+  for (let digits = 0; digits < MAX_LABEL_DIGITS; digits += 1) {
+    const labels = values.map((value) => format(value, digits))
+    if (new Set(labels).size === labels.length) {
+      return digits
+    }
+  }
+
+  return MAX_LABEL_DIGITS
+}
 
 /** Room under the plot for the date labels. Taken out of `height`, so the box stays its stated size. */
 const AXIS_HEIGHT = 18
@@ -164,13 +194,17 @@ export function AreaChart({
     return {
       width,
       plotHeight,
+      precision: labelPrecision(
+        ticks.map((tick) => tick.value),
+        formatValue,
+      ),
       area,
       line,
       ticks,
       start: startDate === undefined ? null : formatAxisDate(startDate),
       end: endDate === undefined ? null : formatAxisDate(endDate),
     }
-  }, [series, height])
+  }, [series, height, formatValue])
 
   if (geometry === null) {
     return (
@@ -263,7 +297,7 @@ export function AreaChart({
             )}
             style={{ top: tick.labelY }}
           >
-            {formatValue(tick.value)}
+            {formatValue(tick.value, geometry.precision)}
           </span>
         ))}
       </div>

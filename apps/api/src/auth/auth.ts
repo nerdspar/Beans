@@ -88,7 +88,7 @@ export function createAuth(config: Config, db: Database) {
           },
         }),
 
-    trustedOrigins: [config.publicUrl],
+    trustedOrigins: config.trustedOrigins,
 
     advanced: {
       // Secure cookies are automatic in production; forced here so a misread NODE_ENV cannot

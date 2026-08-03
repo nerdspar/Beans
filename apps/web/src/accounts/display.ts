@@ -7,7 +7,20 @@ import {
   type ConnectionBannerCopy,
   type HealthAssessment,
 } from '@beans/shared'
-import type { FixtureAccount } from '../net-worth/fixtures.js'
+
+/**
+ * The account shape these helpers need, structurally.
+ *
+ * Deliberately not the full stored account: everything here is about freshness, and naming only the
+ * fields that bear on it keeps the coupling honest.
+ */
+export type SyncableAccount = {
+  institutionName: string | null
+  connectionStatus: 'healthy' | 'stale' | 'error' | null
+  lastSuccessAt: string | null
+  consecutiveFailures: number
+  isManual: boolean
+}
 
 /**
  * Presentation for a single account: how fresh it is, and what to say when it isn't.
@@ -28,8 +41,8 @@ const DATE = new Intl.DateTimeFormat(undefined, {
  * current* far more directly than today's date does, and a time on a three-week-old balance would be
  * a false precision.
  */
-export function formatLastUpdated(account: FixtureAccount): string {
-  if (account.isManual === true) return ACCOUNT_COPY.manualAccount
+export function formatLastUpdated(account: SyncableAccount): string {
+  if (account.isManual) return ACCOUNT_COPY.manualAccount
   if (account.lastSuccessAt === null) return 'Never'
 
   const instant = new Date(account.lastSuccessAt)
@@ -49,14 +62,16 @@ export type AccountHealth = {
  * be reconnected — telling somebody their hand-entered car valuation needs re-authorizing would be
  * nonsense.
  */
-export function accountHealth(account: FixtureAccount, today: string): AccountHealth {
-  if (account.isManual === true) {
+export function accountHealth(account: SyncableAccount, today: string): AccountHealth {
+  if (account.isManual) {
     return { assessment: { severity: 'ok', action: 'none', daysSinceSuccess: null }, banner: null }
   }
 
   const assessment = assessConnection(
     {
-      status: account.syncStatus,
+      // A manual account is already handled above, so a null status here means an account with no
+      // connection row that is not manual either — treat it as healthy rather than inventing alarm.
+      status: account.connectionStatus ?? 'healthy',
       lastSuccessAt: account.lastSuccessAt,
       consecutiveFailures: account.consecutiveFailures,
     },
@@ -65,7 +80,7 @@ export function accountHealth(account: FixtureAccount, today: string): AccountHe
 
   const banner = connectionBanner({
     action: assessment.action,
-    institution: account.institution,
+    institution: account.institutionName ?? 'this institution',
     age: describeAge(assessment.daysSinceSuccess, formatLastUpdated(account)),
     neverSucceeded: account.lastSuccessAt === null,
   })

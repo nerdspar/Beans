@@ -1,10 +1,11 @@
 import {
   CONNECTION_STATUS_LABEL,
+  NET_WORTH_STATE_COPY,
   formatCents,
   isLiabilitySection,
   type NetWorthSection,
 } from '@beans/shared'
-import { useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'wouter'
 import { accountHealth, formatLastUpdated } from '../accounts/display.js'
 import { CategoryChart } from '../charts/CategoryChart.js'
@@ -16,7 +17,8 @@ import {
   formatSectionTotal,
   toChartSeries,
 } from '../net-worth/display.js'
-import { buildSections, householdSeries, type FixtureAccountSeries } from '../net-worth/fixtures.js'
+import { useWorkingSet } from '../working-set/use-working-set.js'
+import type { DerivedAccount, DerivedWorkingSet } from '../working-set/derive.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
 import {
   DEFAULT_RANGE,
@@ -35,25 +37,67 @@ import { useActiveSection } from '../net-worth/use-active-section.js'
  * everything above re-scopes: the total, the change, and the chart itself. Scrolling back to the
  * top returns to household net worth and the assets/liabilities bars.
  *
- * Still on fixtures — the net worth API and the client working set do not exist yet. The
- * interaction is what needed building first, and the data shape it consumes is deliberately what
- * the real one will produce.
+ * Reads the client working set (ARCHITECTURE.md §7), not an endpoint shaped like this screen. The
+ * sections, the series and every total below are derived locally from accounts and daily balance
+ * snapshots — which is why changing the range re-slices instantly with nothing in flight.
  */
 
 /** Where the pinned header sits, and therefore the line that decides the active section. */
 const CHART_BLOCK_HEIGHT = 320
 
 export function NetWorth(): ReactNode {
+  const workingSet = useWorkingSet()
+
+  if (workingSet.isLoading) return <StateMessage title={NET_WORTH_STATE_COPY.loading} />
+  if (workingSet.needsSignIn) {
+    return (
+      <StateMessage
+        title={NET_WORTH_STATE_COPY.signedOut}
+        detail={NET_WORTH_STATE_COPY.signedOutDetail}
+      />
+    )
+  }
+  if (workingSet.needsHousehold) {
+    return (
+      <StateMessage
+        title={NET_WORTH_STATE_COPY.noHousehold}
+        detail={NET_WORTH_STATE_COPY.noHouseholdDetail}
+      />
+    )
+  }
+  if (workingSet.data === null || workingSet.isEmpty) {
+    return (
+      <StateMessage
+        title={workingSet.error !== null ? NET_WORTH_STATE_COPY.failed : NET_WORTH_STATE_COPY.empty}
+        detail={
+          workingSet.error !== null
+            ? NET_WORTH_STATE_COPY.failedDetail
+            : NET_WORTH_STATE_COPY.emptyDetail
+        }
+      />
+    )
+  }
+
+  return <NetWorthView workingSet={workingSet.data} />
+}
+
+/**
+ * Split from the state handling above so the hooks below run unconditionally.
+ *
+ * `useActiveSection` keys off the section list, and an early return before it would change the hook
+ * order between an empty household and a populated one.
+ */
+function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactNode {
   const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE)
 
-  const sections = useMemo(() => buildSections(), [])
+  const sections = workingSet.sections
   const sectionKeys = useMemo(() => sections.map((group) => group.section), [sections])
 
   const { activeKey, registerSection, scrollToSection } = useActiveSection(sectionKeys, {
     lineOffset: CHART_BLOCK_HEIGHT,
   })
 
-  const household = useMemo(() => householdSeries(sections), [sections])
+  const household = workingSet.household
 
   /**
    * Slicing the range is a local operation on a series already in memory — no fetch, no spinner.
@@ -81,6 +125,15 @@ export function NetWorth(): ReactNode {
   const described = describeChange(change, scope)
 
   const chartSeries = toChartSeries(series, scope)
+
+  /*
+   * Memoized because the chart takes it as a dependency of its geometry. A fresh arrow every render
+   * would recompute every path and tick on every scroll frame.
+   */
+  const formatValue = useCallback(
+    (cents: bigint, digits: number) => formatAxisValue(cents, scope, digits),
+    [scope],
+  )
   const color =
     activeGroup === undefined ? SECTION_COLORS.household : SECTION_COLORS[activeGroup.section]
 
@@ -125,7 +178,7 @@ export function NetWorth(): ReactNode {
           categoryKey={scope}
           series={chartSeries}
           color={color}
-          formatValue={(cents) => formatAxisValue(cents, scope)}
+          formatValue={formatValue}
           height={190}
         />
 
@@ -248,7 +301,7 @@ function ProportionBar({
   )
 }
 
-function AccountRow({ account }: { account: FixtureAccountSeries }): ReactNode {
+function AccountRow({ account }: { account: DerivedAccount }): ReactNode {
   const { assessment } = accountHealth(account, todayIso())
   const needsAttention = assessment.severity !== 'ok'
 
@@ -264,7 +317,9 @@ function AccountRow({ account }: { account: FixtureAccountSeries }): ReactNode {
         )}
       >
         <span className="min-w-0">
-          <span className="block truncate text-sm font-medium">{account.institution}</span>
+          <span className="block truncate text-sm font-medium">
+            {account.institutionName ?? account.name}
+          </span>
           <span className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
             {needsAttention && (
               <span
@@ -290,7 +345,7 @@ function AccountRow({ account }: { account: FixtureAccountSeries }): ReactNode {
 
         <span className="shrink-0 text-right">
           <span className="block text-sm font-medium tabular-nums">
-            {formatCents(account.balanceCents)}
+            {formatCents(account.series.at(-1)?.value ?? account.currentBalanceCents ?? 0n)}
           </span>
           <span className="block text-xs text-slate-500 dark:text-slate-400">
             {formatLastUpdated(account)}
@@ -298,5 +353,22 @@ function AccountRow({ account }: { account: FixtureAccountSeries }): ReactNode {
         </span>
       </Link>
     </li>
+  )
+}
+
+/**
+ * Everything the screen shows when it cannot show a net worth.
+ *
+ * One component for loading, signed-out, no-household, empty and failed alike: they differ only in
+ * words, and five near-identical layouts is how they drift apart.
+ */
+function StateMessage({ title, detail }: { title: string; detail?: string }): ReactNode {
+  return (
+    <div className="mx-auto flex max-w-2xl flex-col items-center px-6 py-24 text-center">
+      <p className="text-base font-medium">{title}</p>
+      {detail !== undefined && (
+        <p className="mt-2 max-w-sm text-sm text-slate-500 dark:text-slate-400">{detail}</p>
+      )}
+    </div>
   )
 }

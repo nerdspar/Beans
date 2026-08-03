@@ -101,6 +101,9 @@ export function TransitionPrototype(): ReactNode {
   const chartSeries = toChartSeries(active.series, section)
   const described = describeChange(change, section)
 
+  const formatValue = (cents: bigint, digits: number): string =>
+    formatAxisValue(cents, section, digits)
+
   return (
     <div className="mx-auto max-w-2xl p-6">
       <h1 className="text-lg font-semibold tracking-tight">Transition prototype</h1>
@@ -131,7 +134,7 @@ export function TransitionPrototype(): ReactNode {
         categoryKey={active.key}
         series={chartSeries}
         color={active.color}
-        formatValue={(cents) => formatAxisValue(cents, section)}
+        formatValue={formatValue}
         height={240}
       />
 

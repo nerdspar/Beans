@@ -127,4 +127,14 @@ behavior is a separate question.
       Backward reconstruction is already wrong for them (§4), and a flat line through a month of
       market movement is visibly false in a different way than it is for a credit card. May want to
       stop the series at the last observation rather than carry it.
+- [ ] **There is no sign-in UI.** The auth API works — sign-up, sign-in and session cookies were all
+      exercised by hand against the dev server — but nothing in the frontend renders a form, so the
+      only way in is a fetch from the console. The net worth screen already handles the signed-out
+      and no-household states; they just have nothing to navigate to.
+- [ ] **Clearing the working set on sign-out and session expiry.** `clearWorkingSet` exists and is
+      called on a full-resync signal, but nothing calls it on sign-out, because there is no sign-out.
+      This is the §7.4 mitigation for plaintext at rest in the browser profile, so it is not optional.
+- [ ] Delta sync against data that changes *while a client is connected* — a sync landing mid-session,
+      an account being removed in another tab. Covered at the repository layer with explicit cursors;
+      never observed live.
 

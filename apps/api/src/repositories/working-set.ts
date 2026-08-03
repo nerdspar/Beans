@@ -171,7 +171,10 @@ async function readAccounts(
        left join institutions i on i.id = a.institution_id
       where a.confirmed_at is not null
         and ($1::timestamptz is null or a.updated_at >= $1::timestamptz)
-      order by a.created_at`,
+      -- Ordered by id as well as created_at. Accounts imported in one transaction share a
+      -- created_at to the microsecond, and without a tiebreaker Postgres may return them in a
+      -- different order every time, which reaches the user as rows that shuffle between refreshes.
+      order by a.created_at, a.id`,
     [since],
   )
 

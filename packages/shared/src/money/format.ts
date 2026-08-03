@@ -39,6 +39,15 @@ export type FormatCentsOptions = {
    * above the chart. Never use this where the amount itself is the information.
    */
   compact?: boolean
+  /**
+   * Decimal places to keep in compact form. Defaults to 2.
+   *
+   * Needed because compact notation collapses: an axis running $1.006M to $1.021M renders every
+   * tick as `$1.01M` at two places, so four gridlines carry one label between them and the axis
+   * stops conveying anything. The caller knows its tick spacing and can ask for the precision that
+   * keeps adjacent labels distinct.
+   */
+  compactFractionDigits?: number
 }
 
 /**
@@ -62,6 +71,7 @@ export function formatCents(cents: bigint, options: FormatCentsOptions = {}): st
     showCents = true,
     signDisplay = 'auto',
     compact = false,
+    compactFractionDigits = 2,
   } = options
 
   const formatter = new Intl.NumberFormat(locale, {
@@ -71,7 +81,7 @@ export function formatCents(cents: bigint, options: FormatCentsOptions = {}): st
     // Compact notation picks its own precision; forcing fraction digits alongside it produces
     // "$2.60M" where "$2.6M" is wanted.
     ...(compact
-      ? { notation: 'compact' as const, maximumFractionDigits: 2 }
+      ? { notation: 'compact' as const, maximumFractionDigits: compactFractionDigits }
       : {
           minimumFractionDigits: showCents ? 2 : 0,
           maximumFractionDigits: showCents ? 2 : 0,
