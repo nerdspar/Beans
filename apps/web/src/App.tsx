@@ -5,6 +5,7 @@ import { DESTINATIONS } from './navigation/destinations.js'
 import { DesktopShell } from './shells/desktop/DesktopShell.js'
 import { MobileShell } from './shells/mobile/MobileShell.js'
 import { useIsDesktop } from './shells/use-shell.js'
+import { AccountDetail } from './screens/AccountDetail.js'
 import { NetWorth } from './screens/NetWorth.js'
 import { Placeholder } from './screens/Placeholder.js'
 import { TabSettings } from './screens/TabSettings.js'
@@ -55,6 +56,7 @@ function Routes(): ReactNode {
   return (
     <Switch>
       <Route path="/" component={NetWorth} />
+      <Route path="/accounts/:id" component={AccountDetail} />
       <Route path="/settings" component={TabSettings} />
       {/* Not in the destination registry: a workbench for judging the transition, not a screen. */}
       <Route path="/prototype/transition" component={TransitionPrototype} />

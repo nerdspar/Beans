@@ -1,5 +1,12 @@
-import { formatCents, isLiabilitySection, type NetWorthSection } from '@beans/shared'
+import {
+  CONNECTION_STATUS_LABEL,
+  formatCents,
+  isLiabilitySection,
+  type NetWorthSection,
+} from '@beans/shared'
 import { useMemo, useState, type ReactNode } from 'react'
+import { Link } from 'wouter'
+import { accountHealth, formatLastUpdated } from '../accounts/display.js'
 import { CategoryChart } from '../charts/CategoryChart.js'
 import { cn } from '../lib/cn.js'
 import { SECTION_COLORS, SECTION_LABELS } from '../net-worth/colors.js'
@@ -9,7 +16,7 @@ import {
   formatSectionTotal,
   toChartSeries,
 } from '../net-worth/display.js'
-import { buildSections, householdSeries, type FixtureAccount } from '../net-worth/fixtures.js'
+import { buildSections, householdSeries, type FixtureAccountSeries } from '../net-worth/fixtures.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
 import {
   DEFAULT_RANGE,
@@ -241,11 +248,14 @@ function ProportionBar({
   )
 }
 
-function AccountRow({ account }: { account: FixtureAccount }): ReactNode {
+function AccountRow({ account }: { account: FixtureAccountSeries }): ReactNode {
+  const { assessment } = accountHealth(account, todayIso())
+  const needsAttention = assessment.severity !== 'ok'
+
   return (
     <li>
-      <button
-        type="button"
+      <Link
+        href={`/accounts/${account.id}`}
         className={cn(
           'flex w-full items-center justify-between gap-3 px-5 py-3 text-left',
           'border-b border-slate-200 dark:border-slate-800',
@@ -256,19 +266,19 @@ function AccountRow({ account }: { account: FixtureAccount }): ReactNode {
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium">{account.institution}</span>
           <span className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-            {account.syncStatus !== 'healthy' && (
+            {needsAttention && (
               <span
                 className={cn(
                   'size-2 shrink-0 rounded-full',
-                  account.syncStatus === 'error' ? 'bg-rose-500' : 'bg-amber-500',
+                  assessment.severity === 'attention' ? 'bg-rose-500' : 'bg-amber-500',
                 )}
-                // The dot is the only signal that a balance is not current, so it cannot be
-                // decorative — colour alone would leave it invisible to a screen reader.
-                aria-label={
-                  account.syncStatus === 'error'
-                    ? 'Connection needs attention'
-                    : 'Balance may be out of date'
-                }
+                /*
+                 * The dot is the only signal that a balance is not current, so it cannot be
+                 * decorative — colour alone would leave it invisible to a screen reader. The label
+                 * is the recommendation, not the raw status, so it says the same thing the detail
+                 * screen will.
+                 */
+                aria-label={CONNECTION_STATUS_LABEL[assessment.action]}
               />
             )}
             <span className="truncate">
@@ -283,10 +293,10 @@ function AccountRow({ account }: { account: FixtureAccount }): ReactNode {
             {formatCents(account.balanceCents)}
           </span>
           <span className="block text-xs text-slate-500 dark:text-slate-400">
-            {account.updated}
+            {formatLastUpdated(account)}
           </span>
         </span>
-      </button>
+      </Link>
     </li>
   )
 }

@@ -507,6 +507,38 @@ Two consequences worth knowing:
 
 ---
 
+### 12.2 Account detail and connection health
+
+Tapping an account row opens `/accounts/:id` — the same chart, range control and sign conventions as
+the section it came from, deliberately. An account is a smaller slice of the same thing, and a second
+visual language for it would obscure the relationship rather than clarify it.
+
+**Sync health resolves to a recommended action, not a status.** A red dot the user cannot act on
+teaches them to ignore red dots. `assessConnection` in `packages/shared/src/connections/` maps
+status, consecutive failure count and age onto one of `none` / `wait` / `sync-now` / `reconnect`, and
+that verdict drives the banner, the button, the dot colour and the dot's screen-reader label alike —
+so the row and the detail screen can never disagree.
+
+The distinction that carries the design: **a failure Beans will retry out of is amber, not red.**
+Reserving red for what genuinely needs the user is what keeps red meaningful. Two thresholds encode
+it — three consecutive failures means the credentials went bad rather than the network hiccuping,
+and thirty days of silence means a stale connection has become a broken one even though it never
+errored. SimpleFIN can keep serving a stale balance without raising anything, so "no error" is not
+evidence a connection works.
+
+**A chart must never draw a period it has no data for.** An account whose connection broke in
+December has no daily balances since; generating a plausible wiggle across those months puts
+fabricated numbers directly under a banner saying the balance is from December. Balances are carried
+flat after the last successful sync (the `carried` snapshot source, §4) and the flat stretch is
+captioned with the date real data stops — a flat line on its own reads as "the balance did not
+change", which is a claim Beans has no basis for. Manual accounts get the same treatment for the same
+reason: one number somebody typed is not a daily series.
+
+The banner sits **above** the balance. A caveat placed after the number it qualifies has already been
+missed.
+
+---
+
 ## 13. Deployment
 
 - Multi-stage Dockerfile producing **one image** serving the API and the built static frontend.

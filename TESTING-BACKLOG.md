@@ -113,3 +113,18 @@ behavior is a separate question.
 - [ ] Tab reordering persisting across devices. The optimistic update and the endpoint both exist,
       but the round trip has only been exercised signed-out (401), so the persisted path is
       unproven.
+- [ ] **Mapping real SimpleFIN errors onto recommendations.** `assessConnection` currently infers
+      what to recommend from status, consecutive failure count and age, because that is all the
+      schema records. SimpleFIN's `errlist` carries structured reasons, and some of them are
+      distinguishable — "needs re-authentication" versus "institution temporarily unavailable" —
+      which would let the banner stop guessing. Needs a real connection that has actually failed to
+      see what the Bridge returns in practice.
+- [ ] **The banner's actions do nothing yet.** Reconnect, Sync now and Try now render and are
+      reachable, but none is wired — reconnect needs the claim flow, and the two sync buttons need
+      an endpoint that triggers a run on demand and reports back. Verify against the Bridge's
+      24-requests-per-day ceiling that a user mashing "Sync now" cannot exhaust the day's budget.
+- [ ] Whether carrying a balance flat is the right default for **investment** accounts specifically.
+      Backward reconstruction is already wrong for them (§4), and a flat line through a month of
+      market movement is visibly false in a different way than it is for a credit card. May want to
+      stop the series at the last observation rather than carry it.
+
