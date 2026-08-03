@@ -1,0 +1,1 @@
+ALTER TABLE "accounts" ADD COLUMN "provider_sign_inverted" boolean DEFAULT false NOT NULL;

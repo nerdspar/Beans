@@ -108,6 +108,20 @@ export const accounts = pgTable(
     simplefinAccountId: text('simplefin_account_id'),
 
     /**
+     * Whether this provider reports the balance with the opposite sign to our convention.
+     *
+     * **The SimpleFIN protocol never specifies balance signs.** The only sign rule it states is for
+     * transactions. Whether a credit card arrives as `-3386.39` or `3386.39` varies by institution,
+     * and SimpleFIN's own author has had an open issue titled "Let me flip the sign of a single
+     * account" since April 2022 — the Bridge does not normalize, and knows it.
+     *
+     * So this cannot be a per-type rule: the correct answer varies per institution, and SimpleFIN
+     * sends no account type to key a rule on either. It is established once by a human at
+     * connection confirmation and then applied to every subsequent sync.
+     */
+    providerSignInverted: boolean('provider_sign_inverted').notNull().default(false),
+
+    /**
      * Null until the user confirms this account at connection time.
      *
      * Unconfirmed accounts are excluded from every rollup. This is the safety net for sign
