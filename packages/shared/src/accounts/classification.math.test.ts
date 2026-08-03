@@ -9,7 +9,12 @@ import {
   sectionForType,
   type AccountType,
 } from './classification.js'
-import { checkBalanceSign, checkBalanceSigns, hasBlockingAnomaly } from './sign.js'
+import {
+  applySignConvention,
+  checkBalanceSign,
+  checkBalanceSigns,
+  hasBlockingAnomaly,
+} from './sign.js'
 
 describe('asset vs liability classification', () => {
   it.each<[AccountType, boolean]>([
@@ -164,5 +169,43 @@ describe('balance sign checks', () => {
     const anomaly = checkBalanceSign('mortgage', 100n)
     expect(anomaly).not.toBeNull()
     expect(Object.keys(anomaly ?? {}).sort()).toEqual(['reason', 'severity'])
+  })
+})
+
+/**
+ * What "inverted" means.
+ *
+ * The confirmation screen and the write path must agree exactly, because the screen's entire job is
+ * to show what will be stored. They did not: the screen took the magnitude first and then applied
+ * the flag, so an institution reporting a card as -2132.77 — already correct for our convention —
+ * was displayed as +$2,132.77 and flagged as wrong. Acting on that flag would have stored +2132.77
+ * and doubled net worth in the plausible direction.
+ */
+describe('applySignConvention', () => {
+  it('negates what the provider sent, rather than forcing a sign', () => {
+    expect(applySignConvention(338_639n, true)).toBe(-338_639n)
+    // The case that was broken: already negative, inverting is not asked for.
+    expect(applySignConvention(-213_277n, false)).toBe(-213_277n)
+  })
+
+  it('leaves a provider balance alone when not inverted', () => {
+    for (const cents of [482_155n, -482_155n, 0n]) {
+      expect(applySignConvention(cents, false)).toBe(cents)
+    }
+  })
+
+  it('round-trips: inverting twice is the original', () => {
+    for (const cents of [338_639n, -213_277n, 1n, 0n]) {
+      expect(applySignConvention(applySignConvention(cents, true), true)).toBe(cents)
+    }
+  })
+
+  it('agrees with the sign check about which way a card should end up', () => {
+    // A card reported positive needs inverting; the result then passes the plausibility check.
+    expect(checkBalanceSign('credit', applySignConvention(338_639n, true))).toBeNull()
+    // A card already reported negative needs no inversion, and also passes.
+    expect(checkBalanceSign('credit', applySignConvention(-213_277n, false))).toBeNull()
+    // Inverting one that was already correct is what produces the bug, and the check catches it.
+    expect(checkBalanceSign('credit', applySignConvention(-213_277n, true))?.severity).toBe('warning')
   })
 })

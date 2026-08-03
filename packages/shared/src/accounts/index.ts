@@ -13,6 +13,7 @@ export {
 } from './classification.js'
 
 export {
+  applySignConvention,
   checkBalanceSign,
   checkBalanceSigns,
   hasBlockingAnomaly,

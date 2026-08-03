@@ -122,3 +122,20 @@ function severityRank(severity: SignSeverity): number {
 export function hasBlockingAnomaly(flagged: ReadonlyArray<{ anomaly: SignAnomaly }>): boolean {
   return flagged.some((entry) => entry.anomaly.severity === 'blocking')
 }
+
+/**
+ * Turns a provider's balance into a stored amount.
+ *
+ * **The single definition of what "inverted" means**, and the reason it lives here rather than with
+ * the SimpleFIN client: the confirmation screen has to show the user exactly what will be recorded,
+ * and it can only do that by applying the same rule the write path applies. It previously had its
+ * own version which took the magnitude first and then applied the flag — so an institution reporting
+ * a card as `-2132.77`, already correct for our convention, was displayed as `+$2,132.77` and
+ * flagged as wrong. Following that advice and ticking the box would have stored `+2132.77` and
+ * produced the very error the screen exists to prevent.
+ *
+ * `inverted` means **negate what the provider sent**. It does not mean "make this negative".
+ */
+export function applySignConvention(providerCents: bigint, inverted: boolean): bigint {
+  return inverted ? -providerCents : providerCents
+}

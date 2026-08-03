@@ -52,6 +52,8 @@ export const NET_WORTH_STATE_COPY = {
 
   empty: 'Nothing to add up yet',
   emptyDetail: 'Connect an institution and Beans will start keeping track. Nothing here is manual.',
+  /** The empty state names the next step; without a way to take it, it is only an observation. */
+  emptyAction: 'Connect an institution',
 
   failed: 'Could not load your accounts',
   failedDetail: 'The last known balances are shown if there are any. Beans will try again shortly.',

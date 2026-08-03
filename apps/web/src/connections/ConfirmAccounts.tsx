@@ -2,6 +2,7 @@ import {
   ACCOUNT_TYPE_LABELS,
   ACCOUNT_TYPES,
   CONNECTION_COPY,
+  applySignConvention,
   formatCents,
   isLiability,
   parseDecimalToCents,
@@ -136,11 +137,16 @@ function AccountCard({
 }): ReactNode {
   /*
    * Recomputed from the user's current answers rather than taken from `interpretedBalance`, which
-   * reflects the server's *suggestion*. The whole point is that this number moves as they toggle,
-   * so they can see the consequence of the choice while making it.
+   * reflects the server's *suggestion*. The number has to move as they toggle, so they can see the
+   * consequence of the choice while making it.
+   *
+   * It uses `applySignConvention` — the same function the write path uses — rather than its own
+   * arithmetic. An earlier version took the magnitude first and then applied the flag, which meant
+   * an institution reporting a card as `-2132.77` (already correct) was shown as `+$2,132.77` and
+   * flagged as wrong. This screen exists to be believed, so it cannot have its own opinion about
+   * what the server will store.
    */
-  const magnitude = absolute(parseDecimalToCents(account.providerBalance))
-  const stored = draft.signInverted ? -magnitude : magnitude
+  const stored = applySignConvention(parseDecimalToCents(account.providerBalance), draft.signInverted)
   const readsAsDebt = stored < 0n
 
   // A liability recorded as positive, or an asset as negative, is the shape of the bug.
@@ -244,10 +250,6 @@ function AccountCard({
       )}
     </div>
   )
-}
-
-function absolute(value: bigint): bigint {
-  return value < 0n ? -value : value
 }
 
 function Figure({

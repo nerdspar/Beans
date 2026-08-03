@@ -161,7 +161,9 @@ export function suggestSignInversion(
   return null
 }
 
-/** Applies the stored inversion. The single place a provider balance becomes a stored amount. */
-export function applySignConvention(providerCents: bigint, inverted: boolean): bigint {
-  return inverted ? -providerCents : providerCents
-}
+/*
+ * `applySignConvention` now lives in `@beans/shared`, re-exported here so existing imports keep
+ * working. It moved because the confirmation screen has to apply the identical rule to show what
+ * will be recorded, and a second copy in the client got it wrong.
+ */
+export { applySignConvention } from '@beans/shared'

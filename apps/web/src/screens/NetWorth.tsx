@@ -57,14 +57,18 @@ export function NetWorth(): ReactNode {
   if (workingSet.isLoading) return <StateMessage title={NET_WORTH_STATE_COPY.loading} />
 
   if (workingSet.data === null || workingSet.isEmpty) {
+    const failed = workingSet.error !== null
+
     return (
       <StateMessage
-        title={workingSet.error !== null ? NET_WORTH_STATE_COPY.failed : NET_WORTH_STATE_COPY.empty}
-        detail={
-          workingSet.error !== null
-            ? NET_WORTH_STATE_COPY.failedDetail
-            : NET_WORTH_STATE_COPY.emptyDetail
-        }
+        title={failed ? NET_WORTH_STATE_COPY.failed : NET_WORTH_STATE_COPY.empty}
+        detail={failed ? NET_WORTH_STATE_COPY.failedDetail : NET_WORTH_STATE_COPY.emptyDetail}
+        /*
+         * Only on the empty state, not the failed one. "Connect an institution" is the next step
+         * when there is nothing here; when a load failed it is the wrong advice, and offering it
+         * would send someone to add accounts they may well already have.
+         */
+        {...(failed ? {} : { action: { href: '/connections', label: NET_WORTH_STATE_COPY.emptyAction } })}
       />
     )
   }
@@ -376,12 +380,32 @@ function AccountRow({ account }: { account: DerivedAccount }): ReactNode {
  * One component for loading, signed-out, no-household, empty and failed alike: they differ only in
  * words, and five near-identical layouts is how they drift apart.
  */
-function StateMessage({ title, detail }: { title: string; detail?: string }): ReactNode {
+function StateMessage({
+  title,
+  detail,
+  action,
+}: {
+  title: string
+  detail?: string
+  action?: { href: string; label: string }
+}): ReactNode {
   return (
     <div className="mx-auto flex max-w-2xl flex-col items-center px-6 py-24 text-center">
       <p className="text-base font-medium">{title}</p>
       {detail !== undefined && (
         <p className="mt-2 max-w-sm text-sm text-slate-500 dark:text-slate-400">{detail}</p>
+      )}
+      {action !== undefined && (
+        <Link
+          href={action.href}
+          className={cn(
+            'mt-5 inline-flex min-h-12 items-center rounded-xl px-5 text-sm font-semibold',
+            'bg-sky-600 text-white hover:bg-sky-500',
+            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500',
+          )}
+        >
+          {action.label}
+        </Link>
       )}
     </div>
   )

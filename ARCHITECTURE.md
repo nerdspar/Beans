@@ -686,6 +686,19 @@ money you have" while the choice is being made, not after it is committed.
 A null `suggestedSignInverted` — low confidence, or a zero balance — defaults to **not** inverted.
 Quietly flipping a sign nobody asked about is precisely the failure this screen exists to catch.
 
+**`inverted` means negate what the provider sent. It does not mean "make this negative."** That
+distinction is the whole reason `applySignConvention` lives in `packages/shared` rather than beside
+the SimpleFIN client: the confirmation screen must apply the identical rule to the write path, and
+when it had its own version it took the magnitude first. An institution reporting a card as
+`-2132.77` — already correct for our convention — was displayed as `+$2,132.77` and flagged as
+wrong, and acting on that flag would have stored `+2132.77`, doubling net worth in the plausible
+direction. The screen exists to be believed, so it cannot hold its own opinion about what will be
+recorded.
+
+The suggestion is therefore per-institution and not a blanket flip: a liability is suggested for
+inversion **only when the provider sent it positive**. Always inverting would break every institution
+that already reports the sign we use.
+
 ### 15.2 Coverage boundaries in a rollup
 
 Accounts do not share a coverage start. Backward reconstruction gives cash and credit a year of
