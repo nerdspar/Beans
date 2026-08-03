@@ -110,12 +110,8 @@
           "name": "auth_account_user_id_auth_user_id_fk",
           "tableFrom": "auth_account",
           "tableTo": "auth_user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -202,12 +198,8 @@
           "name": "auth_session_user_id_auth_user_id_fk",
           "tableFrom": "auth_session",
           "tableTo": "auth_user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -217,9 +209,7 @@
         "auth_session_token_unique": {
           "name": "auth_session_token_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token"
-          ]
+          "columns": ["token"]
         }
       },
       "policies": {},
@@ -283,9 +273,7 @@
         "auth_user_email_unique": {
           "name": "auth_user_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       },
       "policies": {},
@@ -424,12 +412,8 @@
           "name": "deletions_household_id_households_id_fk",
           "tableFrom": "deletions",
           "tableTo": "households",
-          "columnsFrom": [
-            "household_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["household_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -441,9 +425,7 @@
           "name": "deletions_household_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "household_id = nullif(current_setting('app.current_household', true), '')::uuid",
           "withCheck": "household_id = nullif(current_setting('app.current_household', true), '')::uuid"
         }
@@ -549,12 +531,8 @@
           "name": "household_invites_household_id_households_id_fk",
           "tableFrom": "household_invites",
           "tableTo": "households",
-          "columnsFrom": [
-            "household_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["household_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -562,12 +540,8 @@
           "name": "household_invites_created_by_user_id_auth_user_id_fk",
           "tableFrom": "household_invites",
           "tableTo": "auth_user",
-          "columnsFrom": [
-            "created_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -575,12 +549,8 @@
           "name": "household_invites_accepted_by_user_id_auth_user_id_fk",
           "tableFrom": "household_invites",
           "tableTo": "auth_user",
-          "columnsFrom": [
-            "accepted_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["accepted_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -590,9 +560,7 @@
         "household_invites_token_hash_unique": {
           "name": "household_invites_token_hash_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token_hash"
-          ]
+          "columns": ["token_hash"]
         }
       },
       "policies": {
@@ -600,9 +568,7 @@
           "name": "household_invites_household_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "household_id = nullif(current_setting('app.current_household', true), '')::uuid",
           "withCheck": "household_id = nullif(current_setting('app.current_household', true), '')::uuid"
         }
@@ -678,12 +644,8 @@
           "name": "household_members_household_id_households_id_fk",
           "tableFrom": "household_members",
           "tableTo": "households",
-          "columnsFrom": [
-            "household_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["household_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -691,12 +653,8 @@
           "name": "household_members_user_id_auth_user_id_fk",
           "tableFrom": "household_members",
           "tableTo": "auth_user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -706,9 +664,7 @@
         "household_members_user_uq": {
           "name": "household_members_user_uq",
           "nullsNotDistinct": false,
-          "columns": [
-            "user_id"
-          ]
+          "columns": ["user_id"]
         }
       },
       "policies": {
@@ -716,9 +672,7 @@
           "name": "household_members_household_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "household_id = nullif(current_setting('app.current_household', true), '')::uuid",
           "withCheck": "household_id = nullif(current_setting('app.current_household', true), '')::uuid"
         }
@@ -779,9 +733,7 @@
           "name": "households_self_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "id = nullif(current_setting('app.current_household', true), '')::uuid",
           "withCheck": "id = nullif(current_setting('app.current_household', true), '')::uuid"
         }
@@ -840,12 +792,8 @@
           "name": "user_preferences_user_id_auth_user_id_fk",
           "tableFrom": "user_preferences",
           "tableTo": "auth_user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -855,9 +803,7 @@
         "user_preferences_user_id_unique": {
           "name": "user_preferences_user_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "user_id"
-          ]
+          "columns": ["user_id"]
         }
       },
       "policies": {
@@ -865,9 +811,7 @@
           "name": "user_preferences_user_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "user_id = nullif(current_setting('app.current_user_id', true), '')",
           "withCheck": "user_id = nullif(current_setting('app.current_user_id', true), '')"
         }
@@ -990,12 +934,8 @@
           "name": "categories_household_id_households_id_fk",
           "tableFrom": "categories",
           "tableTo": "households",
-          "columnsFrom": [
-            "household_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["household_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1003,12 +943,8 @@
           "name": "categories_parent_id_categories_id_fk",
           "tableFrom": "categories",
           "tableTo": "categories",
-          "columnsFrom": [
-            "parent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["parent_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1018,19 +954,12 @@
         "categories_household_parent_name_uq": {
           "name": "categories_household_parent_name_uq",
           "nullsNotDistinct": true,
-          "columns": [
-            "household_id",
-            "parent_id",
-            "name"
-          ]
+          "columns": ["household_id", "parent_id", "name"]
         },
         "categories_household_slug_uq": {
           "name": "categories_household_slug_uq",
           "nullsNotDistinct": false,
-          "columns": [
-            "household_id",
-            "slug"
-          ]
+          "columns": ["household_id", "slug"]
         }
       },
       "policies": {
@@ -1038,9 +967,7 @@
           "name": "categories_household_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "household_id = nullif(current_setting('app.current_household', true), '')::uuid",
           "withCheck": "household_id = nullif(current_setting('app.current_household', true), '')::uuid"
         }
@@ -1180,12 +1107,8 @@
           "name": "imports_household_id_households_id_fk",
           "tableFrom": "imports",
           "tableTo": "households",
-          "columnsFrom": [
-            "household_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["household_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1193,12 +1116,8 @@
           "name": "imports_created_by_user_id_auth_user_id_fk",
           "tableFrom": "imports",
           "tableTo": "auth_user",
-          "columnsFrom": [
-            "created_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1210,9 +1129,7 @@
           "name": "imports_household_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "household_id = nullif(current_setting('app.current_household', true), '')::uuid",
           "withCheck": "household_id = nullif(current_setting('app.current_household', true), '')::uuid"
         }
@@ -1325,12 +1242,8 @@
           "name": "connections_household_id_households_id_fk",
           "tableFrom": "connections",
           "tableTo": "households",
-          "columnsFrom": [
-            "household_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["household_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1338,12 +1251,8 @@
           "name": "connections_owner_user_id_auth_user_id_fk",
           "tableFrom": "connections",
           "tableTo": "auth_user",
-          "columnsFrom": [
-            "owner_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["owner_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1351,12 +1260,8 @@
           "name": "connections_institution_id_institutions_id_fk",
           "tableFrom": "connections",
           "tableTo": "institutions",
-          "columnsFrom": [
-            "institution_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["institution_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1368,9 +1273,7 @@
           "name": "connections_household_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "household_id = nullif(current_setting('app.current_household', true), '')::uuid",
           "withCheck": "household_id = nullif(current_setting('app.current_household', true), '')::uuid"
         }
@@ -1434,12 +1337,8 @@
           "name": "institutions_household_id_households_id_fk",
           "tableFrom": "institutions",
           "tableTo": "households",
-          "columnsFrom": [
-            "household_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["household_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1449,10 +1348,7 @@
         "institutions_household_domain_uq": {
           "name": "institutions_household_domain_uq",
           "nullsNotDistinct": false,
-          "columns": [
-            "household_id",
-            "simplefin_org_domain"
-          ]
+          "columns": ["household_id", "simplefin_org_domain"]
         }
       },
       "policies": {
@@ -1460,9 +1356,7 @@
           "name": "institutions_household_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "household_id = nullif(current_setting('app.current_household', true), '')::uuid",
           "withCheck": "household_id = nullif(current_setting('app.current_household', true), '')::uuid"
         }
@@ -1587,12 +1481,8 @@
           "name": "sync_runs_household_id_households_id_fk",
           "tableFrom": "sync_runs",
           "tableTo": "households",
-          "columnsFrom": [
-            "household_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["household_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1600,12 +1490,8 @@
           "name": "sync_runs_connection_id_connections_id_fk",
           "tableFrom": "sync_runs",
           "tableTo": "connections",
-          "columnsFrom": [
-            "connection_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["connection_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1617,9 +1503,7 @@
           "name": "sync_runs_household_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "household_id = nullif(current_setting('app.current_household', true), '')::uuid",
           "withCheck": "household_id = nullif(current_setting('app.current_household', true), '')::uuid"
         }
@@ -1846,12 +1730,8 @@
           "name": "accounts_household_id_households_id_fk",
           "tableFrom": "accounts",
           "tableTo": "households",
-          "columnsFrom": [
-            "household_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["household_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1859,12 +1739,8 @@
           "name": "accounts_connection_id_connections_id_fk",
           "tableFrom": "accounts",
           "tableTo": "connections",
-          "columnsFrom": [
-            "connection_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["connection_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -1872,12 +1748,8 @@
           "name": "accounts_institution_id_institutions_id_fk",
           "tableFrom": "accounts",
           "tableTo": "institutions",
-          "columnsFrom": [
-            "institution_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["institution_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1889,9 +1761,7 @@
           "name": "accounts_household_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "household_id = nullif(current_setting('app.current_household', true), '')::uuid",
           "withCheck": "household_id = nullif(current_setting('app.current_household', true), '')::uuid"
         }
@@ -2005,12 +1875,8 @@
           "name": "balance_snapshots_household_id_households_id_fk",
           "tableFrom": "balance_snapshots",
           "tableTo": "households",
-          "columnsFrom": [
-            "household_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["household_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2018,12 +1884,8 @@
           "name": "balance_snapshots_account_id_accounts_id_fk",
           "tableFrom": "balance_snapshots",
           "tableTo": "accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2033,10 +1895,7 @@
         "balance_snapshots_account_date_uq": {
           "name": "balance_snapshots_account_date_uq",
           "nullsNotDistinct": false,
-          "columns": [
-            "account_id",
-            "as_of_date"
-          ]
+          "columns": ["account_id", "as_of_date"]
         }
       },
       "policies": {
@@ -2044,9 +1903,7 @@
           "name": "balance_snapshots_household_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "household_id = nullif(current_setting('app.current_household', true), '')::uuid",
           "withCheck": "household_id = nullif(current_setting('app.current_household', true), '')::uuid"
         }
@@ -2132,12 +1989,8 @@
           "name": "manual_balance_updates_household_id_households_id_fk",
           "tableFrom": "manual_balance_updates",
           "tableTo": "households",
-          "columnsFrom": [
-            "household_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["household_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2145,12 +1998,8 @@
           "name": "manual_balance_updates_account_id_accounts_id_fk",
           "tableFrom": "manual_balance_updates",
           "tableTo": "accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2160,10 +2009,7 @@
         "manual_balance_updates_account_date_uq": {
           "name": "manual_balance_updates_account_date_uq",
           "nullsNotDistinct": false,
-          "columns": [
-            "account_id",
-            "effective_date"
-          ]
+          "columns": ["account_id", "effective_date"]
         }
       },
       "policies": {
@@ -2171,9 +2017,7 @@
           "name": "manual_balance_updates_household_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "household_id = nullif(current_setting('app.current_household', true), '')::uuid",
           "withCheck": "household_id = nullif(current_setting('app.current_household', true), '')::uuid"
         }
@@ -2412,12 +2256,8 @@
           "name": "transactions_household_id_households_id_fk",
           "tableFrom": "transactions",
           "tableTo": "households",
-          "columnsFrom": [
-            "household_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["household_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2425,12 +2265,8 @@
           "name": "transactions_account_id_accounts_id_fk",
           "tableFrom": "transactions",
           "tableTo": "accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2438,12 +2274,8 @@
           "name": "transactions_category_id_categories_id_fk",
           "tableFrom": "transactions",
           "tableTo": "categories",
-          "columnsFrom": [
-            "category_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["category_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -2451,12 +2283,8 @@
           "name": "transactions_import_id_imports_id_fk",
           "tableFrom": "transactions",
           "tableTo": "imports",
-          "columnsFrom": [
-            "import_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["import_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -2468,9 +2296,7 @@
           "name": "transactions_household_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "household_id = nullif(current_setting('app.current_household', true), '')::uuid",
           "withCheck": "household_id = nullif(current_setting('app.current_household', true), '')::uuid"
         }
@@ -2611,12 +2437,8 @@
           "name": "category_rules_household_id_households_id_fk",
           "tableFrom": "category_rules",
           "tableTo": "households",
-          "columnsFrom": [
-            "household_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["household_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2624,12 +2446,8 @@
           "name": "category_rules_match_account_id_accounts_id_fk",
           "tableFrom": "category_rules",
           "tableTo": "accounts",
-          "columnsFrom": [
-            "match_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["match_account_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2637,12 +2455,8 @@
           "name": "category_rules_category_id_categories_id_fk",
           "tableFrom": "category_rules",
           "tableTo": "categories",
-          "columnsFrom": [
-            "category_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["category_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2654,9 +2468,7 @@
           "name": "category_rules_household_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "household_id = nullif(current_setting('app.current_household', true), '')::uuid",
           "withCheck": "household_id = nullif(current_setting('app.current_household', true), '')::uuid"
         }
@@ -2801,12 +2613,8 @@
           "name": "transfer_matches_household_id_households_id_fk",
           "tableFrom": "transfer_matches",
           "tableTo": "households",
-          "columnsFrom": [
-            "household_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["household_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2814,12 +2622,8 @@
           "name": "transfer_matches_from_transaction_id_transactions_id_fk",
           "tableFrom": "transfer_matches",
           "tableTo": "transactions",
-          "columnsFrom": [
-            "from_transaction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["from_transaction_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2827,12 +2631,8 @@
           "name": "transfer_matches_to_transaction_id_transactions_id_fk",
           "tableFrom": "transfer_matches",
           "tableTo": "transactions",
-          "columnsFrom": [
-            "to_transaction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["to_transaction_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2840,12 +2640,8 @@
           "name": "transfer_matches_confirmed_by_user_id_auth_user_id_fk",
           "tableFrom": "transfer_matches",
           "tableTo": "auth_user",
-          "columnsFrom": [
-            "confirmed_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["confirmed_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -2855,10 +2651,7 @@
         "transfer_matches_household_pair_uq": {
           "name": "transfer_matches_household_pair_uq",
           "nullsNotDistinct": false,
-          "columns": [
-            "household_id",
-            "pair_key"
-          ]
+          "columns": ["household_id", "pair_key"]
         }
       },
       "policies": {
@@ -2866,9 +2659,7 @@
           "name": "transfer_matches_household_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "household_id = nullif(current_setting('app.current_household', true), '')::uuid",
           "withCheck": "household_id = nullif(current_setting('app.current_household', true), '')::uuid"
         }
@@ -3007,12 +2798,8 @@
           "name": "import_rows_household_id_households_id_fk",
           "tableFrom": "import_rows",
           "tableTo": "households",
-          "columnsFrom": [
-            "household_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["household_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3020,12 +2807,8 @@
           "name": "import_rows_import_id_imports_id_fk",
           "tableFrom": "import_rows",
           "tableTo": "imports",
-          "columnsFrom": [
-            "import_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["import_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3033,12 +2816,8 @@
           "name": "import_rows_target_account_id_accounts_id_fk",
           "tableFrom": "import_rows",
           "tableTo": "accounts",
-          "columnsFrom": [
-            "target_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["target_account_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -3046,12 +2825,8 @@
           "name": "import_rows_result_transaction_id_transactions_id_fk",
           "tableFrom": "import_rows",
           "tableTo": "transactions",
-          "columnsFrom": [
-            "result_transaction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["result_transaction_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -3059,12 +2834,8 @@
           "name": "import_rows_match_transaction_id_transactions_id_fk",
           "tableFrom": "import_rows",
           "tableTo": "transactions",
-          "columnsFrom": [
-            "match_transaction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["match_transaction_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -3076,9 +2847,7 @@
           "name": "import_rows_household_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "household_id = nullif(current_setting('app.current_household', true), '')::uuid",
           "withCheck": "household_id = nullif(current_setting('app.current_household', true), '')::uuid"
         }
@@ -3104,20 +2873,12 @@
     "public.category_kind": {
       "name": "category_kind",
       "schema": "public",
-      "values": [
-        "income",
-        "expense",
-        "transfer"
-      ]
+      "values": ["income", "expense", "transfer"]
     },
     "public.connection_status": {
       "name": "connection_status",
       "schema": "public",
-      "values": [
-        "healthy",
-        "stale",
-        "error"
-      ]
+      "values": ["healthy", "stale", "error"]
     },
     "public.deletion_entity": {
       "name": "deletion_entity",
@@ -3135,102 +2896,57 @@
     "public.household_role": {
       "name": "household_role",
       "schema": "public",
-      "values": [
-        "owner",
-        "member"
-      ]
+      "values": ["owner", "member"]
     },
     "public.import_kind": {
       "name": "import_kind",
       "schema": "public",
-      "values": [
-        "transactions",
-        "balances"
-      ]
+      "values": ["transactions", "balances"]
     },
     "public.import_row_status": {
       "name": "import_row_status",
       "schema": "public",
-      "values": [
-        "pending",
-        "imported",
-        "skipped",
-        "failed"
-      ]
+      "values": ["pending", "imported", "skipped", "failed"]
     },
     "public.import_status": {
       "name": "import_status",
       "schema": "public",
-      "values": [
-        "staged",
-        "committed",
-        "reversed"
-      ]
+      "values": ["staged", "committed", "reversed"]
     },
     "public.rule_match_type": {
       "name": "rule_match_type",
       "schema": "public",
-      "values": [
-        "contains",
-        "regex"
-      ]
+      "values": ["contains", "regex"]
     },
     "public.snapshot_source": {
       "name": "snapshot_source",
       "schema": "public",
-      "values": [
-        "derived",
-        "observed",
-        "imported",
-        "carried"
-      ]
+      "values": ["derived", "observed", "imported", "carried"]
     },
     "public.sync_outcome": {
       "name": "sync_outcome",
       "schema": "public",
-      "values": [
-        "success",
-        "partial",
-        "error"
-      ]
+      "values": ["success", "partial", "error"]
     },
     "public.tax_treatment": {
       "name": "tax_treatment",
       "schema": "public",
-      "values": [
-        "taxable",
-        "traditional",
-        "roth",
-        "hsa",
-        "education",
-        "none"
-      ]
+      "values": ["taxable", "traditional", "roth", "hsa", "education", "none"]
     },
     "public.transaction_source": {
       "name": "transaction_source",
       "schema": "public",
-      "values": [
-        "synced",
-        "manual",
-        "imported"
-      ]
+      "values": ["synced", "manual", "imported"]
     },
     "public.transaction_status": {
       "name": "transaction_status",
       "schema": "public",
-      "values": [
-        "active",
-        "void"
-      ]
+      "values": ["active", "void"]
     },
     "public.transfer_status": {
       "name": "transfer_status",
       "schema": "public",
-      "values": [
-        "proposed",
-        "confirmed",
-        "rejected"
-      ]
+      "values": ["proposed", "confirmed", "rejected"]
     }
   },
   "schemas": {},

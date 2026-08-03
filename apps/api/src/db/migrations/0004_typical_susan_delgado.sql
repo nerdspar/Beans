@@ -1,0 +1,1 @@
+CREATE POLICY "household_members_self_select" ON "household_members" AS PERMISSIVE FOR SELECT TO public USING (user_id = nullif(current_setting('app.current_user_id', true), ''));

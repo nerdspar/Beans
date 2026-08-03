@@ -44,7 +44,10 @@ describeIntegration('tenant isolation', () => {
     try {
       await client.query('begin')
       if (householdId !== null) {
-        await client.query('select set_config($1, $2, true)', ['app.current_household', householdId])
+        await client.query('select set_config($1, $2, true)', [
+          'app.current_household',
+          householdId,
+        ])
       }
       const result = await fn(client)
       await client.query('commit')

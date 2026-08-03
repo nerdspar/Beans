@@ -1,4 +1,15 @@
-import { index, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import {
+  index,
+  integer,
+  jsonb,
+  pgPolicy,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core'
 import { authUser } from './auth.js'
 import {
   bytea,
@@ -68,6 +79,24 @@ export const householdMembers = pgTable(
     unique('household_members_user_uq').on(table.userId),
     index('household_members_household_idx').on(table.householdId),
     householdIsolationPolicy('household_members'),
+
+    /**
+     * Lets a signed-in user read **their own** membership row without a household context.
+     *
+     * Resolves a genuine chicken-and-egg: every other table is gated on
+     * `app.current_household`, but discovering *which* household to set it to means reading this
+     * table first. Without this, a request could never bootstrap its own scope.
+     *
+     * Deliberately narrow. `for: 'select'` only, so it widens reads and never writes, and the
+     * predicate matches a single row — the user's own. Postgres ORs permissive policies together,
+     * so this adds exactly that row to what the household policy already allows, and nothing else.
+     */
+    pgPolicy('household_members_self_select', {
+      as: 'permissive',
+      for: 'select',
+      to: 'public',
+      using: sql`user_id = nullif(current_setting('app.current_user_id', true), '')`,
+    }),
   ],
 ).enableRLS()
 
