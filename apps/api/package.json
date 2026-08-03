@@ -12,7 +12,8 @@
     "db:generate:custom": "drizzle-kit generate --custom",
     "db:migrate": "tsx --env-file-if-exists=../../.env src/db/migrate.ts",
     "db:migrate:test": "tsx --env-file-if-exists=../../.env src/db/migrate.ts --test",
-    "dev:seed": "tsx --env-file-if-exists=../../.env src/dev/seed.ts"
+    "dev:seed": "tsx --env-file-if-exists=../../.env src/dev/seed.ts",
+    "dev:consolidate": "tsx --env-file-if-exists=../../.env src/dev/consolidate.ts"
   },
   "dependencies": {
     "@beans/shared": "workspace:*",

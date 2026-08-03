@@ -12,6 +12,7 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { cn } from '../lib/cn.js'
 import {
   createManualAccount,
+  deleteAccount,
   recordManualBalance,
   updateAccount,
   type ManagedAccount,
@@ -120,6 +121,14 @@ export function AccountEditor({
   const [type, setType] = useState<AccountType>(account.type)
   const [isClosed, setIsClosed] = useState(account.isClosed)
   const [signInverted, setSignInverted] = useState(account.signInverted)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+
+  const remove = useMutation({ mutationFn: () => deleteAccount(account.id), onSuccess: onSaved })
+
+  const closeInstead = useMutation({
+    mutationFn: () => updateAccount(account.id, { isClosed: true }),
+    onSuccess: onSaved,
+  })
 
   const save = useMutation({
     mutationFn: () =>
@@ -206,6 +215,81 @@ export function AccountEditor({
           onCancel={onClose}
         />
       </form>
+
+      {/*
+        Below the save action and behind a confirmation, because it is the one thing here that cannot
+        be undone. Deliberately a plain text button rather than a red one until it is armed — a
+        destructive control styled to draw the eye invites the press it is trying to prevent.
+      */}
+      <div className="mt-6 border-t border-slate-200 pt-4 dark:border-slate-800">
+        {confirmingDelete ? (
+          <div>
+            <p className="text-sm font-semibold">{ACCOUNTS_COPY.deleteTitle}</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {ACCOUNTS_COPY.deleteBlurb}
+            </p>
+            {/* The concrete stake, so the warning is a number rather than an adjective. */}
+            <p className="mt-1 text-xs font-medium">
+              {ACCOUNTS_COPY.deleteCounts(account.transactionCount)}
+            </p>
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              {ACCOUNTS_COPY.deleteSuggestion}
+            </p>
+
+            <p role="alert" className="mt-2 min-h-4 text-xs text-rose-600 dark:text-rose-400">
+              {remove.error instanceof Error ? ACCOUNTS_COPY.deleteFailed : null}
+            </p>
+
+            <div className="mt-2 flex flex-col gap-2">
+              {/* The non-destructive option first and styled as the primary one. */}
+              {!account.isClosed && (
+                <button
+                  type="button"
+                  onClick={() => closeInstead.mutate()}
+                  disabled={closeInstead.isPending}
+                  className={cn(
+                    'min-h-11 rounded-xl text-sm font-semibold',
+                    'bg-sky-600 text-white hover:bg-sky-500 disabled:opacity-50',
+                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500',
+                  )}
+                >
+                  {ACCOUNTS_COPY.closeInstead}
+                </button>
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(false)}
+                  className="min-h-11 flex-1 rounded-xl border border-slate-300 text-sm font-semibold hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+                >
+                  {ACCOUNTS_COPY.cancel}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => remove.mutate()}
+                  disabled={remove.isPending}
+                  className={cn(
+                    'min-h-11 flex-1 rounded-xl text-sm font-semibold',
+                    'bg-rose-600 text-white hover:bg-rose-500 disabled:opacity-50',
+                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600',
+                  )}
+                >
+                  {remove.isPending ? ACCOUNTS_COPY.deleting : ACCOUNTS_COPY.deleteConfirm}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirmingDelete(true)}
+            className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400"
+          >
+            {ACCOUNTS_COPY.delete}
+          </button>
+        )}
+      </div>
     </Sheet>
   )
 }

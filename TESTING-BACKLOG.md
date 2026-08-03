@@ -150,4 +150,9 @@ behavior is a separate question.
       reached.
 - [ ] Whether the request-budget refusal (429 with `retryAfter`) reads sensibly in the UI. The route
       returns it and the screen shows the message, but the ceiling has never actually been hit.
+- [ ] **The client's cascade on account deletion.** The server logs one tombstone for the account and
+      `applyDelta` deletes its balances and transactions by index on the client. The server half is
+      covered; the IndexedDB half has been exercised by hand but has no automated test, because
+      `apps/web` has no DOM test environment. If it were wrong the symptom would be a net worth that
+      silently keeps a deleted account's history.
 

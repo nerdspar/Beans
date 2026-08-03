@@ -52,7 +52,41 @@ function isoDate(daysAgo: number): string {
   return new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10)
 }
 
-async function seedAccount(context: HouseholdContext, spec: SeedAccount): Promise<void> {
+/**
+ * One connection for every synced account, as a real Bridge account is.
+ *
+ * The first version created one per institution, which is not how SimpleFIN works — a single access
+ * URL exposes every institution linked inside it. The difference is not cosmetic: it made the
+ * accounts screen render per-connection controls nine times, which read as if syncing were a
+ * per-account action.
+ */
+async function seedConnection(context: HouseholdContext): Promise<string> {
+  const existing = await context.client.query<{ id: string }>('select id from connections limit 1')
+  const found = existing.rows[0]
+  if (found !== undefined) return found.id
+
+  const created = await context.client.query<{ id: string }>(
+    `insert into connections
+       (household_id, owner_user_id, access_url, status, last_success_at, consecutive_failures)
+     values ($1, (select user_id from household_members where household_id = $1 limit 1), $2,
+             'healthy', now(), 0)
+     returning id`,
+    [
+      context.householdId,
+      context.cipher.encryptText('https://seed:seed@example.invalid/simplefin'),
+    ],
+  )
+
+  const id = created.rows[0]?.id
+  if (id === undefined) throw new Error('seed failed')
+  return id
+}
+
+async function seedAccount(
+  context: HouseholdContext,
+  connectionId: string,
+  spec: SeedAccount,
+): Promise<void> {
   const institution = await context.client.query<{ id: string }>(
     `insert into institutions (household_id, simplefin_org_domain, name)
      values ($1, $2, $3)
@@ -65,27 +99,6 @@ async function seedAccount(context: HouseholdContext, spec: SeedAccount): Promis
     ],
   )
 
-  let connectionId: string | null = null
-  if (!(spec.isManual ?? false)) {
-    const connection = await context.client.query<{ id: string }>(
-      `insert into connections
-         (household_id, owner_user_id, institution_id, access_url, status, last_success_at, consecutive_failures)
-       values ($1, (select user_id from household_members where household_id = $1 limit 1), $2, $3, $4, $5, $6)
-       returning id`,
-      [
-        context.householdId,
-        institution.rows[0]?.id,
-        // A placeholder, still encrypted — nothing should ever read it, and a plaintext one here
-        // would be a credential-shaped string sitting in a column that is meant to be sealed.
-        context.cipher.encryptText('https://seed:seed@example.invalid/simplefin'),
-        spec.status,
-        spec.syncedDaysAgo === null ? null : new Date(Date.now() - spec.syncedDaysAgo * 86_400_000),
-        spec.failures ?? 0,
-      ],
-    )
-    connectionId = connection.rows[0]?.id ?? null
-  }
-
   const account = await context.client.query<{ id: string }>(
     `insert into accounts
        (household_id, connection_id, institution_id, type, provider_name, mask, current_balance,
@@ -94,7 +107,7 @@ async function seedAccount(context: HouseholdContext, spec: SeedAccount): Promis
      returning id`,
     [
       context.householdId,
-      connectionId,
+      (spec.isManual ?? false) ? null : connectionId,
       institution.rows[0]?.id,
       spec.type,
       context.cipher.encryptText(spec.name),
@@ -161,8 +174,9 @@ async function main(): Promise<void> {
   }
 
   await withHouseholdContext(deps, userId, async (context) => {
+    const connectionId = await seedConnection(context)
     for (const spec of ACCOUNTS) {
-      await seedAccount(context, spec)
+      await seedAccount(context, connectionId, spec)
     }
   })
 

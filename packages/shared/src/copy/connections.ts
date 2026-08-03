@@ -125,6 +125,16 @@ export const ACCOUNTS_COPY = {
   saveFailed: 'Could not save those changes.',
   cancel: 'Cancel',
 
+  connectionHeading: 'Bank connection',
+  connected: 'Connected through SimpleFIN',
+  notConnected: 'No bank connection',
+  notConnectedDetail:
+    'One SimpleFIN connection covers every institution linked inside your Bridge account, so this is usually a one-time setup.',
+  /** A second connection is for a second person, not a second bank. */
+  addAnotherConnection: 'Add another connection',
+  addAnotherHelp: 'For a household member with their own SimpleFIN account.',
+  accountsBehind: (count: number): string => `${count} account${count === 1 ? '' : 's'}`,
+
   addManual: 'Add manual account',
   addManualTitle: 'Add a manual account',
   addManualBlurb:
@@ -136,6 +146,26 @@ export const ACCOUNTS_COPY = {
   create: 'Add account',
   creating: 'Adding',
   createFailed: 'Could not add that account.',
+
+  /*
+   * Deletion copy. It states what is lost in numbers rather than warning in the abstract, and offers
+   * closing first — closing is the right answer for an account that was real, and deletion only for
+   * one added by mistake. The destructive button is never the one under your thumb.
+   */
+  delete: 'Delete account',
+  deleteTitle: 'Delete this account?',
+  deleteBlurb:
+    'This removes the account and everything recorded against it. It cannot be undone, and a future sync will not bring it back.',
+  deleteCounts: (transactions: number): string =>
+    transactions === 0
+      ? 'It has no transactions.'
+      : `${transactions} transaction${transactions === 1 ? '' : 's'} and this account’s balance history will be deleted with it.`,
+  deleteSuggestion:
+    'If the account was real, close it instead — the history stays and it stops counting toward net worth.',
+  closeInstead: 'Close it instead',
+  deleteConfirm: 'Delete permanently',
+  deleting: 'Deleting',
+  deleteFailed: 'Could not delete that account.',
 
   updateBalance: 'Update value',
   updateBalanceTitle: 'Update value',

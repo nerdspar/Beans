@@ -16,6 +16,8 @@ export type ManagedAccount = {
   isManual: boolean
   isClosed: boolean
   signInverted: boolean
+  /** What deletion would take with it. */
+  transactionCount: number
 }
 
 export type AccountPatch = {
@@ -68,4 +70,8 @@ export function recordManualBalance(
   effectiveDate: string,
 ): Promise<void> {
   return send(`/api/accounts/${id}/balance`, json('POST', { balance, effectiveDate }))
+}
+
+export function deleteAccount(id: string): Promise<{ transactionsDeleted: number }> {
+  return send(`/api/accounts/${id}`, { method: 'DELETE' })
 }

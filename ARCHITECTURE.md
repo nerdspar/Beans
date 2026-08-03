@@ -707,8 +707,26 @@ otherwise empty — **a connection is not something anybody thinks about**, it i
 arrive. Grouping by it puts sync health beside the accounts it affects, and makes manual accounts
 just another group rather than a homeless special case.
 
+**Accounts are grouped by institution, not by connection.** A SimpleFIN Bridge account is one
+connection exposing every institution linked inside it, so grouping by connection produces a single
+bucket containing everything — and rendering the connection's controls per group made `Sync now` and
+`Review accounts` look like per-account actions. Connection health is now one card at the top; the
+institution is the distinction a person actually makes. A second connection exists only for a
+household member with their own Bridge account, so adding one is a quiet link rather than a
+competing primary action.
+
 `/connections` remains, reached from here, for the two things that are about the credential rather
 than an account: reconnecting, and re-confirming the provider's answers.
+
+**Deleting offers closing first.** Closing keeps the transactions and the history and merely stops
+the account counting, which is right for an account that was real; deletion is for one added by
+mistake. The confirmation names the number of transactions that would go, so the warning is a figure
+rather than an adjective, and the destructive button is never the one under the thumb.
+
+Deletion writes a **tombstone** — one for the account, not thousands for its rows. Foreign keys
+cascade server-side, but every client holds its own copy in IndexedDB and learns about removals only
+from the `deletions` log; without the row the account would sit in the working set of every device
+the household has signed in from, permanently, with nothing able to remove it (§7.3).
 
 Editing rules worth knowing:
 

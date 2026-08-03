@@ -6,6 +6,7 @@ import { getSession } from '../auth/routes.js'
 import {
   AccountError,
   createManualAccount,
+  deleteAccount,
   listManagedAccounts,
   recordManualBalance,
   updateAccount,
@@ -138,6 +139,26 @@ export const accountRoutes: FastifyPluginAsync<AccountRoutesOptions> = async (fa
         }),
       )
       return reply.status(201).send(result)
+    } catch (error) {
+      return handleError(error, reply) ?? Promise.reject(error)
+    }
+  })
+
+  /**
+   * Removes an account permanently.
+   *
+   * Irreversible and it takes the transactions with it, so the UI asks first and offers closing —
+   * which keeps everything and merely stops it counting — as the default answer.
+   */
+  fastify.delete<{ Params: { id: string } }>('/api/accounts/:id', async (request, reply) => {
+    const user = await requireUser(request, reply)
+    if (user === null) return
+
+    try {
+      const result = await withHouseholdContext(deps, user.id, (context) =>
+        deleteAccount(context, request.params.id),
+      )
+      return reply.send(result)
     } catch (error) {
       return handleError(error, reply) ?? Promise.reject(error)
     }

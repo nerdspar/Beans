@@ -33,6 +33,8 @@ export type ManagedAccount = {
   isManual: boolean
   isClosed: boolean
   signInverted: boolean
+  /** What deletion would take with it. Shown before confirming, so the stake is a number. */
+  transactionCount: number
 }
 
 /** Every account the household can edit, closed ones included — hiding them hides how to reopen. */
@@ -50,10 +52,12 @@ export async function listManagedAccounts(context: HouseholdContext): Promise<Ma
     is_manual: boolean
     is_closed: boolean
     provider_sign_inverted: boolean
+    transaction_count: string
   }>(
     `select a.id, a.connection_id, i.name as institution_name, a.display_name, a.provider_name,
             a.mask, a.type, a.tax_treatment, a.current_balance, a.is_manual, a.is_closed,
-            a.provider_sign_inverted
+            a.provider_sign_inverted,
+            (select count(*) from transactions t where t.account_id = a.id) as transaction_count
        from accounts a
        left join institutions i on i.id = a.institution_id
       where a.confirmed_at is not null
@@ -81,6 +85,7 @@ export async function listManagedAccounts(context: HouseholdContext): Promise<Ma
     isManual: row.is_manual,
     isClosed: row.is_closed,
     signInverted: row.provider_sign_inverted,
+    transactionCount: Number(row.transaction_count),
   }))
 }
 
@@ -260,4 +265,45 @@ export async function recordManualBalance(
   )
 
   await rebuildAccountHistory(context, accountId, today)
+}
+
+/**
+ * Removes an account and everything derived from it.
+ *
+ * **Closing is almost always the better answer**, and the UI offers it first: a closed account keeps
+ * its transactions and its history while leaving net worth alone, so last year's spending still adds
+ * up. Deleting is for something added by mistake, where the history is not real to begin with.
+ *
+ * The tombstone is the load-bearing part. Foreign keys cascade the transactions and snapshots away
+ * server-side, but every client holds its own copy in IndexedDB and learns about removals only from
+ * the `deletions` log — without a row here the account would sit in the working set of every device
+ * the household has ever signed in from, permanently, with nothing able to remove it (§7.3).
+ *
+ * One tombstone for the account, not thousands for its rows: clients cascade on their side, which is
+ * why {@link applyDelta} deletes an account's balances and transactions by index.
+ */
+export async function deleteAccount(
+  context: HouseholdContext,
+  accountId: string,
+): Promise<{ transactionsDeleted: number }> {
+  const counted = await context.client.query<{ count: string }>(
+    'select count(*) as count from transactions where account_id = $1',
+    [accountId],
+  )
+
+  const deleted = await context.client.query(
+    'delete from accounts where id = $1 returning id',
+    [accountId],
+  )
+
+  if (deleted.rowCount === 0) {
+    throw new AccountError('No such account')
+  }
+
+  await context.client.query(
+    `insert into deletions (household_id, entity_type, entity_id) values ($1, 'account', $2)`,
+    [context.householdId, accountId],
+  )
+
+  return { transactionsDeleted: Number(counted.rows[0]?.count ?? 0) }
 }
