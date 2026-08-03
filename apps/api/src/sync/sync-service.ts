@@ -1,3 +1,5 @@
+import { toIsoDate } from '@beans/shared'
+import { rebuildAccountHistory, type RebuildResult } from '../balance-history/rebuild.js'
 import type { Fetcher } from '../simplefin/client.js'
 import type { HouseholdContext } from '../repositories/household-context.js'
 import { canSync, type SyncTrigger } from './quota.js'
@@ -116,6 +118,31 @@ export async function runSync(
       lastSuccessAt: state.lastSuccessAt,
       now,
     })
+
+    /**
+     * Rebuild history for exactly the accounts this run touched.
+     *
+     * Runs inside the same transaction as the sync, so balances and the series derived from them
+     * either both land or neither does — a committed balance with a stale series would make every
+     * chart disagree with the number above it.
+     */
+    const today = toIsoDate(now)
+    const rebuilds: RebuildResult[] = []
+    for (const accountId of outcome.accountIds) {
+      rebuilds.push(await rebuildAccountHistory(context, accountId, today))
+    }
+
+    // A drifting series means the account's balance and its transactions are in opposite sign
+    // conventions. It produces a smooth, plausible, wrong chart rather than an error, so it is
+    // surfaced on the sync run instead of being averaged away.
+    const inconsistent = rebuilds.filter((rebuild) => !rebuild.consistent)
+    if (inconsistent.length > 0) {
+      outcome.errors.push(
+        `Balance history for ${inconsistent.length} account(s) does not reconcile with the ` +
+          `reported balance. This usually means the institution reports balances and transactions ` +
+          `with opposite signs.`,
+      )
+    }
 
     await finishSyncRun(context, syncRunId, outcome, now)
     await applyOutcomeToConnection(context, connectionId, outcome, now)

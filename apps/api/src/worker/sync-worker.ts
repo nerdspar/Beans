@@ -5,6 +5,8 @@ import {
   withHouseholdContext,
   type ContextDependencies,
 } from '../repositories/household-context.js'
+import { toIsoDate } from '@beans/shared'
+import { rebuildHouseholdHistory } from '../balance-history/rebuild.js'
 import { jitterForSchedule, SCHEDULED_SYNCS_PER_DAY } from '../sync/quota.js'
 import { markStaleConnections, runSync } from '../sync/sync-service.js'
 
@@ -25,6 +27,7 @@ import { markStaleConnections, runSync } from '../sync/sync-service.js'
 
 const SYNC_QUEUE = 'sync-connection'
 const SCHEDULE_QUEUE = 'sync-schedule-tick'
+const SNAPSHOT_QUEUE = 'daily-snapshot'
 
 /** Spread within the hour, so every household does not hit the Bridge on the same tick. */
 const JITTER_WINDOW_MS = 55 * 60 * 1000
@@ -126,6 +129,56 @@ export function createSyncWorker({
     logger.info({ connections: connections.length }, 'sync schedule tick')
   }
 
+  /**
+   * The daily snapshot pass.
+   *
+   * Runs for **every account regardless of type**, so derived, observed, imported and carried
+   * history converge into one uniform daily series and every chart reads a single shape.
+   *
+   * It also has to run for accounts that did not sync: an investment account needs today's
+   * observation recorded, and a stale account needs its last value carried forward so household net
+   * worth stays summable rather than developing a hole.
+   */
+  async function handleDailySnapshot(): Promise<void> {
+    const today = toIsoDate(new Date())
+    const users = await deps.pool.query<{ id: string }>('select id from auth_user')
+
+    const done = new Set<string>()
+
+    for (const user of users.rows) {
+      try {
+        const householdId = await withHouseholdContext(deps, user.id, async (context) => {
+          // Household members share a household, so skip one already rebuilt this pass.
+          if (done.has(context.householdId)) {
+            return context.householdId
+          }
+
+          const results = await rebuildHouseholdHistory(context, today)
+          await markStaleConnections(context, new Date())
+
+          const inconsistent = results.filter((result) => !result.consistent)
+          if (inconsistent.length > 0) {
+            // A drifting series means balances and transactions disagree about sign. It produces a
+            // plausible chart rather than an error, so it must be said out loud somewhere.
+            logger.warn(
+              { householdId: context.householdId, accounts: inconsistent.map((r) => r.accountId) },
+              'balance history does not reconcile with the reported balance',
+            )
+          }
+
+          return context.householdId
+        })
+
+        done.add(householdId)
+      } catch {
+        // A user with no household has nothing to rebuild.
+        continue
+      }
+    }
+
+    logger.info({ households: done.size }, 'daily snapshot pass complete')
+  }
+
   return {
     async start(): Promise<void> {
       await boss.start()
@@ -138,6 +191,9 @@ export function createSyncWorker({
         expireInSeconds: 15 * 60,
       })
       await boss.createQueue(SCHEDULE_QUEUE, { retryLimit: 0 })
+      // The snapshot pass is idempotent — a rebuild produces the same series — so a retry is safe
+      // here, unlike a sync, which would spend another request.
+      await boss.createQueue(SNAPSHOT_QUEUE, { retryLimit: 2, retryDelay: 300 })
 
       // Handlers receive an array even at batch size 1.
       await boss.work<SyncJobData>(SYNC_QUEUE, async (jobs) => {
@@ -150,10 +206,20 @@ export function createSyncWorker({
         await handleScheduleTick()
       })
 
+      await boss.work(SNAPSHOT_QUEUE, async () => {
+        await handleDailySnapshot()
+      })
+
       // Five-field cron. A six-field expression misfires here, because schedules are only evaluated
       // every 30 seconds.
       const hours = scheduleHours(SCHEDULED_SYNCS_PER_DAY)
       await boss.schedule(SCHEDULE_QUEUE, `0 ${hours} * * *`, null, { tz: 'UTC' })
+
+      /**
+       * Runs after the last sync of the day, so the snapshot it records reflects the freshest
+       * balances rather than yesterday's.
+       */
+      await boss.schedule(SNAPSHOT_QUEUE, '30 23 * * *', null, { tz: 'UTC' })
 
       logger.info({ hours }, 'sync worker started')
     },

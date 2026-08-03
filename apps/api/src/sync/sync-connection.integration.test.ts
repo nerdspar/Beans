@@ -491,6 +491,7 @@ describeIntegration('connection sync', () => {
           requestsSpent: 1,
           errors: [],
           rateLimited: true,
+          accountIds: new Set<string>(),
         }),
       ).toBe('stale')
     })

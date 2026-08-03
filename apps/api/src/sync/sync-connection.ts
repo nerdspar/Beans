@@ -1,3 +1,5 @@
+import { toIsoDate, type AccountType } from '@beans/shared'
+import { ensureCoverageStart } from '../balance-history/rebuild.js'
 import { applySignConvention } from '../simplefin/account-type.js'
 import { fetchAccounts, splitIntoWindows, type Fetcher } from '../simplefin/client.js'
 import type { SimplefinAccount, SimplefinTransaction } from '../simplefin/protocol.js'
@@ -36,12 +38,15 @@ export type SyncOutcome = {
   requestsSpent: number
   errors: string[]
   rateLimited: boolean
+  /** Accounts touched this run, so history is rebuilt for exactly those. */
+  accountIds: Set<string>
 }
 
 type LinkedAccount = {
   id: string
   simplefinAccountId: string
   providerSignInverted: boolean
+  type: AccountType
 }
 
 /**
@@ -67,6 +72,7 @@ export async function syncConnection(
     requestsSpent: 0,
     errors: [],
     rateLimited: false,
+    accountIds: new Set<string>(),
   }
 
   if (linked.size === 0) {
@@ -115,6 +121,20 @@ export async function syncConnection(
       await updateBalance(context, account, providerAccount, options.now)
       outcome.accountsUpdated += 1
 
+      /**
+       * Set once, on the first window that produces data, and never moved afterwards.
+       *
+       * Investment accounts start at the day they were connected rather than the window start:
+       * their value moves with the market, so nothing before the connection is knowable however far
+       * back the transaction window reaches.
+       */
+      await ensureCoverageStart(
+        context,
+        account.id,
+        account.type === 'investment' ? toIsoDate(options.now) : toIsoDate(window.startDate),
+      )
+      outcome.accountIds.add(account.id)
+
       const seen = seenByAccount.get(account.id) ?? new Set<string>()
       seenByAccount.set(account.id, seen)
 
@@ -148,8 +168,9 @@ async function loadLinkedAccounts(
     id: string
     simplefin_account_id: string
     provider_sign_inverted: boolean
+    type: AccountType
   }>(
-    `select id, simplefin_account_id, provider_sign_inverted
+    `select id, simplefin_account_id, provider_sign_inverted, type
        from accounts
       where connection_id = $1
         and simplefin_account_id is not null
@@ -164,6 +185,7 @@ async function loadLinkedAccounts(
         id: row.id,
         simplefinAccountId: row.simplefin_account_id,
         providerSignInverted: row.provider_sign_inverted,
+        type: row.type,
       },
     ]),
   )
