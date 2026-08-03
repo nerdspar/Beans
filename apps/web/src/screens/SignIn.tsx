@@ -58,8 +58,28 @@ export function SignIn(): ReactNode {
         throw new Error(AUTH_COPY.offline)
       }
 
+      /*
+       * Throttling is a wait, not a rejection, and must never be reported as one. Sign-up allows
+       * three attempts per five minutes and sign-in five per minute, so this is reachable by a
+       * household setting up two accounts — and read as "wrong password" it sends somebody to reset
+       * a password that was fine. `x-retry-after` carries the remaining seconds.
+       */
+      if (response.status === 429) {
+        throw new Error(
+          AUTH_COPY.rateLimited(Number(response.headers.get('x-retry-after') ?? 0) || 0),
+        )
+      }
+
       if (!response.ok) {
-        throw new Error(mode === 'sign-in' ? AUTH_COPY.signInFailed : AUTH_COPY.signUpFailed)
+        /*
+         * The server's own message wins when it has one — "User already exists" is both true and
+         * actionable, where a guess from here is neither. The generic is only for a failure the
+         * server declined to explain.
+         */
+        const body = (await response.json().catch(() => null)) as { message?: string } | null
+        throw new Error(
+          body?.message ?? (mode === 'sign-in' ? AUTH_COPY.signInFailed : AUTH_COPY.signUpFailed),
+        )
       }
     },
     onSuccess: async () => {

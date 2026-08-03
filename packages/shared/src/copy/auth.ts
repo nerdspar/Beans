@@ -34,11 +34,31 @@ export const AUTH_COPY = {
    * Errors say what to do, and never guess at a cause. "Wrong password" would be a claim the server
    * did not make — Better Auth deliberately does not distinguish an unknown email from a bad
    * password, because doing so tells an attacker which emails have accounts.
+   *
+   * `signUpFailed` used to add "the email may already be in use", which broke that rule and was
+   * wrong in the case people actually hit: a rate-limited request reported as a duplicate account.
+   * When the server explains itself, its message is shown instead of either of these.
    */
   signInFailed: 'That email and password did not match. Try again.',
-  signUpFailed: 'Could not create the account. The email may already be in use.',
+  signUpFailed: 'Could not create the account.',
   passwordTooShort: 'Passwords need at least 8 characters.',
   offline: 'Could not reach Beans. Check that the server is running.',
+
+  /**
+   * Rate limiting, stated as a wait rather than a failure.
+   *
+   * This is the one that matters most to get right: on sign-in the previous code reported a
+   * throttled request as a password mismatch, which sends somebody to reset a password that was
+   * never wrong. Sign-up allows three attempts per five minutes, which a household setting up two
+   * accounts can reach without doing anything unusual.
+   */
+  rateLimited: (seconds: number): string => {
+    if (seconds <= 0) return 'Too many attempts just now. Try again in a moment.'
+    const minutes = Math.ceil(seconds / 60)
+    return seconds < 60
+      ? `Too many attempts just now. Try again in ${seconds} seconds.`
+      : `Too many attempts just now. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`
+  },
 
   householdTitle: 'Name your household',
   /** The field label. Distinct from the heading, which already says "name your household". */

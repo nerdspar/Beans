@@ -724,6 +724,13 @@ Better Auth's own rejection blames the credentials. Sending somebody to reset a 
 never the problem is the worse failure, and on a self-hosted app "the server is not answering" is
 genuinely actionable.
 
+The same applies to **throttling, which is a wait rather than a rejection**. Sign-up allows three
+attempts per five minutes and sign-in five per minute, both reachable by a household setting up two
+accounts — and a 429 read as a credential failure is exactly the case above. The remaining seconds
+come back in `x-retry-after` and are stated. When the server explains itself at all its `message` is
+shown verbatim, because "User already exists" is both true and actionable where a guess from the
+client is neither.
+
 ### 16.1 Development-only configuration
 
 `EXTRA_TRUSTED_ORIGINS` exists because Better Auth's CSRF check compares the request origin against
