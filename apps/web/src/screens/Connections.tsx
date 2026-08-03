@@ -7,6 +7,7 @@ import {
   confirmAccounts,
   listConnections,
   reconnectConnection,
+  rediscover,
   syncConnection,
   type AccountConfirmation,
   type ConnectionSummary,
@@ -27,7 +28,7 @@ import { WORKING_SET_KEY } from '../working-set/use-working-set.js'
 type Stage =
   | { kind: 'list' }
   | { kind: 'claim' }
-  | { kind: 'confirm'; discovery: Discovery }
+  | { kind: 'confirm'; discovery: Discovery; isReview?: boolean }
   | { kind: 'reconnect'; connectionId: string }
   | { kind: 'done'; summary: string }
 
@@ -61,6 +62,17 @@ export function Connections(): ReactNode {
     },
   })
 
+  /*
+   * Re-opens confirmation for a connection that already exists. The endpoint was built for this and
+   * went unused: a sign answered wrong at setup had no way back, and it is the one answer on that
+   * screen whose consequences are invisible afterwards — the chart plots liabilities as magnitudes,
+   * so it looks identical either way.
+   */
+  const review = useMutation({
+    mutationFn: async (id: string) => ({ connectionId: id, ...(await rediscover(id)) }),
+    onSuccess: (discovery) => setStage({ kind: 'confirm', discovery, isReview: true }),
+  })
+
   const reconnect = useMutation({
     mutationFn: ({ id, token }: { id: string; token: string }) => reconnectConnection(id, token),
     onSuccess: async () => {
@@ -76,6 +88,7 @@ export function Connections(): ReactNode {
         errors={stage.discovery.errors}
         isPending={confirm.isPending}
         error={confirm.error instanceof Error ? confirm.error.message : null}
+        {...(stage.isReview === true ? { blurb: CONNECTION_COPY.reviewBlurb } : {})}
         onConfirm={(accounts) => confirm.mutate({ id: stage.discovery.connectionId, accounts })}
       />
     )
@@ -155,6 +168,8 @@ export function Connections(): ReactNode {
             <ConnectionRow
               connection={connection}
               onReconnect={() => setStage({ kind: 'reconnect', connectionId: connection.id })}
+              onReview={() => review.mutate(connection.id)}
+              isReviewing={review.isPending}
               onSynced={refreshEverything}
             />
           </li>
@@ -167,10 +182,14 @@ export function Connections(): ReactNode {
 function ConnectionRow({
   connection,
   onReconnect,
+  onReview,
+  isReviewing,
   onSynced,
 }: {
   connection: ConnectionSummary
   onReconnect: () => void
+  onReview: () => void
+  isReviewing: boolean
   onSynced: () => Promise<void>
 }): ReactNode {
   const sync = useMutation({
@@ -229,6 +248,19 @@ function ConnectionRow({
           >
             <RefreshCw className={cn('size-3.5', sync.isPending && 'animate-spin')} aria-hidden />
             {sync.isPending ? CONNECTION_COPY.syncing : CONNECTION_COPY.syncNow}
+          </button>
+
+          <button
+            type="button"
+            onClick={onReview}
+            disabled={isReviewing}
+            className={cn(
+              'min-h-9 rounded-lg border px-3 text-xs font-medium',
+              'border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800',
+              'focus-visible:outline-2 focus-visible:outline-sky-500 disabled:opacity-50',
+            )}
+          >
+            {CONNECTION_COPY.review}
           </button>
 
           <button

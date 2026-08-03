@@ -51,6 +51,17 @@ export const CONNECTION_COPY = {
   confirming: 'Syncing',
   confirmFailed: 'Could not confirm these accounts. Nothing was changed.',
 
+  review: 'Review accounts',
+  reviewTitle: 'Check these balances',
+  /**
+   * The way back from a sign that was answered wrong.
+   *
+   * Re-confirming updates the account and then re-runs the sync, which rebuilds every balance
+   * snapshot from the corrected figure — so the history heals rather than keeping the old shape.
+   */
+  reviewBlurb:
+    'Answers here replace the ones given when this connection was set up, and the balance history is rebuilt to match.',
+
   syncNow: 'Sync now',
   syncing: 'Syncing',
   reconnect: 'Reconnect',

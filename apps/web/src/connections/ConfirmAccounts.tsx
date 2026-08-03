@@ -49,12 +49,15 @@ export function ConfirmAccounts({
   errors,
   isPending,
   error,
+  blurb,
   onConfirm,
 }: {
   accounts: readonly DiscoveredAccount[]
   errors: readonly string[]
   isPending: boolean
   error: string | null
+  /** Overridden when revisiting an existing connection rather than setting one up. */
+  blurb?: string
   onConfirm: (confirmations: AccountConfirmation[]) => void
 }): ReactNode {
   const [drafts, setDrafts] = useState<Draft[]>(() => accounts.map(initialDraft))
@@ -73,6 +76,9 @@ export function ConfirmAccounts({
       <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
         {CONNECTION_COPY.confirmBlurb}
       </p>
+      {blurb !== undefined && (
+        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{blurb}</p>
+      )}
 
       {errors.length > 0 && (
         <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-900 dark:bg-amber-950/40">
