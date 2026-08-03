@@ -1,3 +1,4 @@
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@beans/shared'
 import { drizzleAdapter } from '@better-auth/drizzle-adapter'
 import { betterAuth } from 'better-auth'
 import type { Config } from '../config.js'
@@ -57,8 +58,8 @@ export function createAuth(config: Config, db: Database) {
 
     emailAndPassword: {
       enabled: true,
-      minPasswordLength: 12,
-      maxPasswordLength: 256,
+      minPasswordLength: MIN_PASSWORD_LENGTH,
+      maxPasswordLength: MAX_PASSWORD_LENGTH,
       autoSignIn: true,
       /**
        * Off by default because a self-hosted install may have no mail configured at all, and

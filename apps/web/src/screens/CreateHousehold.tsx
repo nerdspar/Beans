@@ -1,5 +1,5 @@
 import { AUTH_COPY } from '@beans/shared'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { cn } from '../lib/cn.js'
 
@@ -13,7 +13,6 @@ import { cn } from '../lib/cn.js'
 
 export function CreateHousehold(): ReactNode {
   const [name, setName] = useState('')
-  const queryClient = useQueryClient()
 
   const create = useMutation({
     mutationFn: async () => {
@@ -26,10 +25,13 @@ export function CreateHousehold(): ReactNode {
 
       if (!response.ok) throw new Error(AUTH_COPY.householdFailed)
     },
-    onSuccess: async () => {
-      // The working set query is what reports "no household"; re-running it is what moves the user
-      // on, rather than a redirect this screen would have to know how to perform.
-      await queryClient.invalidateQueries()
+    /*
+     * Reload, matching sign-in and sign-out. The query that reports "no household" is the
+     * working-set sync, which is parked in an error state with retries disabled — invalidating it
+     * from here worked only sometimes, which is worse than not working at all.
+     */
+    onSuccess: () => {
+      window.location.assign('/')
     },
   })
 

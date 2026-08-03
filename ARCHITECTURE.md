@@ -706,6 +706,22 @@ balance that rose and fell within the window. This is the normal state immediate
 
 ### 16.0 Authentication surfaces
 
+**Every transition across the auth boundary is a full page load**, not a cache invalidation: signing
+in, signing up, creating a household, and signing out all end with `location.assign('/')`.
+
+This is not stylistic. The working-set sync query parks in an error state — `NotSignedInError` or
+`NoHouseholdYetError`, both with retries disabled because they are settled answers rather than
+flakes — and it does not refetch when the session appears. Invalidating the session query alone left
+a form that accepted valid credentials and then sat there: the session was real, the screen never
+moved, and a manual refresh was the only way through. Each of these happens once per session, so a
+clean boot costs nothing and removes every ordering question at once. The sign-out case has the
+additional argument in §7.4a.
+
+Password policy lives in `packages/shared/src/auth/password.ts` and both sides read it. They did not
+originally: the API required twelve characters while the form validated at eight and said so, so an
+eight-character password passed the form and was refused by the server. The copy is generated from
+the constant, and a test asserts no other number appears in it.
+
 `Gate` in `App.tsx` decides whether the app is reachable: no session renders `SignIn`, a session
 without a household renders `CreateHousehold`, and only then does the shell mount. Both render
 **outside the shell** — bottom tabs a user cannot use are noise at best and imply something behind

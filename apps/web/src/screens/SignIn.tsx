@@ -1,7 +1,7 @@
-import { AUTH_COPY } from '@beans/shared'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { AUTH_COPY, MIN_PASSWORD_LENGTH } from '@beans/shared'
+import { useMutation } from '@tanstack/react-query'
 import { useState, type FormEvent, type ReactNode } from 'react'
-import { SESSION_KEY, useCapabilities } from '../auth/use-session.js'
+import { useCapabilities } from '../auth/use-session.js'
 import { cn } from '../lib/cn.js'
 
 /**
@@ -15,8 +15,6 @@ import { cn } from '../lib/cn.js'
  * state for the duration of the submit.
  */
 
-const MIN_PASSWORD_LENGTH = 8
-
 type Mode = 'sign-in' | 'sign-up'
 
 export function SignIn(): ReactNode {
@@ -26,7 +24,6 @@ export function SignIn(): ReactNode {
   const [name, setName] = useState('')
 
   const capabilities = useCapabilities()
-  const queryClient = useQueryClient()
 
   const submit = useMutation({
     mutationFn: async () => {
@@ -82,9 +79,20 @@ export function SignIn(): ReactNode {
         )
       }
     },
-    onSuccess: async () => {
-      // The session cookie is set; re-reading it is what flips the app out of this screen.
-      await queryClient.invalidateQueries({ queryKey: SESSION_KEY })
+    /*
+     * A full reload, for the same reason sign-out does one.
+     *
+     * Invalidating the session query is not enough: the working-set sync already failed with
+     * `NotSignedInError` and is parked in an error state with retries disabled, so it does not
+     * refetch when the session appears. The result was a form that accepted the credentials and then
+     * sat there — the session was real, the screen just never moved, and a manual refresh was the
+     * only way forward.
+     *
+     * Signing in happens once a session. Booting the app cleanly with the cookie already set costs
+     * nothing and removes every ordering question at once.
+     */
+    onSuccess: () => {
+      window.location.assign('/')
     },
   })
 
@@ -150,6 +158,10 @@ export function SignIn(): ReactNode {
           value={password}
           onChange={edit(setPassword)}
           required
+          // Only on sign-up. Telling somebody signing in how long their password should be is both
+          // useless and faintly accusatory. Spread rather than `undefined`, which
+          // `exactOptionalPropertyTypes` rejects for an optional prop.
+          {...(mode === 'sign-up' ? { hint: AUTH_COPY.passwordHint } : {})}
         />
 
         {/*
@@ -225,6 +237,7 @@ function Field({
   value,
   onChange,
   required,
+  hint,
 }: {
   label: string
   type: 'text' | 'email' | 'password'
@@ -232,6 +245,7 @@ function Field({
   value: string
   onChange: (value: string) => void
   required?: boolean
+  hint?: string
 }): ReactNode {
   return (
     <label className="mt-3 block text-xs font-medium text-slate-600 dark:text-slate-400">
@@ -249,6 +263,9 @@ function Field({
           'focus-visible:outline-2 focus-visible:outline-sky-500',
         )}
       />
+      {hint !== undefined && (
+        <span className="mt-1 block font-normal text-slate-500 dark:text-slate-400">{hint}</span>
+      )}
     </label>
   )
 }

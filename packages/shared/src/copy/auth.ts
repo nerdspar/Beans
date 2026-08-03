@@ -1,3 +1,5 @@
+import { MIN_PASSWORD_LENGTH } from '../auth/password.js'
+
 /**
  * Copy for signing in, signing up, and creating a household.
  *
@@ -41,7 +43,14 @@ export const AUTH_COPY = {
    */
   signInFailed: 'That email and password did not match. Try again.',
   signUpFailed: 'Could not create the account.',
-  passwordTooShort: 'Passwords need at least 8 characters.',
+  /*
+   * Derived from the shared constant rather than typed as a literal. The previous version hard-coded
+   * eight while the server required twelve, so the form told the user a requirement that was not the
+   * one being enforced.
+   */
+  passwordTooShort: `Passwords need at least ${MIN_PASSWORD_LENGTH} characters.`,
+  /** Shown before submitting, so the rule is not something you discover by being refused. */
+  passwordHint: `At least ${MIN_PASSWORD_LENGTH} characters.`,
   offline: 'Could not reach Beans. Check that the server is running.',
 
   /**

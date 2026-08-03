@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { MIN_PASSWORD_LENGTH } from '../auth/password.js'
 import { AUTH_COPY } from './auth.js'
 
 /**
@@ -52,5 +53,28 @@ describe('failure copy', () => {
     // accounts, so the copy must not either.
     expect(AUTH_COPY.signInFailed).toMatch(/email and password/i)
     expect(AUTH_COPY.signInFailed).not.toMatch(/no account|not found|incorrect password/i)
+  })
+})
+
+/**
+ * The form and the server have to enforce the same number.
+ *
+ * They did not: the API required twelve characters while the sign-up form validated at eight and
+ * said so, which let an eight-character password through the form to be refused by the server. The
+ * threshold now has one home and the copy is generated from it, so a literal cannot drift.
+ */
+describe('password policy copy', () => {
+  it('states the number that is actually enforced', () => {
+    expect(AUTH_COPY.passwordTooShort).toContain(String(MIN_PASSWORD_LENGTH))
+    expect(AUTH_COPY.passwordHint).toContain(String(MIN_PASSWORD_LENGTH))
+  })
+
+  it('does not hard-code a length anywhere else', () => {
+    // Any bare number in this copy that is not the policy is a literal waiting to go stale.
+    for (const message of [AUTH_COPY.passwordTooShort, AUTH_COPY.passwordHint]) {
+      for (const found of message.match(/\d+/g) ?? []) {
+        expect(Number(found)).toBe(MIN_PASSWORD_LENGTH)
+      }
+    }
   })
 })
