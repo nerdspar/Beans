@@ -7,19 +7,19 @@ on:
 
 jobs:
   check:
-    name: Typecheck and unit tests
+    name: Typecheck and tests
     runs-on: ubuntu-latest
 
-    # Integration tests need a real Postgres — never a mock, never SQLite (ARCHITECTURE.md §14).
+    # Integration tests run against a real Postgres — never a mock, never SQLite (ARCHITECTURE.md §14).
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16
         env:
-          POSTGRES_USER: beans
-          POSTGRES_PASSWORD: beans
-          POSTGRES_DB: beans_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: beans
         options: >-
-          --health-cmd "pg_isready -U beans"
+          --health-cmd "pg_isready -U postgres"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -40,14 +40,32 @@ jobs:
       - name: Typecheck
         run: pnpm -r typecheck
 
-      - name: Apply migrations to the test database
+      # The same script the production database is initialized with, rather than a copy of its SQL.
+      # What it creates is the point: a NOSUPERUSER, NOBYPASSRLS role. Postgres silently ignores
+      # row-level security for superusers, so running the suite as the POSTGRES_USER would make every
+      # cross-tenant isolation test meaningless — the most important tests here, passing for the
+      # wrong reason or failing for a reason that has nothing to do with the code.
+      - name: Create the application role and test database
+        run: bash docker/initdb/01-init.sh
+        env:
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGPASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: beans
+          BEANS_DB_USER: beans_app
+          BEANS_DB_PASSWORD: beans_app
+          BEANS_DB_NAME: beans
+          BEANS_TEST_DB_NAME: beans_test
+
+      - name: Apply migrations
         run: pnpm --filter @beans/api db:migrate:test
         env:
-          TEST_DATABASE_URL: postgres://beans:beans@localhost:5432/beans_test
+          TEST_DATABASE_URL: postgres://beans_app:beans_app@localhost:5432/beans_test
 
       - name: Test
-        run: pnpm test
+        # Set, so the integration tests run rather than skipping. A suite that silently skips its
+        # isolation tests is worse than one that fails.
         env:
-          # Present, so integration tests run rather than skipping. A suite that silently skips its
-          # most important tests — the cross-tenant isolation ones — is worse than a failing one.
-          TEST_DATABASE_URL: postgres://beans:beans@localhost:5432/beans_test
+          TEST_DATABASE_URL: postgres://beans_app:beans_app@localhost:5432/beans_test
+        run: pnpm test
