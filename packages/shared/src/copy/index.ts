@@ -5,5 +5,11 @@ export {
   type ConnectionBannerCopy,
 } from './connection.js'
 
-export { ACCOUNT_COPY, NET_WORTH_STATE_COPY, carriedNotice } from './account.js'
+export {
+  ACCOUNT_COPY,
+  NET_WORTH_STATE_COPY,
+  carriedNotice,
+  coverageNotice,
+} from './account.js'
 export { AUTH_COPY } from './auth.js'
+export { ACCOUNT_TYPE_LABELS, CONNECTION_COPY } from './connections.js'

@@ -137,4 +137,17 @@ behavior is a separate question.
 - [ ] Delta sync against data that changes *while a client is connected* — a sync landing mid-session,
       an account being removed in another tab. Covered at the repository layer with explicit cursors;
       never observed live.
+- [ ] **A real SimpleFIN setup token has never been claimed.** The whole connect flow was verified
+      against a mock Bridge served over HTTPS on localhost — claim, discovery, the sign-confirmation
+      screen, confirm, first sync, and the resulting net worth. What that cannot tell us is how *your*
+      institutions actually report their balances: which ones send a card as a positive amount owed,
+      whether the type guesses land, and whether any of them return something the parser has not
+      seen. Expect to sit with the confirmation screen the first time.
+- [ ] **Transport failures reaching the Bridge surface as a bare 500.** `claimSetupToken` lets a
+      fetch rejection propagate, so a DNS failure or a TLS problem reaches the user as "Internal
+      Server Error" with nothing actionable. Seen while pointing the API at a mock with an untrusted
+      certificate. Wrap the transport in `SimplefinError` so the message says the Bridge could not be
+      reached.
+- [ ] Whether the request-budget refusal (429 with `retryAfter`) reads sensibly in the UI. The route
+      returns it and the screen shows the message, but the ceiling has never actually been hit.
 

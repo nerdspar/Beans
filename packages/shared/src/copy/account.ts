@@ -67,3 +67,15 @@ export const NET_WORTH_STATE_COPY = {
 export function carriedNotice(lastRealDate: string): string {
   return `Flat after ${lastRealDate} — Beans has had no data for this account since then.`
 }
+
+/**
+ * Why the net worth chart starts where it does.
+ *
+ * Shown when accounts disagree about how far back they reach — typically a new investment account,
+ * whose value moves with the market and so cannot be reconstructed backwards the way a cash or card
+ * balance can. Without this the truncation is silent, and a chart that quietly starts later than the
+ * range asked for is indistinguishable from one that has nothing to show.
+ */
+export function coverageNotice(startDate: string): string {
+  return `History starts ${startDate} — that is as far back as every account reaches.`
+}

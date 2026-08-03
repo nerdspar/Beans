@@ -162,11 +162,24 @@ export function AreaChart({
     const width = 1000
     const plotHeight = Math.max(1, height - AXIS_HEIGHT)
     const x = (index: number): number =>
-      series.length === 1 ? width / 2 : (index / (series.length - 1)) * width
+      series.length === 1 ? 0 : (index / (series.length - 1)) * width
     const y = (value: number): number =>
       plotHeight - ((value - min) / (max - min)) * plotHeight
 
-    const line = values.map((value, index) => `${x(index)},${y(value)}`).join(' ')
+    /*
+     * One point is drawn as a flat line across the full width, not as a point.
+     *
+     * Placing a lone value at the midpoint makes the area fan out from the baseline to it and back —
+     * a triangle, which reads as a balance that rose and fell within the window. It did not; there
+     * is one observation and nothing to say about any other day. A flat line says exactly that, and
+     * happens the first time an account is connected, so it is not a rare case.
+     */
+    const points =
+      values.length === 1
+        ? [`0,${y(values[0] ?? 0)}`, `${width},${y(values[0] ?? 0)}`]
+        : values.map((value, index) => `${x(index)},${y(value)}`)
+
+    const line = points.join(' ')
     const area = `M0,${plotHeight} L${line.replaceAll(' ', ' L')} L${width},${plotHeight} Z`
 
     /*

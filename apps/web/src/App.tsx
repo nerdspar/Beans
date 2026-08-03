@@ -8,6 +8,7 @@ import { useIsDesktop } from './shells/use-shell.js'
 import { useWorkingSet } from './working-set/use-working-set.js'
 import { useSession } from './auth/use-session.js'
 import { AccountDetail } from './screens/AccountDetail.js'
+import { Connections } from './screens/Connections.js'
 import { CreateHousehold } from './screens/CreateHousehold.js'
 import { SignIn } from './screens/SignIn.js'
 import { NetWorth } from './screens/NetWorth.js'
@@ -84,12 +85,16 @@ function Routes(): ReactNode {
     <Switch>
       <Route path="/" component={NetWorth} />
       <Route path="/accounts/:id" component={AccountDetail} />
+      <Route path="/connections" component={Connections} />
       <Route path="/settings" component={TabSettings} />
       {/* Not in the destination registry: a workbench for judging the transition, not a screen. */}
       <Route path="/prototype/transition" component={TransitionPrototype} />
 
       {DESTINATIONS.filter(
-        (destination) => destination.key !== 'settings' && destination.key !== 'net-worth',
+        (destination) =>
+          destination.key !== 'settings' &&
+          destination.key !== 'net-worth' &&
+          destination.key !== 'connections',
       ).map((destination) => (
         <Route key={destination.key} path={destination.path}>
           <Placeholder destination={destination} />

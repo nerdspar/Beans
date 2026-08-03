@@ -38,6 +38,13 @@ export type DerivedSection = {
 export type DerivedWorkingSet = {
   sections: DerivedSection[]
   household: SeriesPoint[]
+  /**
+   * The first date household net worth is actually knowable — the **latest** date among its
+   * accounts' coverage, not the earliest.
+   */
+  coverageStart: IsoDate | null
+  /** True when that boundary is hiding history some accounts do have. Worth telling the user. */
+  coverageIsLimited: boolean
   /** Every account, for the detail route, without re-walking the sections. */
   byId: Map<string, DerivedAccount>
 }
@@ -98,19 +105,50 @@ function accountSeries(
   }
 }
 
-/** Adds series sharing a date axis. Every series here is built over the same `from`..`to`. */
-function sumSeries(parts: ReadonlyArray<{ series: SeriesPoint[] }>): SeriesPoint[] {
-  const byDate = new Map<string, bigint>()
+/**
+ * Adds series, starting only where **every** part has data.
+ *
+ * The subtlety that makes this necessary: accounts do not share a coverage start. Backward
+ * reconstruction gives cash and credit a year of history immediately, while an investment account
+ * gets one day — its value moves with the market rather than with postings, so reconstructing it
+ * backwards would be arithmetically fine and factually invented (ARCHITECTURE.md §4).
+ *
+ * Summing across that boundary produces a total that is silently **missing** whichever accounts do
+ * not reach that far back, and the result is not a subtle error: on a first connection it renders as
+ * net worth sitting near zero for a year and then leaping by the value of the brokerage on the day
+ * it was added. Nothing about that line is true.
+ *
+ * So the sum starts at the latest first-date among its parts. Less history, all of it real.
+ */
+function sumSeries(parts: ReadonlyArray<{ series: SeriesPoint[] }>): {
+  series: SeriesPoint[]
+  coverageStart: IsoDate | null
+  isLimited: boolean
+} {
+  const withData = parts.filter((part) => part.series.length > 0)
+  if (withData.length === 0) {
+    return { series: [], coverageStart: null, isLimited: false }
+  }
 
-  for (const part of parts) {
+  const firstDates = withData.map((part) => part.series[0]?.date ?? '')
+  const start = firstDates.reduce((latest, date) => (date > latest ? date : latest))
+  const earliest = firstDates.reduce((first, date) => (date < first ? date : first))
+
+  const byDate = new Map<string, bigint>()
+  for (const part of withData) {
     for (const point of part.series) {
+      if (point.date < start) continue
       byDate.set(point.date, (byDate.get(point.date) ?? 0n) + point.value)
     }
   }
 
-  return [...byDate.entries()]
-    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-    .map(([date, value]) => ({ date, value }))
+  return {
+    series: [...byDate.entries()]
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([date, value]) => ({ date, value })),
+    coverageStart: start,
+    isLimited: start > earliest,
+  }
 }
 
 export function deriveWorkingSet(
@@ -166,6 +204,8 @@ export function deriveWorkingSet(
   const sections = NET_WORTH_SECTIONS.filter((section) => bySection.has(section)).map((section) => {
     const sectionAccounts = bySection.get(section) ?? []
 
+    const summed = sumSeries(sectionAccounts)
+
     return {
       section,
       accounts: sectionAccounts,
@@ -178,14 +218,21 @@ export function deriveWorkingSet(
         (sum, account) => sum + (account.series.at(-1)?.value ?? 0n),
         0n,
       ),
-      series: sumSeries(sectionAccounts),
+      series: summed.series,
     }
   })
 
+  // Net worth is a plain sum, because every amount is already signed to add directly to it.
+  const household = sumSeries(sections)
+
   return {
     sections,
-    // Net worth is a plain sum, because every amount is already signed to add directly to it.
-    household: sumSeries(sections),
+    household: household.series,
+    coverageStart: household.coverageStart,
+    // Reported from the accounts rather than the sections: a section whose own series was already
+    // trimmed would otherwise hide that the trimming happened.
+    coverageIsLimited:
+      household.isLimited || sections.some((group) => sumSeries(group.accounts).isLimited),
     byId,
   }
 }

@@ -667,6 +667,43 @@ Recorded so a future session doesn't "restore" them:
 | "Transaction lists stay server-paginated and do refetch." | **Superseded** by §7. Encryption makes SQL-side filter/sort impossible; the working set moved to the client.                    |
 | "Swap to uPlot if time-series scrubbing gets sluggish."   | **Amended** by §12.1. uPlot has no animation model and does not address the category transition. Transition design comes first. |
 
+### 15.1 Connecting an institution, as built
+
+`/connections` runs claim → confirm → sync. The confirmation step is the reason the flow has three
+stages rather than one.
+
+**SimpleFIN does not specify balance signs.** The protocol states a sign rule for transactions and
+none for balances, so whether a credit card arrives as `-3386.39` or `3386.39` is up to the
+institution and the Bridge does not normalize (§3.3). The confirmation screen therefore shows **both
+numbers** — what SimpleFIN sent, and what Beans will record — because the user is being asked to
+adjudicate between them and cannot do that if only the answer is shown.
+
+The mismatch warning is recomputed from the user's current toggles rather than taken from the
+server's `anomaly`, which describes the server's *suggestion*. Flipping the sign on a credit card
+turns the figure green and raises "a credit card is money you owe, but this would be recorded as
+money you have" while the choice is being made, not after it is committed.
+
+A null `suggestedSignInverted` — low confidence, or a zero balance — defaults to **not** inverted.
+Quietly flipping a sign nobody asked about is precisely the failure this screen exists to catch.
+
+### 15.2 Coverage boundaries in a rollup
+
+Accounts do not share a coverage start. Backward reconstruction gives cash and credit a year of
+history the moment they connect; an investment account gets **one day**, because its value moves with
+the market rather than with postings and reconstructing it backwards would be arithmetically fine and
+factually invented (§4).
+
+Summing across that boundary yields a total silently missing whichever accounts do not reach that far
+back. On a first connection it renders as net worth sitting near zero for a year and then leaping by
+the value of the brokerage on the day it was added — observed, not hypothesized, the first time this
+flow ran end to end. So **a summed series starts at the latest first-date among its parts**, and the
+screen says why: "History starts 8/3/2026 — that is as far back as every account reaches." Less
+history, all of it real.
+
+A related rendering rule: **one data point is drawn as a flat line across the full width**, not as a
+point at the midpoint. The latter makes the area fan out from the baseline and back, which reads as a
+balance that rose and fell within the window. This is the normal state immediately after connecting.
+
 ### 16.0 Authentication surfaces
 
 `Gate` in `App.tsx` decides whether the app is reachable: no session renders `SignIn`, a session

@@ -1,6 +1,7 @@
 import {
   CONNECTION_STATUS_LABEL,
   NET_WORTH_STATE_COPY,
+  coverageNotice,
   formatCents,
   isLiabilitySection,
   type NetWorthSection,
@@ -77,6 +78,18 @@ export function NetWorth(): ReactNode {
  * `useActiveSection` keys off the section list, and an early return before it would change the hook
  * order between an empty household and a populated one.
  */
+const SHORT_DATE = new Intl.DateTimeFormat(undefined, {
+  month: 'numeric',
+  day: 'numeric',
+  year: 'numeric',
+  // UTC, for the same reason as everywhere else a YYYY-MM-DD meets Date.
+  timeZone: 'UTC',
+})
+
+function formatShortDate(date: string | undefined): string {
+  return date === undefined ? '' : SHORT_DATE.format(new Date(`${date}T00:00:00Z`))
+}
+
 function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactNode {
   const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE)
 
@@ -171,6 +184,17 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
           formatValue={formatValue}
           height={190}
         />
+
+        {/*
+          Only at household scope, where the boundary is the sum of several accounts' coverage. A
+          single section's chart is trimmed the same way, but there the reason is usually one
+          account and the account screen says it better.
+        */}
+        {activeGroup === undefined && workingSet.coverageIsLimited && series.length > 0 && (
+          <p className="pt-1 text-[11px] text-slate-500 dark:text-slate-400">
+            {coverageNotice(formatShortDate(series[0]?.date))}
+          </p>
+        )}
 
         {/*
           Announces the scope change for anyone who cannot see the chart recolour. Polite so it

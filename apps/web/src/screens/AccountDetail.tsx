@@ -129,6 +129,13 @@ function AccountView({
         <ConnectionBanner
           copy={banner}
           severity={assessment.severity === 'attention' ? 'attention' : 'caution'}
+          /*
+           * Every action on this banner goes to the connections screen. Reconnecting needs a fresh
+           * setup token, and syncing needs the connection rather than the account — this screen has
+           * an account id and no way to turn one into the other, because the working set carries
+           * connection *health* per account but not the connection's identity.
+           */
+          href="/connections"
         />
       )}
 
@@ -221,9 +228,11 @@ const TAX_LABELS: Record<TaxTreatment, string> = {
 function ConnectionBanner({
   copy,
   severity,
+  href,
 }: {
   copy: { title: string; detail: string; actionLabel: string | null }
   severity: 'attention' | 'caution'
+  href: string
 }): ReactNode {
   const attention = severity === 'attention'
 
@@ -269,10 +278,10 @@ function ConnectionBanner({
           </p>
 
           {copy.actionLabel !== null && (
-            <button
-              type="button"
+            <Link
+              href={href}
               className={cn(
-                'mt-3 min-h-11 rounded-lg px-4 text-sm font-semibold text-white',
+                'mt-3 inline-flex min-h-11 items-center rounded-lg px-4 text-sm font-semibold text-white',
                 'focus-visible:outline-2 focus-visible:outline-offset-2',
                 attention
                   ? 'bg-rose-600 hover:bg-rose-500 focus-visible:outline-rose-600'
@@ -280,7 +289,7 @@ function ConnectionBanner({
               )}
             >
               {copy.actionLabel}
-            </button>
+            </Link>
           )}
         </div>
       </div>
