@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   check:
@@ -69,3 +70,52 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://beans_app:beans_app@localhost:5432/beans_test
         run: pnpm test
+
+  image:
+    name: Build and push image
+    # The gate that matters. Two independent workflows ran these in parallel, so a commit with
+    # failing tests still published `latest` — for an app holding a household's finances, publishing
+    # ahead of the tests is the wrong way round.
+    needs: check
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      # Lets the built-in token push to GHCR, so no long-lived registry credential has to exist as
+      # a repository secret.
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # Lowercased explicitly: the repository is `nerdspar/Beans` and GHCR rejects uppercase.
+          images: ghcr.io/nerdspar/beans
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=long
+            type=ref,event=tag
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # The NAS is x86. arm64 is here so the image also runs on an Apple Silicon machine for
+          # reproducing a production problem locally.
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

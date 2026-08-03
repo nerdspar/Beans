@@ -1,14 +1,20 @@
 # Multi-stage build producing ONE image that serves both the API and the built static frontend.
 #
-# Not verified end to end yet — there is no container runtime on the development machine, and the
-# web app does not exist until milestone 6. The database half of docker-compose.yml is in use now;
-# this half gets exercised when there is a frontend to bundle.
+# There is no container runtime on the development machine, so CI is where this is actually
+# exercised. Treat a green Image job as the only evidence it works.
 
 # ------------------------------------------------------------------------------------------------
 FROM node:22-alpine AS base
 
 ENV PNPM_HOME=/pnpm
 ENV PATH="$PNPM_HOME:$PATH"
+
+# Without this, `pnpm install --prod` in the build stage fails with
+# ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY: switching an existing install to production-only
+# changes the shape of node_modules, and pnpm refuses to purge it unattended unless it knows it is
+# running in CI. Every build here is unattended.
+ENV CI=true
+
 RUN corepack enable
 
 WORKDIR /app
