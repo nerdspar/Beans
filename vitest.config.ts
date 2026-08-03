@@ -27,10 +27,6 @@ export default defineConfig({
     fileParallelism: false,
     maxWorkers: 1,
     minWorkers: 1,
-    poolOptions: {
-      forks: { singleFork: true },
-      threads: { singleThread: true },
-    },
 
     /**
      * The database lives on the NAS rather than localhost, so every query is a LAN round trip and
