@@ -139,9 +139,15 @@ export type AccountConfirmation = {
   /** The user's answer, not ours. Stored with `type_is_user_set` so sync never overwrites it. */
   type: AccountType
   signInverted: boolean
-  /** Optional rename. Institution names are frequently unreadable. */
-  displayName?: string
-  taxTreatment?: TaxTreatment
+  /**
+   * Optional rename. Institution names are frequently unreadable.
+   *
+   * Explicitly `| undefined` rather than merely optional: under `exactOptionalPropertyTypes` an
+   * absent property and one set to `undefined` are different types, and a parsed request body
+   * produces the latter.
+   */
+  displayName?: string | undefined
+  taxTreatment?: TaxTreatment | undefined
   /** False leaves the account undiscovered — not every account at an institution is wanted. */
   include: boolean
 }

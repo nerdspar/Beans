@@ -9,6 +9,7 @@ import type { DataKeyCache } from './crypto/data-key-cache.js'
 import type { KeyProvider } from './crypto/key-provider.js'
 import { loggerOptions } from './logging.js'
 import type { Mailer } from './mail/mailer.js'
+import { connectionRoutes } from './routes/connections.js'
 import { householdRoutes } from './routes/households.js'
 import type { Pool } from 'pg'
 
@@ -19,6 +20,14 @@ export type ServerDependencies = {
   keyProvider: KeyProvider
   keyCache: DataKeyCache
   mailer: Mailer
+  /**
+   * Whether the background sync worker started.
+   *
+   * Reported by `/health` and treated as **unhealthy** when false: a stopped worker means balances
+   * quietly stop updating while every request still succeeds, which is precisely the failure that
+   * must not show a green light.
+   */
+  syncWorkerRunning: boolean
 }
 
 export async function buildServer({
@@ -28,6 +37,7 @@ export async function buildServer({
   keyProvider,
   keyCache,
   mailer,
+  syncWorkerRunning,
 }: ServerDependencies): Promise<FastifyInstance> {
   const fastify = Fastify({
     logger: loggerOptions(config.logLevel, config.isProduction),
@@ -46,12 +56,10 @@ export async function buildServer({
   const auth = createAuth(config, db)
   await fastify.register(authRoutes, { auth })
 
-  await fastify.register(householdRoutes, {
-    auth,
-    config,
-    mailer,
-    deps: { pool, keyProvider, keyCache },
-  })
+  const contextDeps = { pool, keyProvider, keyCache }
+
+  await fastify.register(householdRoutes, { auth, config, mailer, deps: contextDeps })
+  await fastify.register(connectionRoutes, { auth, deps: contextDeps })
 
   /**
    * Reports what the container can actually do, not merely that the process is alive.
@@ -72,9 +80,12 @@ export async function buildServer({
       fastify.log.error({ err: error }, 'health check: database unreachable')
     }
 
-    // The sync worker arrives in milestone 3. Reported explicitly rather than omitted, so the
-    // absence is visible rather than looking like everything is fine.
-    checks['syncWorker'] = 'not_configured'
+    checks['syncWorker'] = syncWorkerRunning ? 'running' : 'stopped'
+    if (!syncWorkerRunning) {
+      // A stopped worker means balances silently stop updating while every request still succeeds —
+      // exactly the failure that must not read as healthy.
+      healthy = false
+    }
 
     return reply.status(healthy ? 200 : 503).send({
       status: healthy ? 'ok' : 'degraded',

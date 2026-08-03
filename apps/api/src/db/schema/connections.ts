@@ -133,6 +133,14 @@ export const syncRuns = pgTable(
     transactionsUpserted: integer('transactions_upserted').notNull().default(0),
 
     /**
+     * Requests this run spent against the Bridge's 24-per-day ceiling.
+     *
+     * The daily budget is computed by summing this over today's runs rather than tracked in a
+     * counter, so it survives a restart and cannot drift from what actually happened.
+     */
+    requestsSpent: integer('requests_spent').notNull().default(0),
+
+    /**
      * SimpleFIN's structured `errlist`, encrypted. These are **surfaced to the user**, never
      * swallowed.
      */

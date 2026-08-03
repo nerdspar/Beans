@@ -1,0 +1,1 @@
+ALTER TABLE "sync_runs" ADD COLUMN "requests_spent" integer DEFAULT 0 NOT NULL;

@@ -97,4 +97,11 @@ behavior is a separate question.
 - [ ] Route-level tests for the household and invite endpoints. The HTTP layer was verified by hand
       (create household, invite, join, token reuse rejected, non-owner rejected, unauthenticated
       rejected) but has no automated coverage. The repository layer beneath it does.
+- [ ] Route-level tests for the connection endpoints. Verified by hand only as far as auth gating
+      (401 without a session); the full claim → discover → confirm → sync flow is covered at the
+      repository layer but not over HTTP.
+- [ ] **A scheduled sync actually firing.** The worker starts, registers its cron, and its handler
+      is covered by the sync-service tests — but no scheduled tick has ever fired end to end, since
+      that needs a live token and a wait. Verify the first real one lands, and that the jitter
+      offset does not push it outside its window.
 - [ ] Email verification flow (`requireEmailVerification`) — off by default, never exercised.
