@@ -5,6 +5,7 @@ import { DESTINATIONS } from './navigation/destinations.js'
 import { DesktopShell } from './shells/desktop/DesktopShell.js'
 import { MobileShell } from './shells/mobile/MobileShell.js'
 import { useIsDesktop } from './shells/use-shell.js'
+import { NetWorth } from './screens/NetWorth.js'
 import { Placeholder } from './screens/Placeholder.js'
 import { TabSettings } from './screens/TabSettings.js'
 import { TransitionPrototype } from './screens/TransitionPrototype.js'
@@ -53,11 +54,14 @@ function Shell({ children }: { children: ReactNode }): ReactNode {
 function Routes(): ReactNode {
   return (
     <Switch>
+      <Route path="/" component={NetWorth} />
       <Route path="/settings" component={TabSettings} />
       {/* Not in the destination registry: a workbench for judging the transition, not a screen. */}
       <Route path="/prototype/transition" component={TransitionPrototype} />
 
-      {DESTINATIONS.filter((destination) => destination.key !== 'settings').map((destination) => (
+      {DESTINATIONS.filter(
+        (destination) => destination.key !== 'settings' && destination.key !== 'net-worth',
+      ).map((destination) => (
         <Route key={destination.key} path={destination.path}>
           <Placeholder destination={destination} />
         </Route>
