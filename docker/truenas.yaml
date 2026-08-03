@@ -1,0 +1,172 @@
+# Beans — the whole stack, for the TrueNAS Apps UI (Install via YAML / Custom App).
+#
+# This is the file to use. `truenas-db.yaml` remains for the database-only arrangement that predates
+# it; running both at once would be actively dangerous — see "Migrating" below.
+#
+# Why one file rather than two:
+#
+#   - Postgres does not need to be on the LAN at all. The app reaches it by service name over the
+#     compose network, so no port is published and nothing outside this stack can connect. That is
+#     strictly better than publishing 5432 and relying on nobody proxying it.
+#   - The API applies migrations on startup, so it genuinely needs the database ready first.
+#     `depends_on` with `service_healthy` expresses that; two separate apps cannot.
+#
+# TrueNAS runs custom-app YAML from its own managed project directory, so there is no `.env`
+# alongside it: `${VAR}` resolves to empty and `build:` is unsupported. Everything here is literal
+# and image-only. The root `docker-compose.yml` stays canonical for local development.
+#
+# ---------------------------------------------------------------------------------------------
+# Before first start
+#
+#   1. The application image must exist. Push to `main` and let the Image workflow publish it, or
+#      build it on the NAS with `docker build -f docker/Dockerfile -t ghcr.io/nerdspar/beans:latest .`
+#
+#   2. /mnt/NAS/Data/beans/initdb/01-init.sh must already be on disk. It runs exactly once, on an
+#      empty data directory, and creates the non-superuser application role.
+#
+#   3. The master key must exist and be readable by uid 568:
+#        mkdir -p /mnt/NAS/Data/beans/secrets
+#        head -c 32 /dev/urandom | base64 > /mnt/NAS/Data/beans/secrets/master.key
+#        chown -R 568:568 /mnt/NAS/Data/beans/secrets
+#        chmod 600 /mnt/NAS/Data/beans/secrets/master.key
+#
+#      **Back this up somewhere other than the database.** It wraps every household's data key, so a
+#      database backup without it is unreadable ciphertext — and the two stored together defeat the
+#      point of wrapping the keys at all (ARCHITECTURE.md §5).
+#
+#   4. Replace every REPLACE_ value below.
+#
+#   5. Point Nginx Proxy Manager at this stack's port 3100 for beans.nerdspar.com, with a
+#      certificate. HTTPS is not optional: the session cookie is Secure, Google rejects OAuth
+#      redirects to bare IPs, and a service worker needs a secure context to install.
+#
+# ---------------------------------------------------------------------------------------------
+# Migrating from the database-only app
+#
+# The existing database app already binds host port 5432 and owns /mnt/NAS/Data/beans/db. **Stop and
+# delete it before starting this stack.** Two Postgres containers pointing at one data directory is
+# not a port conflict, it is corruption — the second refuses to start if it sees the first's lock
+# file, and does something worse if it does not.
+#
+# Your data is safe across the move. It lives in the bind mount, not in the container, and Postgres
+# runs initdb only on an empty directory — so this stack adopts the existing database rather than
+# reinitializing it, and 01-init.sh will not run a second time.
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+
+    # Pinned to the postgres user's own uid, with the host directory chowned to match:
+    #     chown -R 999:999 /mnt/NAS/Data/beans/db
+    #
+    # The entrypoint normally starts as root, creates PGDATA, chowns it, then drops to postgres via
+    # gosu. TrueNAS Apps runs custom apps as its `apps` user (568), so that root step never happens
+    # and the entrypoint fails with:
+    #     mkdir: cannot create directory '/var/lib/postgresql/data': Permission denied
+    # Pinning the uid removes the dependency on that step entirely.
+    user: '999:999'
+
+    # Postgres uses shared memory for parallel query and sorts. Docker's 64mb default is tight.
+    shm_size: 256mb
+
+    environment:
+      # The superuser. The application deliberately does NOT connect as this role — superusers
+      # bypass row-level security entirely, which would silently disable tenant isolation.
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: REPLACE_SUPERUSER_PASSWORD
+      POSTGRES_DB: beans
+
+      # A subdirectory, not the mount root. A bind-mounted ZFS dataset is never truly empty and
+      # initdb refuses to initialize a non-empty directory.
+      PGDATA: /var/lib/postgresql/data/pgdata
+
+      # Read by initdb/01-init.sh.
+      BEANS_DB_USER: beans_app
+      BEANS_DB_PASSWORD: REPLACE_APP_PASSWORD
+      BEANS_DB_NAME: beans
+      BEANS_TEST_DB_NAME: beans_test
+
+    # No `ports`. The app reaches this over the compose network by service name, so the database is
+    # not on the LAN at all. To run psql against it:
+    #     docker compose exec db psql -U postgres -d beans
+    # Publish 5432 only if you need an external client, and never through the reverse proxy.
+
+    volumes:
+      - /mnt/NAS/Data/beans/db:/var/lib/postgresql/data
+      - /mnt/NAS/Data/beans/initdb:/docker-entrypoint-initdb.d:ro
+
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d beans']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  app:
+    image: ghcr.io/nerdspar/beans:latest
+    restart: unless-stopped
+
+    # Matches the TrueNAS `apps` user, which owns the secrets directory. The image runs as `node`
+    # by default; overriding here keeps host file ownership simple.
+    user: '568:568'
+
+    depends_on:
+      db:
+        # Not merely `started`. The API applies migrations on boot, and against a Postgres that is
+        # accepting connections but still recovering, that fails the whole container.
+        condition: service_healthy
+
+    environment:
+      NODE_ENV: production
+      PORT: '3100'
+      LOG_LEVEL: info
+
+      # `db` is the service name on the compose network. The application role is non-superuser and
+      # non-BYPASSRLS; connecting as the superuser would silently disable row-level security and
+      # therefore tenant isolation entirely.
+      DATABASE_URL: postgres://beans_app:REPLACE_APP_PASSWORD@db:5432/beans
+
+      # Referenced by path, never inlined. An environment variable holding the key would put it in
+      # `docker inspect`, in the TrueNAS UI, and in any process listing.
+      MASTER_KEY_FILE: /run/secrets/master.key
+
+      # One origin serves both the API and the app, which is why no CORS and no extra trusted
+      # origins are needed here. Must match the certificate exactly.
+      PUBLIC_URL: https://beans.nerdspar.com
+      BETTER_AUTH_URL: https://beans.nerdspar.com
+      BETTER_AUTH_SECRET: REPLACE_AUTH_SECRET
+
+      # Empty in production on purpose: the frontend is served from PUBLIC_URL, so there is no
+      # second origin. This list is the CSRF boundary — do not add to it to work around a problem.
+      EXTRA_TRUSTED_ORIGINS: ''
+
+      # Optional. Leave both empty and the Google button is hidden rather than rendered broken.
+      GOOGLE_CLIENT_ID: ''
+      GOOGLE_CLIENT_SECRET: ''
+
+      # Optional. With mail unconfigured, invites still work — the link is shown on screen to copy.
+      RESEND_API_KEY: ''
+      MAIL_FROM: beans@nerdspar.com
+
+    ports:
+      # Behind Nginx Proxy Manager, which terminates TLS. LAN-only.
+      - '3100:3100'
+
+    volumes:
+      - /mnt/NAS/Data/beans/secrets/master.key:/run/secrets/master.key:ro
+
+    healthcheck:
+      # Checks the database and the sync worker, not merely that Node is alive. A stopped worker
+      # returns 503: balances quietly stop updating while every request still succeeds, which is
+      # exactly the failure that must not read as healthy.
+      # Single quotes inside double quotes, so nothing needs escaping through YAML or the shell.
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "require('http').get('http://127.0.0.1:3100/health',
+          r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

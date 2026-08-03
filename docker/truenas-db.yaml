@@ -1,5 +1,13 @@
 # Beans — Postgres only, for the TrueNAS Apps UI (Install via YAML / Custom App).
 #
+# SUPERSEDED by truenas.yaml, which runs the database and the app as one stack. Prefer that: it
+# keeps Postgres off the LAN entirely (the app reaches it by service name) and lets the app wait for
+# the database to be healthy before applying migrations.
+#
+# Kept because it is what is currently deployed, and because the uid and PGDATA notes below were
+# learned the hard way and apply to either arrangement. **Do not run both at once** — two Postgres
+# containers over one data directory is corruption, not a port conflict.
+#
 # Paste this into the TrueNAS Apps YAML editor after replacing the two REPLACE_ values below.
 #
 # Why this file exists separately from the repo's docker-compose.yml:

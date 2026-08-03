@@ -580,6 +580,24 @@ missed.
 
 ## 13. Deployment
 
+### 13.0 One stack, not two
+
+`docker/truenas.yaml` runs the database and the app together. An earlier note here claimed splitting
+them protected the database from being recreated on an image update; **that was wrong** — a bind
+mount is not a named volume, `initdb` runs only on an empty data directory, and `compose up` only
+recreates services whose configuration changed. The database was never at risk either way.
+
+The real reasons to combine are the ones that should have led:
+
+- **Postgres does not need to be on the LAN.** The app reaches it by service name over the compose
+  network, so no port is published and nothing outside the stack can connect — better than
+  publishing 5432 and relying on nobody proxying it.
+- The API applies migrations on boot, so it needs the database *ready*, not merely started.
+  `depends_on: condition: service_healthy` says so; two separate apps cannot.
+
+The one genuine hazard is running both arrangements at once: two Postgres containers over one data
+directory is corruption, not a port conflict.
+
 ### 13.1 As built
 
 One image serves the API and the built frontend from **one origin**, which is why production needs
