@@ -56,8 +56,9 @@ production is not.
 
 ### Container and deployment
 
-- [ ] Dockerfile builds. **It currently cannot** — it copies `apps/web/dist`, which does not exist
-      until milestone 6, and the API has no build script yet. Both need doing before any deploy.
+- [ ] Dockerfile builds. `apps/web/dist` now exists (milestone 6), but the **API still has no build
+      script** — it runs via tsx in development and nothing bundles it for production. That is the
+      remaining blocker.
 - [ ] Migrations run on container startup, idempotently, against the existing database
 - [ ] `/health` reachable through the proxy and reports `database: ok`
 - [ ] Master key mounted correctly and readable by the container user
@@ -105,3 +106,10 @@ behavior is a separate question.
       that needs a live token and a wait. Verify the first real one lands, and that the jitter
       offset does not push it outside its window.
 - [ ] Email verification flow (`requireEmailVerification`) — off by default, never exercised.
+- [ ] **PWA install on a real device.** The manifest and service worker are generated and the
+      iOS meta tags are set, but nothing has been added to a home screen. Verify standalone display,
+      the icon, safe-area insets against a real notch, and that the app does not get stuck on a
+      stale build after a deploy.
+- [ ] Tab reordering persisting across devices. The optimistic update and the endpoint both exist,
+      but the round trip has only been exercised signed-out (401), so the persisted path is
+      unproven.

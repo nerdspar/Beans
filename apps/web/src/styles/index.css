@@ -1,0 +1,34 @@
+@import 'tailwindcss';
+
+/*
+ * Dark mode follows the system by default. Tailwind 4 configures in CSS rather than a config file.
+ */
+@variant dark (&:where(.dark, .dark *), @media (prefers-color-scheme: dark));
+
+@layer base {
+  html {
+    /* Momentum scrolling, so lists feel native rather than web. */
+    -webkit-overflow-scrolling: touch;
+    /* Stops the whole page rubber-banding under a fixed bottom bar on iOS. */
+    overscroll-behavior-y: none;
+  }
+
+  body {
+    @apply antialiased;
+  }
+
+  /*
+   * Honors the reduced-motion preference globally rather than per component, so a missed
+   * animation somewhere cannot override the user's system setting.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

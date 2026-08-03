@@ -11,6 +11,7 @@ import { loggerOptions } from './logging.js'
 import type { Mailer } from './mail/mailer.js'
 import { connectionRoutes } from './routes/connections.js'
 import { householdRoutes } from './routes/households.js'
+import { preferenceRoutes } from './routes/preferences.js'
 import type { Pool } from 'pg'
 
 export type ServerDependencies = {
@@ -60,6 +61,7 @@ export async function buildServer({
 
   await fastify.register(householdRoutes, { auth, config, mailer, deps: contextDeps })
   await fastify.register(connectionRoutes, { auth, deps: contextDeps })
+  await fastify.register(preferenceRoutes, { auth, pool })
 
   /**
    * Reports what the container can actually do, not merely that the process is alive.
