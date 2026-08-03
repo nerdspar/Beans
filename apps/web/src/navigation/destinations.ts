@@ -89,13 +89,26 @@ export const DESTINATIONS: readonly Destination[] = [
     icon: PiggyBank,
     tabbable: true,
   },
+  /**
+   * Deliberately **not** a browse destination.
+   *
+   * The net worth screen is already the account list — every account, grouped by section, with
+   * balances and sync status. A second top-level list of the same accounts would be two surfaces
+   * rendering the same data, free to drift, and would spend one of four scarce tab slots on a copy
+   * of the list the user is already looking at. Account details are reached by tapping a row there.
+   *
+   * What lives here instead is everything net worth deliberately does not show: adding and editing
+   * manual accounts, closed accounts, accounts a member has marked private, and per-account
+   * settings like tax treatment. Management, not browsing — which is settings-shaped, so it sits in
+   * More rather than competing for a tab.
+   */
   {
     key: 'accounts',
     path: '/accounts',
-    label: 'Accounts',
+    label: 'Manage accounts',
     short: 'Accounts',
     icon: Wallet,
-    tabbable: true,
+    tabbable: false,
   },
   {
     key: 'household',
@@ -111,7 +124,9 @@ export const DESTINATIONS: readonly Destination[] = [
     label: 'Connections',
     short: 'Banks',
     icon: Landmark,
-    tabbable: false,
+    // Tabbable: sync health is worth glancing at often when a connection is flaky, and it gives
+    // the tab chooser a fifth option so there is a real choice to make.
+    tabbable: true,
   },
   {
     key: 'import',
@@ -148,7 +163,7 @@ export const DEFAULT_TAB_ORDER: readonly DestinationKey[] = [
   'net-worth',
   'transactions',
   'cash-flow',
-  'accounts',
+  'portfolio',
 ]
 
 /** Exactly four. The fifth slot is always More, so it is not configurable. */
