@@ -699,6 +699,36 @@ The suggestion is therefore per-institution and not a blanket flip: a liability 
 inversion **only when the provider sent it positive**. Always inverting would break every institution
 that already reports the sign we use.
 
+### 15.1a Managing accounts
+
+`/accounts` lists every account grouped by the connection it came from, with manual accounts as
+their own group. It replaced a separate connections page that listed one connection and was
+otherwise empty — **a connection is not something anybody thinks about**, it is how some accounts
+arrive. Grouping by it puts sync health beside the accounts it affects, and makes manual accounts
+just another group rather than a homeless special case.
+
+`/connections` remains, reached from here, for the two things that are about the credential rather
+than an account: reconnecting, and re-confirming the provider's answers.
+
+Editing rules worth knowing:
+
+- **A sign change rewrites history; a rename does not.** `provider_sign_inverted` applies to the
+  balance only, never to transaction amounts, so flipping it negates the stored balance — and every
+  derived snapshot came from that balance, so `rebuildAccountHistory` runs. Without it the headline
+  figure would move while the whole series stayed on the wrong side of zero.
+- The balance is **negated, not recomputed**, because the provider's original figure is not stored —
+  only our reading of it. Negation is exactly the inverse of `applySignConvention`.
+- **Revisiting a connection defaults to what is stored, not to a fresh guess.** It previously
+  re-proposed the type guess over answers the user had already given, so fixing a sign silently
+  reverted a corrected type. `type_is_user_set` exists to stop sync doing that; this was the one
+  remaining path that could.
+- A manual account is created **confirmed**. The confirmation gate exists to make a human check a
+  *provider's* sign (§3.3); a figure the user typed has already had that attention.
+- Manual balances are a **step function** — each entry held flat until the next. Nobody knows what a
+  house was worth between two valuations, and interpolating would invent the months between them.
+- The user types a positive number and the **type decides the sign**, so recording a debt never
+  requires remembering a minus sign.
+
 ### 15.2 Coverage boundaries in a rollup
 
 Accounts do not share a coverage start. Backward reconstruction gives cash and credit a year of

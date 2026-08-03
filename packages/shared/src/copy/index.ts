@@ -12,4 +12,4 @@ export {
   coverageNotice,
 } from './account.js'
 export { AUTH_COPY } from './auth.js'
-export { ACCOUNT_TYPE_LABELS, CONNECTION_COPY } from './connections.js'
+export { ACCOUNTS_COPY, ACCOUNT_TYPE_LABELS, CONNECTION_COPY } from './connections.js'

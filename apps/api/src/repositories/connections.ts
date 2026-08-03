@@ -80,6 +80,15 @@ export type DiscoveredAccount = {
 
   /** True when this provider account already maps to one of ours — a reconnect, not a discovery. */
   alreadyLinked: boolean
+
+  /**
+   * What is stored for this account today, when it is already linked.
+   *
+   * Without it, revisiting a connection re-proposed the *guess* over answers the user had already
+   * given — silently reverting a corrected type on the way to fixing a sign. `type_is_user_set`
+   * exists so sync can never do that, and this closes the one path that still could.
+   */
+  current: { type: AccountType; signInverted: boolean } | null
 }
 
 export type DiscoveryResult = {
@@ -104,12 +113,22 @@ export async function discoverAccounts(
 
   const response = await fetchAccounts(accessUrl, fetcher, { balancesOnly: true })
 
-  const linked = await context.client.query<{ simplefin_account_id: string }>(
-    `select simplefin_account_id from accounts
+  const linked = await context.client.query<{
+    simplefin_account_id: string
+    type: AccountType
+    provider_sign_inverted: boolean
+  }>(
+    `select simplefin_account_id, type, provider_sign_inverted from accounts
       where connection_id = $1 and simplefin_account_id is not null`,
     [connectionId],
   )
-  const linkedIds = new Set(linked.rows.map((row) => row.simplefin_account_id))
+
+  const linkedById = new Map(
+    linked.rows.map((row) => [
+      row.simplefin_account_id,
+      { type: row.type, signInverted: row.provider_sign_inverted },
+    ]),
+  )
 
   const accounts = response.accounts.map((account): DiscoveredAccount => {
     const typeGuess = guessAccountType(account.name, account.org.name)
@@ -127,7 +146,8 @@ export async function discoverAccounts(
       suggestedSignInverted: suggested,
       interpretedBalanceCents: interpreted,
       anomaly: checkBalanceSign(typeGuess.type, interpreted),
-      alreadyLinked: linkedIds.has(account.id),
+      alreadyLinked: linkedById.has(account.id),
+      current: linkedById.get(account.id) ?? null,
     }
   })
 

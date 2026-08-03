@@ -23,6 +23,8 @@ export type DiscoveredAccount = {
   suggestedSignInverted: boolean | null
   anomaly: { severity: 'blocking' | 'warning'; reason: string } | null
   alreadyLinked: boolean
+  /** What is stored today. Present only for an account this connection already owns. */
+  current: { type: AccountType; signInverted: boolean } | null
 }
 
 export type Discovery = {

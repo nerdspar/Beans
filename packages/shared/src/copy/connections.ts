@@ -90,3 +90,56 @@ export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
   other_asset: 'Other asset',
   other_liability: 'Other liability',
 }
+
+/**
+ * Copy for managing accounts.
+ *
+ * The screen replaced a separate connections page that listed one connection and nothing else. An
+ * account is what a person thinks about; a connection is only how some of them arrive, which is why
+ * it appears here as a grouping with its own health rather than as a destination of its own.
+ */
+export const ACCOUNTS_COPY = {
+  title: 'Accounts',
+  empty: 'No accounts yet',
+  emptyDetail:
+    'Connect an institution to pull balances automatically, or add something Beans cannot reach — a house, a car, a private investment.',
+
+  manualGroup: 'Manual',
+  manualGroupDetail: 'Kept up to date by you. Beans never changes these.',
+  closed: 'Closed',
+  showClosed: 'Show closed accounts',
+
+  edit: 'Edit',
+  editTitle: 'Edit account',
+  name: 'Name',
+  institution: 'Institution',
+  type: 'Type',
+  taxTreatment: 'Tax treatment',
+  signInverted: 'Record the opposite of what the provider sends',
+  /** Stated because the consequence is invisible on the chart, which plots liabilities as magnitudes. */
+  signInvertedHelp:
+    'Changing this negates the balance and rebuilds this account’s history to match.',
+  markClosed: 'Closed — keep the history, leave it out of net worth',
+  save: 'Save changes',
+  saving: 'Saving',
+  saveFailed: 'Could not save those changes.',
+  cancel: 'Cancel',
+
+  addManual: 'Add manual account',
+  addManualTitle: 'Add a manual account',
+  addManualBlurb:
+    'For anything SimpleFIN cannot reach. You enter the value, and update it whenever it changes.',
+  balance: 'Current value',
+  balanceHelp: 'Enter what it is worth. Beans applies the sign for the type you chose.',
+  asOf: 'As of',
+  asOfHelp: 'The date this value was true. History starts here.',
+  create: 'Add account',
+  creating: 'Adding',
+  createFailed: 'Could not add that account.',
+
+  updateBalance: 'Update value',
+  updateBalanceTitle: 'Update value',
+  updateBalanceBlurb:
+    'The new figure is held from this date until the next update — a step, not a slope, because nothing is known about the days in between.',
+  record: 'Record value',
+} as const

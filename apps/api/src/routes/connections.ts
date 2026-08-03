@@ -305,6 +305,7 @@ function serializeDiscovered(account: {
   suggestedSignInverted: boolean | null
   anomaly: { severity: string; reason: string } | null
   alreadyLinked: boolean
+  current: { type: string; signInverted: boolean } | null
 }) {
   return {
     simplefinAccountId: account.simplefinAccountId,
@@ -319,5 +320,6 @@ function serializeDiscovered(account: {
     suggestedSignInverted: account.suggestedSignInverted,
     anomaly: account.anomaly,
     alreadyLinked: account.alreadyLinked,
+    current: account.current,
   }
 }

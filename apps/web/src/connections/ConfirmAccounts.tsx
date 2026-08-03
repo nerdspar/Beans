@@ -30,6 +30,23 @@ import type { AccountConfirmation, DiscoveredAccount } from './api.js'
 type Draft = AccountConfirmation & { key: string }
 
 function initialDraft(account: DiscoveredAccount): Draft {
+  /*
+   * An account already linked defaults to **what is stored**, not to a fresh guess.
+   *
+   * Revisiting a connection is normally about correcting one answer, and re-proposing the guess for
+   * every other account silently reverted them — a type the user had fixed at setup came back as
+   * whatever the name happened to look like. Only a genuinely new account gets the suggestion.
+   */
+  if (account.current !== null) {
+    return {
+      key: account.simplefinAccountId,
+      simplefinAccountId: account.simplefinAccountId,
+      type: account.current.type,
+      signInverted: account.current.signInverted,
+      include: true,
+    }
+  }
+
   return {
     key: account.simplefinAccountId,
     simplefinAccountId: account.simplefinAccountId,
