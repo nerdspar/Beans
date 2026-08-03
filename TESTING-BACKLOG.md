@@ -155,10 +155,13 @@ behavior is a separate question.
       covered; the IndexedDB half has been exercised by hand but has no automated test, because
       `apps/web` has no DOM test environment. If it were wrong the symptom would be a net worth that
       silently keeps a deleted account's history.
-- [ ] **The container image has never been built.** Docker is not installed on the development
-      machine, so the first real build is CI. The pieces are verified separately — `pnpm build`
-      produces both dists, and the production bundle was run directly with `node` and confirmed to
-      serve the app, deep links, assets and API routes with the right cache headers — but the
-      multi-stage Dockerfile itself, and particularly whether pnpm's symlinked `node_modules`
-      survives being copied between stages, is unproven.
+- [x] ~~The container image has never been built.~~ Built and pushed by CI for both amd64 and
+      arm64: `ghcr.io/nerdspar/beans:latest`. It took two attempts — `pnpm install --prod` aborts
+      with `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` unless `CI=true` is set, because switching an
+      existing install to production-only changes the shape of `node_modules` and pnpm will not purge
+      it unattended. The symlinked-`node_modules`-across-stages worry turned out to be unfounded.
+- [ ] **The image has never been run.** It builds, but nothing has started a container from it. The
+      production bundle was exercised directly with `node` on the development machine, which covers
+      the application but not the image: the entrypoint, the non-root user, the mounted master key,
+      and whether migrations apply on first boot against the real database are all unproven.
 
