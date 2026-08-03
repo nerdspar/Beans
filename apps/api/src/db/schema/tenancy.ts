@@ -132,6 +132,25 @@ export const householdInvites = pgTable(
   (table) => [
     index('household_invites_household_idx').on(table.householdId),
     householdIsolationPolicy('household_invites'),
+
+    /**
+     * Lets someone holding an invite token read that one invite, before they belong to any
+     * household.
+     *
+     * Same bootstrap problem as `household_members_self_select`: accepting an invite means finding
+     * it, but the invite is household-scoped and the invitee has no household context yet.
+     *
+     * The predicate is the token hash, so the only way to match a row is to already hold the
+     * token — the capability the invite *is*. The caller sets `app.invite_token_hash` to the hash
+     * of what the user presented; a wrong token matches nothing. Select-only, so a token grants
+     * visibility and never the ability to write.
+     */
+    pgPolicy('household_invites_by_token_select', {
+      as: 'permissive',
+      for: 'select',
+      to: 'public',
+      using: sql`token_hash = nullif(current_setting('app.invite_token_hash', true), '')`,
+    }),
   ],
 ).enableRLS()
 

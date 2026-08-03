@@ -5,6 +5,7 @@ import { DataKey } from '../crypto/data-key.js'
 import { DecryptionError } from '../crypto/envelope.js'
 import { HouseholdCipher } from '../crypto/household-cipher.js'
 import { LocalMasterKeyProvider } from '../crypto/local-master-key-provider.js'
+import { resetAll, resetHouseholdsById } from '../test-support/reset-database.js'
 
 /**
  * Tenant isolation. **The most important tests in the repo.**
@@ -92,6 +93,9 @@ describeIntegration('tenant isolation', () => {
     )
     expect(rows[0].rolsuper, 'test role must not be a superuser').toBe(false)
     expect(rows[0].rolbypassrls, 'test role must not have BYPASSRLS').toBe(false)
+
+    // The expensive reset, once per file rather than once per test.
+    await resetAll(pool)
   })
 
   afterAll(async () => {
@@ -99,8 +103,9 @@ describeIntegration('tenant isolation', () => {
   })
 
   beforeEach(async () => {
-    // Truncate as the table owner. RLS applies to DELETE but not TRUNCATE.
-    await pool.query('truncate households, accounts, categories restart identity cascade')
+    // Deletes each household from inside its own context, cascading everything away. Cheap, unlike
+    // TRUNCATE — see test-support/reset-database.ts.
+    await resetHouseholdsById(pool, [HOUSEHOLD_A, HOUSEHOLD_B])
     await seedHousehold(HOUSEHOLD_A, 'Chase Checking')
     await seedHousehold(HOUSEHOLD_B, 'Wells Fargo Savings')
   })

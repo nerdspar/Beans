@@ -101,6 +101,14 @@ sensitive fields to the redaction list in the same commit that introduces them.
 - **Never `new Date()` in a test.** Fixtures use fixed dates, always.
 - Unit tests run against no database. Integration tests run against real Postgres — never a mock,
   never SQLite.
+- **Never `TRUNCATE` per test.** It measured at ~5 seconds per call against Postgres on the NAS
+  (versus 3ms for a select), because it creates and fsyncs a new file for every cascading table.
+  Doing it in `beforeEach` was the entire runtime of the suite. Use the helpers in
+  `src/test-support/reset-database.ts`: `resetAll` once per file, `resetHouseholdsFor` /
+  `resetHouseholdsById` per test.
+- Integration test files must not run concurrently — they share one database. `vitest.config.ts`
+  pins to a single worker. If you see every integration file time out at once, suspect orphaned
+  `vitest` processes from an interrupted run (`pkill -f vitest`) before suspecting the code.
 - `pnpm test:math` must stay fast (seconds) and cover parsing, reconstruction, aggregation, transfers.
 - Cross-tenant isolation tests are the most important tests here. Do not weaken them to make an
   unrelated refactor pass.

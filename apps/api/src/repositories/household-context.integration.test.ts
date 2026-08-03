@@ -3,6 +3,7 @@ import { Pool } from 'pg'
 import { DataKeyCache } from '../crypto/data-key-cache.js'
 import { DecryptionError } from '../crypto/envelope.js'
 import { LocalMasterKeyProvider } from '../crypto/local-master-key-provider.js'
+import { resetAll, resetHouseholdsFor } from '../test-support/reset-database.js'
 import {
   NoHouseholdError,
   createHousehold,
@@ -47,9 +48,11 @@ describeIntegration('household context', () => {
     await pool?.end()
   })
 
-  beforeEach(async () => {
-    await pool.query('truncate households, accounts, auth_user restart identity cascade')
-    deps.keyCache.clear()
+  const users = [USER_A, USER_B, USER_ORPHAN] as const
+
+  beforeAll(async () => {
+    // The expensive reset runs once. See test-support/reset-database.ts for why not per test.
+    await resetAll(pool)
 
     for (const [id, email] of [
       [USER_A, 'a@example.com'],
@@ -61,6 +64,10 @@ describeIntegration('household context', () => {
         [id, 'Test User', email],
       )
     }
+  })
+
+  beforeEach(async () => {
+    await resetHouseholdsFor(deps, users)
   })
 
   it('creates a household and makes the creator its owner', async () => {

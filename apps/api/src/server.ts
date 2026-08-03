@@ -5,19 +5,29 @@ import { createAuth } from './auth/auth.js'
 import { authRoutes } from './auth/routes.js'
 import type { Config } from './config.js'
 import type { Database } from './db/client.js'
+import type { DataKeyCache } from './crypto/data-key-cache.js'
+import type { KeyProvider } from './crypto/key-provider.js'
 import { loggerOptions } from './logging.js'
+import type { Mailer } from './mail/mailer.js'
+import { householdRoutes } from './routes/households.js'
 import type { Pool } from 'pg'
 
 export type ServerDependencies = {
   config: Config
   db: Database
   pool: Pool
+  keyProvider: KeyProvider
+  keyCache: DataKeyCache
+  mailer: Mailer
 }
 
 export async function buildServer({
   config,
   db,
   pool,
+  keyProvider,
+  keyCache,
+  mailer,
 }: ServerDependencies): Promise<FastifyInstance> {
   const fastify = Fastify({
     logger: loggerOptions(config.logLevel, config.isProduction),
@@ -35,6 +45,13 @@ export async function buildServer({
 
   const auth = createAuth(config, db)
   await fastify.register(authRoutes, { auth })
+
+  await fastify.register(householdRoutes, {
+    auth,
+    config,
+    mailer,
+    deps: { pool, keyProvider, keyCache },
+  })
 
   /**
    * Reports what the container can actually do, not merely that the process is alive.

@@ -1,0 +1,1 @@
+CREATE POLICY "household_invites_by_token_select" ON "household_invites" AS PERMISSIVE FOR SELECT TO public USING (token_hash = nullif(current_setting('app.invite_token_hash', true), ''));

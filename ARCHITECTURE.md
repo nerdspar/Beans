@@ -4,7 +4,7 @@ Decisions and the reasoning behind them. If you are a future session picking thi
 before changing anything structural. Several decisions here look wrong until you know why they were
 made; the reasoning is recorded specifically so they don't get "fixed."
 
-Last updated: 2026-08-03 (milestone 1)
+Last updated: 2026-08-03 (milestone 2)
 
 ---
 
@@ -249,7 +249,29 @@ Better Auth's default tables (`user`, `session`, `account`, `verification`) are 
 Reason: Better Auth's `account` means "OAuth provider link," which would collide conceptually and
 namespace-wise with our financial `accounts`. The prefix keeps the two worlds unambiguous.
 
-### 6.2 One household per user in v1
+### 6.2 Bootstrap policies — reaching the first row
+
+Two operations have a genuine chicken-and-egg problem: they need to read a household-scoped table
+in order to discover which household to scope to. Each is solved by a deliberately narrow,
+**select-only** permissive policy keyed to a session variable.
+
+| Policy                              | Predicate                            | Why it is safe                                                                                    |
+| ----------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `household_members_self_select`     | `user_id = app.current_user_id`      | Matches exactly the caller's own membership row. Nothing else becomes visible.                    |
+| `household_invites_by_token_select` | `token_hash = app.invite_token_hash` | The only way to match is to already hold the token — which _is_ the capability the invite grants. |
+
+Both are `for: 'select'` only, so they widen reads and never writes. Postgres ORs permissive
+policies together, so each adds precisely one reachable row to what the household policy already
+allows.
+
+**`SELECT ... FOR UPDATE` requires the row to satisfy the UPDATE policy, not just SELECT.** This
+bit during implementation: locking the invite row during the token lookup silently found nothing,
+because the token policy is select-only. Accepting an invite therefore reads unlocked first,
+sets `app.current_household` from the result, and only then re-reads `FOR UPDATE` — at which point
+the household policy applies and the lock works. The failure mode was an invisible row rather than
+an error, which is exactly the kind of thing that reaches production.
+
+### 6.3 One household per user in v1
 
 `household_members` is a pure join table with a `unique(user_id)` constraint enforcing one household
 in v1. Removing that single constraint is the entire migration to many-to-many — no restructuring.

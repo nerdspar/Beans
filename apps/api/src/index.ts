@@ -1,5 +1,7 @@
 import { loadConfig } from './config.js'
+import { DataKeyCache } from './crypto/data-key-cache.js'
 import { LocalMasterKeyProvider } from './crypto/local-master-key-provider.js'
+import { createMailer } from './mail/mailer.js'
 import { createDatabase, createPool } from './db/client.js'
 import { runMigrations } from './db/migrate.js'
 import { buildServer } from './server.js'
@@ -14,9 +16,11 @@ import { buildServer } from './server.js'
 async function main(): Promise<void> {
   const config = loadConfig()
 
-  // Validated at startup and then discarded here — the provider is constructed again where it is
-  // actually used. This call exists purely to fail the boot loudly on a missing or malformed key.
-  await LocalMasterKeyProvider.fromFile(config.masterKeyFile)
+  // Loaded before anything listens, so a missing or malformed key fails the boot rather than the
+  // first write.
+  const keyProvider = await LocalMasterKeyProvider.fromFile(config.masterKeyFile)
+  const keyCache = new DataKeyCache()
+  const mailer = createMailer(config)
 
   const pool = createPool(config.databaseUrl)
   const db = createDatabase(pool)
@@ -24,7 +28,7 @@ async function main(): Promise<void> {
   // Idempotent, and serialized across instances by an advisory lock.
   await runMigrations(pool)
 
-  const server = await buildServer({ config, db, pool })
+  const server = await buildServer({ config, db, pool, keyProvider, keyCache, mailer })
 
   const shutdown = async (signal: string): Promise<void> => {
     server.log.info({ signal }, 'shutting down')
