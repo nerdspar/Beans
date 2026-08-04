@@ -4,6 +4,7 @@ import { z } from 'zod'
 import type { Auth } from '../auth/auth.js'
 import { getSession } from '../auth/routes.js'
 import type { Config } from '../config.js'
+import { deliverInvite } from '../mail/deliver-invite.js'
 import type { Mailer } from '../mail/mailer.js'
 import {
   NoHouseholdError,
@@ -169,22 +170,17 @@ export const householdRoutes: FastifyPluginAsync<HouseholdRoutesOptions> = async
        * A self-hosted install may have no mail at all, so the copy-paste link is the mechanism and
        * email is a convenience. A delivery failure must not lose the invite the user just created.
        */
-      let emailed = false
-      if (mailer.enabled && body.data.email !== undefined) {
-        try {
-          await mailer.send({
-            to: body.data.email,
-            subject: 'You have been invited to a Beans household',
-            text: `You have been invited to share a household on Beans.\n\nOpen this link to join:\n${link}\n\nThe link expires on ${invite.expiresAt.toDateString()}.`,
-          })
-          emailed = true
-        } catch (error) {
-          request.log.warn({ err: error }, 'invite email delivery failed')
-        }
-      }
+      // Which of the four things happened, not a boolean — see deliver-invite.ts.
+      const delivery = await deliverInvite(
+        mailer,
+        { to: body.data.email, link, expiresAt: invite.expiresAt },
+        (error) => request.log.warn({ err: error }, 'invite email delivery failed'),
+      )
 
       // The token appears here and nowhere else, ever again — only its hash is stored.
-      return reply.status(201).send({ link, expiresAt: invite.expiresAt, emailed })
+      return reply
+        .status(201)
+        .send({ link, expiresAt: invite.expiresAt, emailed: delivery === 'sent', delivery })
     } catch (error) {
       if (error instanceof InviteError) {
         return reply.status(403).send({ error: error.message })

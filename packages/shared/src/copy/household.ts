@@ -24,8 +24,20 @@ export const HOUSEHOLD_COPY = {
   inviteFailed: 'Could not create the invite.',
   /** Shown whether or not mail went out, because the link is what actually works. */
   inviteLink: 'Send them this link. It expires, and works once.',
-  inviteEmailed: 'Also emailed to them.',
-  inviteNotEmailed: 'Email is not configured on this server, so copy the link yourself.',
+  /**
+   * One line per outcome, because they call for different actions.
+   *
+   * These were a single boolean, and a delivery failure was reported as "email is not configured" —
+   * which sent somebody looking for an API key they had already set. A server that cannot say which
+   * happened should not pick one.
+   */
+  inviteDelivery: {
+    sent: 'Also emailed to them.',
+    'not-configured': 'Email is not set up on this server, so send the link yourself.',
+    failed:
+      'Sending the email failed, so send the link yourself. The server log has the reason — look for “invite email delivery failed”.',
+    'no-address': 'No email address given, so send the link yourself.',
+  },
   copy: 'Copy link',
   copied: 'Copied',
 

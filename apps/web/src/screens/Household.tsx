@@ -151,7 +151,7 @@ export function Household(): ReactNode {
                   {copied ? HOUSEHOLD_COPY.copied : HOUSEHOLD_COPY.copy}
                 </button>
                 <span className="text-xs text-slate-500 dark:text-slate-400">
-                  {created.emailed ? HOUSEHOLD_COPY.inviteEmailed : HOUSEHOLD_COPY.inviteNotEmailed}
+                  {HOUSEHOLD_COPY.inviteDelivery[created.delivery]}
                 </span>
               </div>
             </div>

@@ -9,7 +9,13 @@ export type Household = {
 
 export type Invite = { id: string; email: string; expiresAt: string }
 
-export type CreatedInvite = { link: string; expiresAt: string; emailed: boolean }
+export type CreatedInvite = {
+  link: string
+  expiresAt: string
+  emailed: boolean
+  /** Why it was or was not emailed. `emailed` is kept only for older clients. */
+  delivery: 'sent' | 'not-configured' | 'failed' | 'no-address'
+}
 
 async function send<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { credentials: 'same-origin', ...init })
