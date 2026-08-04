@@ -172,4 +172,11 @@ behavior is a separate question.
       a development key becomes the production key with no supported way off it. The job needs to
       unwrap each household's DEK with its current version and re-wrap it with the new one, in a
       transaction, leaving both keys present until every row has moved.
+- [ ] **Categories cannot be renamed, added or deleted from the UI.** The default set installs and is
+      usable, and rules reference slugs rather than labels so renaming is safe to add later, but
+      there is no screen for it. A household wanting a category Beans does not ship has no way to
+      create one.
+- [ ] **Rules cannot be reordered or edited.** They can be created, listed in application order, and
+      deleted. Since the first match wins, order decides outcomes — and the only way to change it
+      today is deleting a rule and creating it again.
 

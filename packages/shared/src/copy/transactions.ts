@@ -62,4 +62,16 @@ export const CATEGORY_COPY = {
   ruleDelete: 'Delete',
   /** Deleting a rule leaves what it already did in place, which is worth saying. */
   ruleDeleteNote: 'Deleting a rule leaves transactions it already categorized as they are.',
+  ruleApply: 'Apply rules',
+  /** Named because the order decides outcomes: the first matching rule wins. */
+  ruleRegex: 'Matched as a regular expression.',
+
+  categoriesHeading: 'Categories',
+  categoriesNote:
+    'The set every household starts with. Renaming and adding your own is not built yet — rules reference a category’s stable slug, so a rename will not break them when it is.',
+  kindLabel: {
+    income: 'Income',
+    expense: 'Spending',
+    transfer: 'Transfer — left out of cash flow',
+  },
 } as const

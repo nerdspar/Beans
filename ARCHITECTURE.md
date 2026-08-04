@@ -786,6 +786,15 @@ was changed by hand to Restaurants, the rules were re-run, and it stayed Restaur
 Categories are sent whole in the working set, like the confirmed transfer ids — a partial set would
 render categorized transactions as uncategorized.
 
+`/categories` lists the rules **in the order they are applied**, numbered, because that order decides
+outcomes: the first matching rule wins, so being third rather than first is the difference between
+two categories. Rules could be created from the transactions screen before this page existed, which
+meant a household could accumulate automation it had no way to see or undo — worse than none, since
+the effects are real and the cause is invisible.
+
+Renaming categories and adding your own is **not built**. Rules reference a stable slug rather than a
+label, so a rename will not break them when it is.
+
 ### 14.2 Cash flow, as built
 
 `/cash-flow` totals income and spending by calendar month, and its correctness rests entirely on

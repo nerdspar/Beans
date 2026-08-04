@@ -9,6 +9,7 @@ import { useWorkingSet } from './working-set/use-working-set.js'
 import { useSession } from './auth/use-session.js'
 import { AccountDetail } from './screens/AccountDetail.js'
 import { Accounts } from './screens/Accounts.js'
+import { Categories } from './screens/Categories.js'
 import { CashFlow } from './screens/CashFlow.js'
 import { Transactions } from './screens/Transactions.js'
 import { CreateHousehold } from './screens/CreateHousehold.js'
@@ -90,6 +91,7 @@ function Routes(): ReactNode {
       <Route path="/accounts" component={Accounts} />
       <Route path="/transactions" component={Transactions} />
       <Route path="/cash-flow" component={CashFlow} />
+      <Route path="/categories" component={Categories} />
       <Route path="/settings" component={TabSettings} />
       {/* Not in the destination registry: a workbench for judging the transition, not a screen. */}
       <Route path="/prototype/transition" component={TransitionPrototype} />
@@ -100,7 +102,8 @@ function Routes(): ReactNode {
           destination.key !== 'net-worth' &&
           destination.key !== 'accounts' &&
           destination.key !== 'transactions' &&
-          destination.key !== 'cash-flow',
+          destination.key !== 'cash-flow' &&
+          destination.key !== 'categories',
       ).map((destination) => (
         <Route key={destination.key} path={destination.path}>
           <Placeholder destination={destination} />
