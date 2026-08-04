@@ -8,7 +8,7 @@ import {
   sliceToWindow,
   toIsoDate,
 } from '@beans/shared'
-import { Search } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useDeferredValue, useMemo, useState, type ReactNode } from 'react'
 import { CategorySheet } from '../categories/CategorySheet.js'
@@ -52,6 +52,14 @@ export function Transactions(): ReactNode {
   )
   /** Direction of money, by sign. Amounts are signed to add to net worth, so this needs no lookup. */
   const [flow, setFlow] = useState<'all' | 'in' | 'out'>('all')
+
+  /*
+   * Seeded from the URL, like the account filter, so a category bar on cash flow arrives here
+   * already narrowed to the rows it was drawn from.
+   */
+  const [categoryId, setCategoryId] = useState<string>(
+    () => new URLSearchParams(window.location.search).get('category') ?? '',
+  )
   const [query, setQuery] = useState('')
 
   /*
@@ -83,6 +91,8 @@ export function Transactions(): ReactNode {
       if (flow === 'in' && transaction.amountCents <= 0n) return false
       if (flow === 'out' && transaction.amountCents >= 0n) return false
 
+      if (categoryId !== '' && transaction.categoryId !== categoryId) return false
+
       if (needle === '') return true
 
       /*
@@ -107,7 +117,7 @@ export function Transactions(): ReactNode {
     )
 
     return { visible: matched, total: inWindow.length }
-  }, [workingSet.transactions, range, today, accountId, flow, deferredQuery])
+  }, [workingSet.transactions, range, today, accountId, flow, categoryId, deferredQuery])
 
   if (workingSet.isLoading) {
     return <Message title={TRANSACTIONS_COPY.loading} />
@@ -186,6 +196,28 @@ export function Transactions(): ReactNode {
             )}
           />
         </label>
+
+        {/*
+          Named and removable. A filter applied from another screen is invisible otherwise, and an
+          empty list with no stated reason reads as missing data rather than as a narrowed view.
+        */}
+        {categoryId !== '' && (
+          <button
+            type="button"
+            onClick={() => setCategoryId('')}
+            className={cn(
+              'mt-2 inline-flex min-h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium',
+              'bg-sky-100 text-sky-900 hover:bg-sky-200',
+              'dark:bg-sky-950 dark:text-sky-200 dark:hover:bg-sky-900',
+              'focus-visible:outline-2 focus-visible:outline-sky-500',
+            )}
+          >
+            {categories.data?.find((category) => category.id === categoryId)?.name ??
+              CATEGORY_COPY.uncategorized}
+            <X className="size-3.5" aria-hidden />
+            <span className="sr-only">{TRANSACTIONS_COPY.flowAll}</span>
+          </button>
+        )}
 
         <div className="mt-2 flex items-center justify-between gap-3">
           <SearchableSelect

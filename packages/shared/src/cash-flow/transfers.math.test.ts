@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  incomeByCategory,
   isExcludedFromCashFlow,
   spendingByCategory,
+  uncategorizedTotal,
   pairKeyFor,
   proposeTransferPairs,
   summarizeCashFlow,
@@ -246,5 +248,72 @@ describe('spendingByCategory', () => {
     ]
     const totals = spendingByCategory(withTransfer, new Set(['pay']))
     expect(totals.find((t) => t.categoryId === null)?.cents).toBe(-1_000n)
+  })
+})
+
+/**
+ * Money coming in, broken down the same way.
+ *
+ * A separate direction rather than one sign-agnostic breakdown: categories only mean something once
+ * a direction is chosen, since groceries and a paycheck cannot share a ranking and the figure they
+ * would sum to is net — which nobody breaks down by category.
+ */
+describe('incomeByCategory', () => {
+  const rows = [
+    { id: 'pay1', postedDate: '2026-08-01', amountCents: 300_000n, categoryId: 'salary' },
+    { id: 'pay2', postedDate: '2026-08-15', amountCents: 300_000n, categoryId: 'salary' },
+    { id: 'interest', postedDate: '2026-08-03', amountCents: 1_200n, categoryId: 'interest' },
+    { id: 'refund', postedDate: '2026-08-04', amountCents: 5_000n, categoryId: null },
+    { id: 'rent', postedDate: '2026-08-05', amountCents: -180_000n, categoryId: 'housing' },
+  ]
+
+  it('sums income per category, largest first', () => {
+    expect(incomeByCategory(rows)).toEqual([
+      { categoryId: 'salary', cents: 600_000n },
+      { categoryId: null, cents: 5_000n },
+      { categoryId: 'interest', cents: 1_200n },
+    ])
+  })
+
+  it('leaves spending out — this is an income breakdown', () => {
+    expect(incomeByCategory(rows).some((total) => total.categoryId === 'housing')).toBe(false)
+  })
+
+  it('excludes confirmed transfers, like every other total', () => {
+    const withTransfer = [
+      ...rows,
+      { id: 'in', postedDate: '2026-08-06', amountCents: 50_000n, categoryId: null },
+    ]
+    expect(incomeByCategory(withTransfer, new Set(['in'])).find((t) => t.categoryId === null)?.cents).toBe(
+      5_000n,
+    )
+  })
+
+  /** A reversed pending credit is not income, and is not spending either. */
+  it('puts a zero amount in neither direction', () => {
+    const zero = [{ id: 'z', postedDate: '2026-08-01', amountCents: 0n, categoryId: 'x' }]
+    expect(incomeByCategory(zero)).toEqual([])
+    expect(spendingByCategory(zero)).toEqual([])
+  })
+
+  it('ranks spending by magnitude, not by signed value', () => {
+    // Most negative is the largest spend; sorting signed would already do this, but the shared
+    // comparator now handles both directions and this pins the spending side of it.
+    expect(spendingByCategory(rows).map((total) => total.categoryId)).toEqual(['housing'])
+  })
+})
+
+describe('uncategorizedTotal', () => {
+  it('reports the uncategorized bucket as a magnitude, whichever way it points', () => {
+    expect(uncategorizedTotal([{ categoryId: null, cents: -4_200n }])).toBe(4_200n)
+    expect(uncategorizedTotal([{ categoryId: null, cents: 4_200n }])).toBe(4_200n)
+  })
+
+  it('is zero when everything has a category', () => {
+    expect(uncategorizedTotal([{ categoryId: 'groceries', cents: -900n }])).toBe(0n)
+  })
+
+  it('is zero when there is nothing at all', () => {
+    expect(uncategorizedTotal([])).toBe(0n)
   })
 })

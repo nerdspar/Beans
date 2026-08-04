@@ -3,9 +3,12 @@ import {
   CATEGORY_COPY,
   NET_WORTH_STATE_COPY,
   formatCents,
+  parseDecimalToCents,
   resolveWindow,
   sliceToWindow,
+  incomeByCategory,
   spendingByCategory,
+  uncategorizedTotal,
   summarizeCashFlow,
   toIsoDate,
   type CashFlowPeriod,
@@ -13,6 +16,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, Search } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
+import { Link } from 'wouter'
 import { cn } from '../lib/cn.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
 import { DEFAULT_RANGE, type RangeSelection } from '../net-worth/range.js'
@@ -45,6 +49,8 @@ export function CashFlow(): ReactNode {
    * settled suggestions should not push them off the top.
    */
   const [showProposals, setShowProposals] = useState(false)
+  /** Which question is being asked. Not a rendering toggle — see CASH_FLOW_COPY.tabCashFlow. */
+  const [tab, setTab] = useState<'cash-flow' | 'income' | 'expenses'>('cash-flow')
 
   const proposals = useQuery({ queryKey: ['transfers', 'proposed'], queryFn: listProposedTransfers })
 
@@ -64,7 +70,13 @@ export function CashFlow(): ReactNode {
 
   const today = toIsoDate(new Date())
 
-  const { summary, byCategory } = useMemo(() => {
+  const {
+    summary,
+    byCategory,
+    byIncomeCategory,
+    uncategorizedSpending,
+    uncategorizedIncome,
+  } = useMemo(() => {
     const inWindow = sliceToWindow(
       workingSet.transactions.map((transaction) => ({
         ...transaction,
@@ -87,9 +99,15 @@ export function CashFlow(): ReactNode {
           : workingSet.categories.get(transaction.categoryId)?.kind,
     }))
 
+    const spending = spendingByCategory(rows, workingSet.confirmedTransferIds)
+    const income = incomeByCategory(rows, workingSet.confirmedTransferIds)
+
     return {
       summary: summarizeCashFlow(rows, workingSet.confirmedTransferIds),
-      byCategory: spendingByCategory(rows, workingSet.confirmedTransferIds),
+      byCategory: spending,
+      byIncomeCategory: income,
+      uncategorizedSpending: uncategorizedTotal(spending),
+      uncategorizedIncome: uncategorizedTotal(income),
     }
   }, [
     workingSet.transactions,
@@ -115,6 +133,17 @@ export function CashFlow(): ReactNode {
 
   const pending = proposals.data ?? []
 
+  /*
+   * What the unconfirmed proposals are worth.
+   *
+   * One side of each pair, not both: the pair is equal and opposite, so this amount appears once in
+   * income and once in spending. Saying it once is what makes "counted as both" a checkable claim.
+   */
+  const pendingCents = pending.reduce(
+    (sum, transfer) => sum + parseDecimalToCents(transfer.amount),
+    0n,
+  )
+
   return (
     <div className="mx-auto max-w-2xl px-5 pb-16 pt-5">
       <div className="flex items-baseline justify-between gap-3">
@@ -122,9 +151,56 @@ export function CashFlow(): ReactNode {
         <RangeControl value={range} onChange={setRange} />
       </div>
 
+      {/*
+        Split by question, not by rendering.
+
+        A breakdown by category only means something once a direction is chosen: groceries and a
+        paycheck cannot share an axis, and the figure they would sum to is net — which nobody breaks
+        down by category. So the combined tab answers what the two did to each other, and the
+        breakdowns live where a direction has been picked.
+      */}
+      <div
+        role="tablist"
+        aria-label={CASH_FLOW_COPY.title}
+        className="mt-3 flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-900"
+      >
+        {(
+          [
+            ['cash-flow', CASH_FLOW_COPY.tabCashFlow],
+            ['income', CASH_FLOW_COPY.tabIncome],
+            ['expenses', CASH_FLOW_COPY.tabExpenses],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={tab === value}
+            onClick={() => setTab(value)}
+            className={cn(
+              'min-h-9 flex-1 rounded-md text-sm font-medium',
+              'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-sky-500',
+              tab === value
+                ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100',
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <Caveats
+        pendingCount={pending.length}
+        pendingCents={pendingCents}
+        uncategorizedCents={tab === 'income' ? uncategorizedIncome : uncategorizedSpending}
+        direction={tab === 'income' ? 'income' : 'spending'}
+        onReview={() => setShowProposals(true)}
+      />
+
       {summary.periods.length === 0 ? (
         <Message title={CASH_FLOW_COPY.empty} detail={CASH_FLOW_COPY.emptyDetail} />
-      ) : (
+      ) : tab === 'cash-flow' ? (
         <>
           <div className="mt-4 grid grid-cols-3 gap-3">
             <Total label={CASH_FLOW_COPY.income} cents={summary.incomeCents} tone="income" />
@@ -138,29 +214,6 @@ export function CashFlow(): ReactNode {
             {CASH_FLOW_COPY.transfersExcluded(summary.excludedCount)}
           </p>
 
-          {byCategory.length > 0 && (
-            <section className="mt-6">
-              <h2 className="text-sm font-semibold">{CASH_FLOW_COPY.byCategory}</h2>
-              <ul className="mt-2 space-y-2">
-                {byCategory.slice(0, 8).map((total) => (
-                  <li key={total.categoryId ?? 'uncategorized'}>
-                    <CategoryRow
-                      label={
-                        total.categoryId === null
-                          ? CATEGORY_COPY.uncategorized
-                          : (workingSet.categories.get(total.categoryId)?.name ??
-                            CATEGORY_COPY.uncategorized)
-                      }
-                      cents={-total.cents}
-                      largest={-(byCategory[0]?.cents ?? -1n)}
-                      muted={total.categoryId === null}
-                    />
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
           <h2 className="mt-6 text-sm font-semibold">{CASH_FLOW_COPY.byMonth}</h2>
           <ul className="mt-2 space-y-3">
             {[...summary.periods].reverse().map((period) => (
@@ -170,6 +223,16 @@ export function CashFlow(): ReactNode {
             ))}
           </ul>
         </>
+      ) : (
+        <Breakdown
+          totals={tab === 'income' ? byIncomeCategory : byCategory}
+          totalCents={tab === 'income' ? summary.incomeCents : -summary.spendingCents}
+          label={tab === 'income' ? CASH_FLOW_COPY.income : CASH_FLOW_COPY.spending}
+          heading={
+            tab === 'income' ? CASH_FLOW_COPY.byCategoryIncome : CASH_FLOW_COPY.byCategory
+          }
+          categories={workingSet.categories}
+        />
       )}
 
       <section className="mt-8">
@@ -450,5 +513,163 @@ function Message({
         </p>
       )}
     </div>
+  )
+}
+
+/**
+ * Reasons the totals below may be wrong, each with its size.
+ *
+ * Every entry names a number. "$4,200 of the spending below has no category" is something somebody
+ * can act on; "some transactions are uncategorized" is a disclaimer people learn to scroll past.
+ *
+ * The strip renders nothing at all when there is nothing to say, which is what keeps its presence
+ * meaningful — a permanent advisory bar is furniture, and gets read as furniture.
+ */
+function Caveats({
+  pendingCount,
+  pendingCents,
+  uncategorizedCents,
+  direction,
+  onReview,
+}: {
+  pendingCount: number
+  pendingCents: bigint
+  uncategorizedCents: bigint
+  direction: 'income' | 'spending'
+  onReview: () => void
+}): ReactNode {
+  const entries: Array<{ key: string; text: string; action?: { label: string; href?: string; onClick?: () => void } }> = []
+
+  if (pendingCount > 0) {
+    entries.push({
+      key: 'transfers',
+      text: CASH_FLOW_COPY.caveatTransfers(pendingCount, formatCents(pendingCents)),
+      action: { label: CASH_FLOW_COPY.caveatTransfersAction, onClick: onReview },
+    })
+  }
+
+  if (uncategorizedCents > 0n) {
+    entries.push({
+      key: 'uncategorized',
+      text:
+        direction === 'income'
+          ? CASH_FLOW_COPY.caveatUncategorizedIncome(formatCents(uncategorizedCents))
+          : CASH_FLOW_COPY.caveatUncategorizedSpending(formatCents(uncategorizedCents)),
+      action: { label: CASH_FLOW_COPY.caveatCategorize, href: '/transactions' },
+    })
+  }
+
+  if (entries.length === 0) return null
+
+  return (
+    <section
+      aria-label={CASH_FLOW_COPY.caveatsHeading}
+      className={cn(
+        'mt-3 rounded-xl border p-3',
+        'border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30',
+      )}
+    >
+      <h2 className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+        {CASH_FLOW_COPY.caveatsHeading}
+      </h2>
+      <ul className="mt-1.5 space-y-1.5">
+        {entries.map((entry) => (
+          <li
+            key={entry.key}
+            className="flex items-baseline justify-between gap-3 text-xs text-amber-900 dark:text-amber-200"
+          >
+            <span className="min-w-0">{entry.text}</span>
+            {entry.action?.href !== undefined ? (
+              <Link
+                href={entry.action.href}
+                className="shrink-0 font-medium underline underline-offset-2"
+              >
+                {entry.action.label}
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={entry.action?.onClick}
+                className="shrink-0 font-medium underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-amber-600"
+              >
+                {entry.action?.label}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+/**
+ * One direction's categories, largest first.
+ *
+ * The total is shown above the bars so the parts can be checked against the whole — a breakdown
+ * whose rows do not obviously sum to something is a ranking, not an account of where money went.
+ */
+function Breakdown({
+  totals,
+  totalCents,
+  label,
+  heading,
+  categories,
+}: {
+  totals: readonly { categoryId: string | null; cents: bigint }[]
+  totalCents: bigint
+  label: string
+  heading: string
+  categories: ReadonlyMap<string, { name: string }>
+}): ReactNode {
+  // Magnitudes for display; the stored sign is never re-decided here.
+  const magnitude = (cents: bigint): bigint => (cents < 0n ? -cents : cents)
+  const largest = magnitude(totals[0]?.cents ?? 1n)
+
+  return (
+    <>
+      <div className="mt-4">
+        {/* `exactOptionalPropertyTypes`: an absent tone and an explicit undefined are not the same. */}
+        {label === CASH_FLOW_COPY.income ? (
+          <Total label={label} cents={totalCents} tone="income" />
+        ) : (
+          <Total label={label} cents={totalCents} />
+        )}
+      </div>
+
+      {totals.length === 0 ? (
+        <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
+          {CASH_FLOW_COPY.empty}
+        </p>
+      ) : (
+        <section className="mt-6">
+          <h2 className="text-sm font-semibold">{heading}</h2>
+          <ul className="mt-2 space-y-2">
+            {totals.map((total) => (
+              <li key={total.categoryId ?? 'uncategorized'}>
+                <Link
+                  href={
+                    total.categoryId === null
+                      ? '/transactions'
+                      : `/transactions?category=${encodeURIComponent(total.categoryId)}`
+                  }
+                  className="block rounded-lg focus-visible:outline-2 focus-visible:outline-sky-500"
+                >
+                  <CategoryRow
+                    label={
+                      total.categoryId === null
+                        ? CATEGORY_COPY.uncategorized
+                        : (categories.get(total.categoryId)?.name ?? CATEGORY_COPY.uncategorized)
+                    }
+                    cents={magnitude(total.cents)}
+                    largest={largest}
+                    muted={total.categoryId === null}
+                  />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
   )
 }

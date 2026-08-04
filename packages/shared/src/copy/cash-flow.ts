@@ -21,8 +21,38 @@ export const CASH_FLOW_COPY = {
   emptyDetail:
     'Cash flow is built from transactions. Connect an institution, or widen the date range if you have only just synced.',
 
+  /*
+   * Tabs split by question, not by rendering.
+   *
+   * A category breakdown only means something once a direction is chosen — groceries and a paycheck
+   * cannot share an axis, and the figure they would sum to is net, which nobody breaks down by
+   * category. So the breakdowns live under Income and Expenses, and the combined tab answers the
+   * different question of what the two did to each other.
+   */
+  tabCashFlow: 'Cash flow',
+  tabIncome: 'Income',
+  tabExpenses: 'Expenses',
+
   byCategory: 'Where it went',
+  byCategoryIncome: 'Where it came from',
   byMonth: 'By month',
+
+  /**
+   * Reasons the totals below may be wrong, each with its size.
+   *
+   * The point is the number. "$4,200 of the spending below is uncategorized" is something somebody
+   * can act on; "some transactions are uncategorized" is a disclaimer people learn to scroll past.
+   * The strip disappears entirely when there is nothing to say, so its presence means something.
+   */
+  caveatsHeading: 'Worth checking',
+  caveatTransfers: (count: number, amount: string): string =>
+    `${count} possible transfer${count === 1 ? '' : 's'} not confirmed — ${amount} is counted as both income and spending.`,
+  caveatTransfersAction: 'Review',
+  caveatUncategorizedSpending: (amount: string): string =>
+    `${amount} of the spending below has no category.`,
+  caveatUncategorizedIncome: (amount: string): string =>
+    `${amount} of the income below has no category.`,
+  caveatCategorize: 'Categorize',
 
   transfersHeading: 'Money you moved',
   /** Stated because a number that silently ignored some transactions would be unaccountable. */

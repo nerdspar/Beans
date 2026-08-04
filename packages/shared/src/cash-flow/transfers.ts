@@ -216,18 +216,71 @@ export function spendingByCategory(
   transactions: readonly CashFlowTransaction[],
   confirmedPairMembers: ReadonlySet<string> = new Set(),
 ): CategoryTotal[] {
+  return categoryTotals(transactions, 'out', confirmedPairMembers)
+}
+
+/**
+ * The same breakdown for money coming in.
+ *
+ * A separate call rather than a sign-agnostic one, because a breakdown only means anything once a
+ * direction is chosen. Categories cannot share an axis across the zero line — groceries and a
+ * paycheck do not belong in one ranking, and the figure they would sum to is net, which is not
+ * something anybody breaks down by category.
+ */
+export function incomeByCategory(
+  transactions: readonly CashFlowTransaction[],
+  confirmedPairMembers: ReadonlySet<string> = new Set(),
+): CategoryTotal[] {
+  return categoryTotals(transactions, 'in', confirmedPairMembers)
+}
+
+/**
+ * Totals per category in one direction, largest first.
+ *
+ * Amounts keep the sign they are stored with — spending stays negative — because every amount in
+ * this app is signed to add directly to net worth, and flipping one here would put a second sign
+ * decision outside the ingest edge. The screen negates for display and nothing else does.
+ */
+function categoryTotals(
+  transactions: readonly CashFlowTransaction[],
+  direction: 'in' | 'out',
+  confirmedPairMembers: ReadonlySet<string>,
+): CategoryTotal[] {
   const totals = new Map<string | null, bigint>()
 
   for (const transaction of transactions) {
     if (isExcludedFromCashFlow(transaction, confirmedPairMembers)) continue
-    if (transaction.amountCents >= 0n) continue
+
+    /*
+     * Zero belongs to neither direction. A reversed pending charge or a waived fee is not a
+     * purchase, and filing it under spending because it is "not positive" would put a row in a
+     * breakdown it has no business being in.
+     */
+    if (direction === 'out' && transaction.amountCents >= 0n) continue
+    if (direction === 'in' && transaction.amountCents <= 0n) continue
 
     const key = transaction.categoryId ?? null
     totals.set(key, (totals.get(key) ?? 0n) + transaction.amountCents)
   }
 
+  // Largest magnitude first, whichever way the amounts point.
   return [...totals.entries()]
     .map(([categoryId, cents]) => ({ categoryId, cents }))
-    // Most negative first: the largest spend is the one worth seeing.
-    .sort((left, right) => (left.cents < right.cents ? -1 : left.cents > right.cents ? 1 : 0))
+    .sort((left, right) => {
+      const a = left.cents < 0n ? -left.cents : left.cents
+      const b = right.cents < 0n ? -right.cents : right.cents
+      return a > b ? -1 : a < b ? 1 : 0
+    })
+}
+
+/**
+ * How much of a breakdown has not been categorized, as a magnitude.
+ *
+ * Reported so a screen can say "$4,200 of the spending below is uncategorized" rather than "some
+ * transactions are uncategorized". The first is a number somebody can act on; the second is a
+ * disclaimer people learn to scroll past.
+ */
+export function uncategorizedTotal(totals: readonly CategoryTotal[]): bigint {
+  const found = totals.find((total) => total.categoryId === null)?.cents ?? 0n
+  return found < 0n ? -found : found
 }
