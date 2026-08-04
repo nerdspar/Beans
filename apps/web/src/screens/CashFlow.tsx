@@ -17,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, Search } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'wouter'
+import { MonthlyBars } from '../charts/MonthlyBars.js'
 import { cn } from '../lib/cn.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
 import { DEFAULT_RANGE, type RangeSelection } from '../net-worth/range.js'
@@ -214,6 +215,21 @@ export function CashFlow(): ReactNode {
             {CASH_FLOW_COPY.transfersExcluded(summary.excludedCount)}
           </p>
 
+          {/*
+            Only past one month. A single bar has nothing to compare itself to and no average worth
+            drawing — the month rows below say it better.
+          */}
+          {summary.periods.length > 1 && (
+            <MonthlyBars
+              className="mt-6"
+              periods={summary.periods}
+              mode="net"
+              formatValue={formatCents}
+              averageLabel={CASH_FLOW_COPY.average}
+            />
+          )}
+
+          {/* Kept below the chart: this is its table fallback as much as it is detail. */}
           <h2 className="mt-6 text-sm font-semibold">{CASH_FLOW_COPY.byMonth}</h2>
           <ul className="mt-2 space-y-3">
             {[...summary.periods].reverse().map((period) => (
@@ -225,6 +241,8 @@ export function CashFlow(): ReactNode {
         </>
       ) : (
         <Breakdown
+          periods={summary.periods}
+          mode={tab === 'income' ? 'income' : 'spending'}
           totals={tab === 'income' ? byIncomeCategory : byCategory}
           totalCents={tab === 'income' ? summary.incomeCents : -summary.spendingCents}
           label={tab === 'income' ? CASH_FLOW_COPY.income : CASH_FLOW_COPY.spending}
@@ -609,12 +627,16 @@ function Caveats({
  * whose rows do not obviously sum to something is a ranking, not an account of where money went.
  */
 function Breakdown({
+  periods,
+  mode,
   totals,
   totalCents,
   label,
   heading,
   categories,
 }: {
+  periods: readonly CashFlowPeriod[]
+  mode: 'income' | 'spending'
   totals: readonly { categoryId: string | null; cents: bigint }[]
   totalCents: bigint
   label: string
@@ -635,6 +657,21 @@ function Breakdown({
           <Total label={label} cents={totalCents} />
         )}
       </div>
+
+      {periods.length > 1 && (
+        <MonthlyBars
+          className="mt-6"
+          periods={periods}
+          mode={mode}
+          /*
+           * Negated for the label only, and only here. Spending stays negative in the data and is
+           * drawn below the zero line as such; "Avg $-15,942" under a heading that already says
+           * Expenses is the minus sign being reported twice.
+           */
+          formatValue={(cents) => formatCents(mode === 'spending' ? -cents : cents)}
+          averageLabel={CASH_FLOW_COPY.average}
+        />
+      )}
 
       {totals.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">

@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { AreaChart } from '../charts/AreaChart.js'
 import { CategoryChart } from '../charts/CategoryChart.js'
+import { MonthlyBars } from '../charts/MonthlyBars.js'
 import { SearchableSelect } from '../lib/SearchableSelect.js'
 
 /**
@@ -46,6 +47,22 @@ const SERIES = Array.from({ length: 365 }, (_, index) => {
   }
 })
 
+const money = (cents: bigint): string =>
+  `$${Math.round(Number(cents) / 100).toLocaleString()}`
+
+/** A year with one outlier month, which is the case the average line exists to make readable. */
+const MONTHS = Array.from({ length: 12 }, (_, index) => {
+  const outlier = index === 4
+  const incomeCents = BigInt(outlier ? 14_000_000 : 900_000 + index * 20_000)
+  const spendingCents = BigInt(outlier ? -10_500_000 : -(700_000 + index * 15_000))
+  return {
+    month: `2025-${String(index + 1).padStart(2, '0')}`,
+    incomeCents,
+    spendingCents,
+    netCents: incomeCents + spendingCents,
+  }
+})
+
 export function DevPreview(): ReactNode {
   const [narrow, setNarrow] = useState('')
   const [wide, setWide] = useState('')
@@ -87,6 +104,26 @@ export function DevPreview(): ReactNode {
             options={[{ value: '', label: 'Skip' }, ...ACCOUNTS]}
           />
         </div>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold">MonthlyBars — net (both directions)</h2>
+        <MonthlyBars
+          periods={MONTHS}
+          mode="net"
+          formatValue={money}
+          averageLabel={(amount) => `Avg ${amount}`}
+        />
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold">MonthlyBars — expenses only</h2>
+        <MonthlyBars
+          periods={MONTHS}
+          mode="spending"
+          formatValue={(cents) => money(-cents)}
+          averageLabel={(amount) => `Avg ${amount}`}
+        />
       </section>
 
       <section className="space-y-2">

@@ -33,6 +33,9 @@ export const CASH_FLOW_COPY = {
   tabIncome: 'Income',
   tabExpenses: 'Expenses',
 
+  /** Prefixed rather than bare: an unlabelled dashed line is a mystery, not a reference. */
+  average: (amount: string): string => `Avg ${amount}`,
+
   byCategory: 'Where it went',
   byCategoryIncome: 'Where it came from',
   byMonth: 'By month',
