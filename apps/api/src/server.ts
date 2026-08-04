@@ -134,6 +134,26 @@ export async function buildServer({
   })
 
   /*
+   * What this process actually resolved, said once at boot.
+   *
+   * Written because a deployment reported `emailDelivery: true` from this endpoint while invites
+   * from the same host reported no mail transport — which can only happen if the two requests were
+   * answered by different processes. Nothing in the logs could confirm or refute that, because a
+   * disabled mailer does no work and therefore leaves no trace.
+   *
+   * The transport *kind* only. Never the API key, the from address, or the database URL — this line
+   * exists to identify a process, not to dump its configuration.
+   */
+  fastify.log.info(
+    {
+      mailTransport: config.mail.kind,
+      googleSignIn: config.google !== null,
+      publicUrl: config.publicUrl,
+    },
+    'server capabilities resolved',
+  )
+
+  /*
    * Last, deliberately. It installs the not-found handler that falls back to `index.html`, so every
    * real route must already be registered or a deep link would shadow it.
    */

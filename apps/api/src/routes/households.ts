@@ -177,6 +177,16 @@ export const householdRoutes: FastifyPluginAsync<HouseholdRoutesOptions> = async
         (error) => request.log.warn({ err: error }, 'invite email delivery failed'),
       )
 
+      /*
+       * The outcome, every time — including the cases that did no work.
+       *
+       * A disabled mailer sends nothing and previously logged nothing, so "we never tried" and "we
+       * tried and it failed" were indistinguishable from the server side as well as the client side.
+       * Neither the address nor the link is logged: one is personal data and the other is a
+       * single-use credential.
+       */
+      request.log.info({ delivery, mailTransport: config.mail.kind }, 'invite created')
+
       // The token appears here and nowhere else, ever again — only its hash is stored.
       return reply
         .status(201)
