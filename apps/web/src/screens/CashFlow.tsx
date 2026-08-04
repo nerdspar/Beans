@@ -23,7 +23,7 @@ import { Link } from 'wouter'
 import { CumulativeFlow } from '../charts/CumulativeFlow.js'
 import { MonthlyBars } from '../charts/MonthlyBars.js'
 import { SECTION_COLORS } from '../net-worth/colors.js'
-import { formatShortDate } from '../net-worth/display.js'
+import { formatAxisValue, formatShortDate } from '../net-worth/display.js'
 import { cn } from '../lib/cn.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
 import { DEFAULT_RANGE, type RangeSelection } from '../net-worth/range.js'
@@ -146,6 +146,12 @@ export function CashFlow(): ReactNode {
 
     const previous = precedingWindow(window.start, window.end)
 
+    /*
+     * The running total follows the tab. On Income it accumulates only money in, on Expenses only
+     * money out — the same question each tab's bars answer, asked across days instead of months.
+     */
+    const direction = tab === 'income' ? 'in' : tab === 'expenses' ? 'out' : 'net'
+
     return {
       summary: summarizeCashFlow(rows, workingSet.confirmedTransferIds),
       byCategory: spending,
@@ -157,14 +163,14 @@ export function CashFlow(): ReactNode {
         allRows,
         window.start,
         window.end,
-        'net',
+        direction,
         workingSet.confirmedTransferIds,
       ),
       dailyBefore: cumulativeDailyFlow(
         allRows,
         previous.from,
         previous.to,
-        'net',
+        direction,
         workingSet.confirmedTransferIds,
       ),
       /** Newest first, for the list the scrubber drives. */
@@ -179,6 +185,7 @@ export function CashFlow(): ReactNode {
     workingSet.categories,
     range,
     today,
+    tab,
   ])
 
   /** How much of the window has actually happened — the rest has not, and is not drawn. */
@@ -342,7 +349,7 @@ export function CashFlow(): ReactNode {
                 series={daily}
                 comparison={dailyBefore}
                 color={SECTION_COLORS.household}
-                formatValue={formatCents}
+                formatValue={(cents, digits) => formatAxisValue(cents, 'household', digits)}
                 scrubIndex={scrubIndex}
                 onScrub={onScrub}
                 describePoint={(index) => {
@@ -403,32 +410,56 @@ export function CashFlow(): ReactNode {
                 <ul
                   ref={listRef}
                   onScroll={onListScroll}
-                  className="mt-2 max-h-96 divide-y divide-slate-200 overflow-y-auto dark:divide-slate-800"
+                  className="mt-2 max-h-96 overflow-y-auto"
                 >
-                  {entries.map((entry) => (
-                    <li
-                      key={entry.id}
-                      data-on-or-before={entry.postedDate}
-                      className="flex items-baseline justify-between gap-3 py-2.5"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm">
-                          {entry.payee ?? entry.description ?? '—'}
-                        </p>
-                        <p className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
-                          {formatShortDate(entry.postedDate)}
-                          {entry.categoryId !== null &&
-                            ` · ${workingSet.categories.get(entry.categoryId)?.name ?? ''}`}
-                        </p>
-                      </div>
-                      <span
+                  {/*
+                    Grouped under a date, with the category on the row.
+                    
+                    The date was repeated on every row and the category was nowhere, which is the
+                    wrong way round: consecutive rows usually share a date and never share a
+                    category. A heading says it once for the group, and the row spends its second
+                    line on the thing that actually differs.
+                  */}
+                  {groupByDate(entries).map(([date, rows]) => (
+                    <li key={date} data-on-or-before={date}>
+                      <h3
                         className={cn(
-                          'shrink-0 text-sm tabular-nums',
-                          entry.amountCents > 0n && 'text-emerald-600 dark:text-emerald-400',
+                          'sticky top-0 z-10 py-1 text-xs font-medium tabular-nums',
+                          'bg-slate-50/95 text-slate-500 backdrop-blur',
+                          'dark:bg-slate-950/95 dark:text-slate-400',
                         )}
                       >
-                        {formatCents(entry.amountCents)}
-                      </span>
+                        {formatShortDate(date)}
+                      </h3>
+
+                      <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+                        {rows.map((entry) => (
+                          <li
+                            key={entry.id}
+                            className="flex items-baseline justify-between gap-3 py-2.5"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm">
+                                {entry.payee ?? entry.description ?? '—'}
+                              </p>
+                              <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                                {entry.categoryId === null
+                                  ? CATEGORY_COPY.uncategorized
+                                  : (workingSet.categories.get(entry.categoryId)?.name ??
+                                    CATEGORY_COPY.uncategorized)}
+                              </p>
+                            </div>
+                            <span
+                              className={cn(
+                                'shrink-0 text-sm tabular-nums',
+                                entry.amountCents > 0n && 'text-emerald-600 dark:text-emerald-400',
+                              )}
+                            >
+                              {formatCents(entry.amountCents)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
                     </li>
                   ))}
                 </ul>
@@ -439,6 +470,9 @@ export function CashFlow(): ReactNode {
       ) : (
         <Breakdown
           periods={summary.periods}
+          daily={daily}
+          dailyBefore={dailyBefore}
+          elapsedCount={elapsedDays}
           mode={tab === 'income' ? 'income' : 'spending'}
           totals={tab === 'income' ? byIncomeCategory : byCategory}
           totalCents={tab === 'income' ? summary.incomeCents : -summary.spendingCents}
@@ -825,6 +859,9 @@ function Caveats({
  */
 function Breakdown({
   periods,
+  daily,
+  dailyBefore,
+  elapsedCount,
   mode,
   totals,
   totalCents,
@@ -833,6 +870,9 @@ function Breakdown({
   categories,
 }: {
   periods: readonly CashFlowPeriod[]
+  daily: readonly { date: string; cumulativeCents: bigint }[]
+  dailyBefore: readonly { date: string; cumulativeCents: bigint }[]
+  elapsedCount: number
   mode: 'income' | 'spending'
   totals: readonly { categoryId: string | null; cents: bigint }[]
   totalCents: bigint
@@ -854,6 +894,32 @@ function Breakdown({
           <Total label={label} cents={totalCents} />
         )}
       </div>
+
+      {/*
+        The same split as the combined tab: one month gets the running total, more gets bars. A tab
+        that showed only bars would answer "which month" while the other two answered "which day".
+      */}
+      {periods.length <= 1 && daily.length > 1 && (
+        <section className="mt-6">
+          <CumulativeFlow
+            series={daily}
+            comparison={dailyBefore}
+            color={mode === 'income' ? SECTION_COLORS.household : '#fb923c'}
+            /*
+             * Negated for the axis only, and only here. Spending stays negative in the data; a
+             * y-axis running to -$6K under a heading that already says Expenses is the minus sign
+             * being reported twice.
+             */
+            formatValue={(cents, digits) =>
+              formatAxisValue(mode === 'spending' ? -cents : cents, 'household', digits)
+            }
+            elapsedCount={elapsedCount}
+          />
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {CASH_FLOW_COPY.comparedWith}
+          </p>
+        </section>
+      )}
 
       {periods.length > 1 && (
         <MonthlyBars
@@ -906,4 +972,26 @@ function Breakdown({
       )}
     </>
   )
+}
+
+/**
+ * Rows grouped under the date they posted, newest first.
+ *
+ * Only dates with something on them get a heading — an empty day is not a fact worth a row, and the
+ * chart above already shows the gap as a flat stretch.
+ */
+function groupByDate<T extends { postedDate: string }>(rows: readonly T[]): Array<[string, T[]]> {
+  const byDate = new Map<string, T[]>()
+
+  for (const row of rows) {
+    const existing = byDate.get(row.postedDate)
+    if (existing === undefined) {
+      byDate.set(row.postedDate, [row])
+    } else {
+      existing.push(row)
+    }
+  }
+
+  // Insertion order is already newest-first, because the rows arrive sorted.
+  return [...byDate.entries()]
 }

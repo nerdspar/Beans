@@ -134,7 +134,7 @@ export function DevPreview(): ReactNode {
           series={THIS_MONTH}
           comparison={LAST_MONTH}
           color="#38bdf8"
-          formatValue={money}
+          formatValue={(cents) => money(cents)}
           scrubIndex={flowScrub}
           onScrub={setFlowScrub}
           describePoint={(index) => THIS_MONTH[index]?.date ?? ''}

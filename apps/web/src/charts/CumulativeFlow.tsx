@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 import { indexAtPosition } from './AreaChart.js'
+import { labelPrecision, niceTicks } from './axis.js'
 import { cn } from '../lib/cn.js'
 
 /**
@@ -31,7 +32,13 @@ export type CumulativeFlowProps = {
   /** The same window one period earlier. Drawn dotted, and omitted when there is no history. */
   comparison?: readonly CumulativePoint[] | undefined
   color: string
-  formatValue: (cents: bigint) => string
+  /**
+   * Rendered as the value axis.
+   *
+   * Takes a decimal count, because the chart is the only thing that knows how close together its
+   * own ticks are — a narrow domain collapses every label to the same string at two places.
+   */
+  formatValue: (cents: bigint, fractionDigits: number) => string
   height?: number
   className?: string
 
@@ -52,6 +59,18 @@ export type CumulativeFlowProps = {
 }
 
 const AXIS_HEIGHT = 18
+
+/** Five is enough to convey scale and few enough to stay legible at phone width. */
+const GRID_LINES = 5
+
+/**
+ * A label every seventh day, and a tick on every one.
+ *
+ * Weekly, because a month's rhythm is weekly — rent on the 1st, pay on the 15th, a weekend of
+ * spending — and a reader locating "the week I overspent" is counting weeks, not days. Ticks on
+ * every day keep the axis honest about what the line is made of.
+ */
+const LABEL_EVERY = 7
 
 /** Cents to a plain number for pixel geometry only. */
 function toPixelUnits(cents: bigint): number {
@@ -121,10 +140,33 @@ export function CumulativeFlow({
         )
         .join(' ')
 
+    /*
+     * `y` is where the gridline goes; `labelY` is where its text goes. They differ only at the
+     * extremes, where a label centred on its line would hang outside the plot.
+     */
+    const halfLabel = 9
+    const ticks = niceTicks(min, max, GRID_LINES).map((value) => ({
+      value: BigInt(Math.round(value)),
+      y: y(value),
+      labelY: Math.min(Math.max(y(value), halfLabel), plotHeight - halfLabel),
+    }))
+
     return {
       width,
       plotHeight,
       zeroY: y(0),
+      ticks,
+      precision: labelPrecision(
+        ticks.map((tick) => tick.value),
+        formatValue,
+      ),
+      days: series.map((point, index) => ({
+        date: point.date,
+        x: x(index),
+        // Day 2, 9, 16, 23, 30 on a full month — the same weekly cadence Empower uses, and the one
+        // a person counting weeks is already using.
+        label: index % LABEL_EVERY === 1 ? point.date.slice(-2).replace(/^0/, '') : null,
+      })),
       line: path(drawn),
       comparisonLine:
         comparison === undefined || comparison.length === 0 ? null : path(comparison.slice(0, series.length)),
@@ -137,7 +179,7 @@ export function CumulativeFlow({
       start: series[0]?.date,
       end: series[series.length - 1]?.date,
     }
-  }, [series, comparison, height, elapsedCount])
+  }, [series, comparison, height, elapsedCount, formatValue])
 
   const scrubTo = useCallback(
     (clientX: number): void => {
@@ -204,6 +246,20 @@ export function CumulativeFlow({
         // Decorative: the transaction list beside it is what a screen reader should read.
         aria-hidden
       >
+        {geometry.ticks.map((tick) => (
+          <line
+            key={`grid-${tick.y}`}
+            x1={0}
+            x2={geometry.width}
+            y1={tick.y}
+            y2={tick.y}
+            className="stroke-slate-200 dark:stroke-slate-800"
+            strokeWidth={1}
+            strokeDasharray="4 6"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+
         {/* Zero, so a line below it is visibly below it rather than just low. */}
         <line
           x1={0}
@@ -287,16 +343,65 @@ export function CumulativeFlow({
         />
       )}
 
-      <div
-        className="flex justify-between px-1 text-[11px] tabular-nums text-slate-500 dark:text-slate-400"
-        style={{ height: AXIS_HEIGHT }}
-        aria-hidden
-      >
-        <span>{geometry.start === undefined ? '' : formatDay(geometry.start)}</span>
-        <span>{geometry.end === undefined ? '' : formatDay(geometry.end)}</span>
+      {/* A tick per day, so the axis says what the line is made of rather than only where it ends. */}
+      <div className="relative" style={{ height: AXIS_HEIGHT }} aria-hidden>
+        <svg
+          viewBox={`0 0 ${geometry.width} 4`}
+          preserveAspectRatio="none"
+          className="w-full"
+          style={{ height: 4 }}
+        >
+          {geometry.days.map((day) => (
+            <line
+              key={`tick-${day.date}`}
+              x1={day.x}
+              x2={day.x}
+              y1={0}
+              y2={day.label === null ? 2 : 4}
+              className="stroke-slate-300 dark:stroke-slate-700"
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+        </svg>
+
+        {geometry.days.map((day) =>
+          day.label === null ? null : (
+            <span
+              key={`label-${day.date}`}
+              className="absolute -translate-x-1/2 text-[11px] tabular-nums text-slate-500 dark:text-slate-400"
+              style={{ left: `${(day.x / geometry.width) * 100}%`, top: 4 }}
+            >
+              {day.label}
+            </span>
+          ),
+        )}
       </div>
 
-      <span className="sr-only">{formatValue(series.at(-1)?.cumulativeCents ?? 0n)}</span>
+      {/* Value labels over the plot rather than drawn in SVG, so they stay crisp under the stretch. */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0"
+        style={{ height: geometry.plotHeight }}
+        aria-hidden
+      >
+        {geometry.ticks.map((tick) => (
+          <span
+            key={`value-${tick.y}`}
+            className={cn(
+              'absolute left-0 -translate-y-1/2 rounded px-1 text-[11px] tabular-nums',
+              'bg-slate-50/80 text-slate-500 dark:bg-slate-950/80 dark:text-slate-400',
+            )}
+            style={{ top: tick.labelY }}
+          >
+            {formatValue(tick.value, geometry.precision)}
+          </span>
+        ))}
+      </div>
+
+      <span className="sr-only">
+        {geometry.start === undefined ? '' : formatDay(geometry.start)} –{' '}
+        {geometry.end === undefined ? '' : formatDay(geometry.end)}
+      </span>
     </div>
   )
 }
