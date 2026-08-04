@@ -6,6 +6,7 @@ import {
   createInvite,
   getHousehold,
   listInvites,
+  renameHousehold,
   revokeInvite,
   type CreatedInvite,
 } from '../household/api.js'
@@ -27,6 +28,7 @@ export function Household(): ReactNode {
   const household = useQuery({ queryKey: ['household'], queryFn: getHousehold })
   const invites = useQuery({ queryKey: ['invites'], queryFn: listInvites })
 
+  const [name, setName] = useState<string | null>(null)
   const [email, setEmail] = useState('')
   const [created, setCreated] = useState<CreatedInvite | null>(null)
   const [copied, setCopied] = useState(false)
@@ -37,6 +39,14 @@ export function Household(): ReactNode {
       setCreated(result)
       setEmail('')
       await queryClient.invalidateQueries({ queryKey: ['invites'] })
+    },
+  })
+
+  const rename = useMutation({
+    mutationFn: (next: string) => renameHousehold(next),
+    onSuccess: async () => {
+      setName(null)
+      await queryClient.invalidateQueries({ queryKey: ['household'] })
     },
   })
 
@@ -68,6 +78,57 @@ export function Household(): ReactNode {
   return (
     <div className="mx-auto max-w-2xl px-5 pb-16 pt-5">
       <h1 className="text-2xl font-semibold">{household.data?.name ?? HOUSEHOLD_COPY.title}</h1>
+
+      {/*
+        Renaming lives here because the name is no longer asked for at sign-up — a household of one
+        needs no name, and the moment it starts to matter is the moment somebody else will see it.
+        Owners only: a member renaming the household under everyone else is not their call.
+      */}
+      {isOwner && (
+        <form
+          className="mt-3 flex items-end gap-2"
+          onSubmit={(event) => {
+            event.preventDefault()
+            const next = (name ?? '').trim()
+            if (next.length > 0 && !rename.isPending) rename.mutate(next)
+          }}
+        >
+          <label className="min-w-0 flex-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+            {HOUSEHOLD_COPY.nameHeading}
+            <input
+              type="text"
+              value={name ?? household.data?.name ?? ''}
+              onChange={(event) => setName(event.target.value)}
+              maxLength={100}
+              className={cn(
+                'mt-1 block min-h-11 w-full rounded-lg border px-3 text-base',
+                'border-slate-300 bg-white text-slate-900',
+                'dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100',
+                'focus-visible:outline-2 focus-visible:outline-sky-500',
+              )}
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={rename.isPending || (name ?? '').trim().length === 0}
+            className={cn(
+              'min-h-11 shrink-0 rounded-lg border px-4 text-sm font-medium',
+              'border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800',
+              'focus-visible:outline-2 focus-visible:outline-sky-500 disabled:opacity-50',
+            )}
+          >
+            {rename.isPending ? HOUSEHOLD_COPY.nameSaving : HOUSEHOLD_COPY.nameSave}
+          </button>
+        </form>
+      )}
+
+      <p className="mt-1 min-h-4 text-xs text-slate-500 dark:text-slate-400">
+        {rename.error instanceof Error ? (
+          <span className="text-rose-600 dark:text-rose-400">{HOUSEHOLD_COPY.nameFailed}</span>
+        ) : (
+          isOwner && HOUSEHOLD_COPY.nameHelp
+        )}
+      </p>
 
       <h2 className="mt-6 text-sm font-semibold">{HOUSEHOLD_COPY.membersHeading}</h2>
       <ul className="mt-2 divide-y divide-slate-200 dark:divide-slate-800">

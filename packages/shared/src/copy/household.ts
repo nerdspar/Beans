@@ -15,6 +15,33 @@ export const HOUSEHOLD_COPY = {
   owner: 'Owner',
   member: 'Member',
 
+  /*
+   * Joining. The tone is deliberately flat — someone arriving here is being handed access to
+   * another person's entire financial picture, and that is not a moment for warmth.
+   */
+  /**
+   * The name a household gets before anyone names it.
+   *
+   * Plain on purpose: it appears in the header of the household page and next to an invite, and a
+   * placeholder that tries to be charming is worse than one that is obviously a placeholder.
+   */
+  defaultName: 'My household',
+
+  joinHeading: 'Join this household',
+  joinBlurb: 'You have been invited to share a household on Beans.',
+  joinSignIn: 'Sign in or create an account to accept this invite.',
+  joining: 'Joining',
+  joinFailed: 'Could not join this household.',
+  joinContinue: 'Continue to Beans',
+
+  /** Renaming, now that the name is asked for here rather than at sign-up. */
+  nameHeading: 'Household name',
+  nameHelp: 'Anyone you invite will see this.',
+  nameSave: 'Save',
+  nameSaving: 'Saving',
+  nameSaved: 'Saved.',
+  nameFailed: 'Could not rename the household.',
+
   inviteHeading: 'Invite someone',
   inviteBlurb:
     'Anyone who joins sees every shared account in this household, including balances and transactions. Only invite someone you would show your bank statements to.',

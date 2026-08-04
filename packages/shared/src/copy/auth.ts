@@ -77,4 +77,8 @@ export const AUTH_COPY = {
   householdPlaceholder: 'The Smiths',
   createHousehold: 'Create household',
   householdFailed: 'Could not create the household. Try again.',
+
+  /** The automatic household step. Neither is a place the user does anything. */
+  settingUp: 'Setting things up…',
+  retry: 'Try again',
 } as const

@@ -160,10 +160,77 @@ describeIntegration('household invites', () => {
     expect(members).toEqual([INVITEE, OWNER].sort())
   })
 
-  it('refuses a user who already belongs to a household', async () => {
+  /**
+   * A household is created automatically on first sign-in, so anyone who signs up before opening
+   * their invite link already has one. Refusing outright would strand them: one household per user
+   * in v1, no way to join, and no way to undo the household they never asked for.
+   */
+  it('hands over an empty household so its owner can accept an invite', async () => {
     await createHousehold(deps, OWNER, 'The Goldbergs')
-    await createHousehold(deps, OUTSIDER, 'Another Household')
+    const discarded = await createHousehold(deps, OUTSIDER, 'My household')
 
+    await acceptInvite(deps, OUTSIDER, await inviteFrom(OWNER), NOW)
+
+    // Joined the inviter's household, and the empty one it replaced is gone rather than orphaned.
+    const members = await withHouseholdContext(deps, OWNER, async (ctx) => {
+      const rows = await ctx.client.query<{ user_id: string }>(
+        'select user_id from household_members',
+      )
+      return rows.rows.map((r) => r.user_id).sort()
+    })
+    expect(members).toEqual([OUTSIDER, OWNER].sort())
+
+    // Scoped to the discarded household explicitly — RLS makes an unscoped read see nothing at
+    // all, which would pass this assertion without proving anything.
+    const client = await pool.connect()
+    try {
+      await client.query('select set_config($1, $2, false)', [
+        'app.current_household',
+        discarded.householdId,
+      ])
+      const remaining = await client.query('select 1 from households')
+      expect(remaining.rowCount).toBe(0)
+    } finally {
+      client.release()
+    }
+  })
+
+  /**
+   * The line that makes the handover safe. An empty household holds nothing anyone can miss; one
+   * with accounts in it is somebody's real financial history, and merging two households is not a
+   * decision to infer from a click on a link.
+   */
+  it('refuses when the existing household has accounts in it', async () => {
+    await createHousehold(deps, OWNER, 'The Goldbergs')
+    await createHousehold(deps, OUTSIDER, 'Not Empty')
+
+    await withHouseholdContext(deps, OUTSIDER, async (ctx) => {
+      await ctx.client.query(
+        `insert into accounts (household_id, type, currency, current_balance, balance_as_of)
+         values ($1,'depository','USD',$2,$3)`,
+        [ctx.householdId, ctx.cipher.encryptMoney(100_000n), NOW],
+      )
+    })
+
+    await expect(acceptInvite(deps, OUTSIDER, await inviteFrom(OWNER), NOW)).rejects.toThrow(
+      /already belong/,
+    )
+
+    // And the refusal left their household exactly as it was.
+    const kept = await withHouseholdContext(deps, OUTSIDER, async (ctx) => {
+      const rows = await ctx.client.query('select 1 from accounts')
+      return rows.rowCount
+    })
+    expect(kept).toBe(1)
+  })
+
+  it('refuses when the existing household has another member in it', async () => {
+    await createHousehold(deps, OWNER, 'The Goldbergs')
+    await createHousehold(deps, OUTSIDER, 'Shared Already')
+    await acceptInvite(deps, INVITEE, await inviteFrom(OUTSIDER), NOW)
+
+    // OUTSIDER now shares a household with INVITEE, so discarding it would remove someone else's
+    // access without their knowledge.
     await expect(acceptInvite(deps, OUTSIDER, await inviteFrom(OWNER), NOW)).rejects.toThrow(
       /already belong/,
     )

@@ -145,6 +145,40 @@ export const householdRoutes: FastifyPluginAsync<HouseholdRoutesOptions> = async
     }
   })
 
+  /**
+   * Renaming.
+   *
+   * The name stopped being asked for at sign-up — a household is created automatically so nobody
+   * has to name a thing they do not yet have a concept of. This is where it gets a real name, at
+   * the point it starts to matter, which is when somebody else is about to see it.
+   */
+  fastify.patch('/api/households/me', async (request, reply) => {
+    const user = await requireUser(request, reply)
+    if (user === null) return
+
+    const body = z.object({ name: z.string().trim().min(1).max(100) }).safeParse(request.body)
+    if (!body.success) {
+      return reply.status(400).send({ error: 'A household name is required' })
+    }
+
+    try {
+      const name = await withHouseholdContext(deps, user.id, async (ctx) => {
+        await ctx.client.query('update households set name = $1 where id = $2', [
+          body.data.name,
+          ctx.householdId,
+        ])
+        return body.data.name
+      })
+
+      return reply.send({ name })
+    } catch (error) {
+      if (error instanceof NoHouseholdError) {
+        return reply.status(404).send({ error: 'You do not belong to a household yet' })
+      }
+      throw error
+    }
+  })
+
   fastify.post('/api/households/invites', async (request, reply) => {
     const user = await requireUser(request, reply)
     if (user === null) return

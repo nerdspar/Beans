@@ -1,7 +1,8 @@
-import { AUTH_COPY, MIN_PASSWORD_LENGTH } from '@beans/shared'
+import { AUTH_COPY, HOUSEHOLD_COPY, MIN_PASSWORD_LENGTH } from '@beans/shared'
 import { useMutation } from '@tanstack/react-query'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useCapabilities } from '../auth/use-session.js'
+import { readPendingInvite } from '../auth/pending-invite.js'
 import { cn } from '../lib/cn.js'
 
 /**
@@ -128,6 +129,17 @@ export function SignIn(): ReactNode {
       <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
         {mode === 'sign-in' ? AUTH_COPY.signInBlurb : AUTH_COPY.signUpBlurb}
       </p>
+
+      {/*
+        Someone who arrived from an invite link needs to know why they are being asked to sign in
+        at all — otherwise this screen reads as the wrong page, and the token they are carrying is
+        invisible to them.
+      */}
+      {readPendingInvite() !== null && (
+        <p className="mt-3 rounded-lg bg-sky-50 p-3 text-sm text-sky-900 dark:bg-sky-950/50 dark:text-sky-200">
+          {HOUSEHOLD_COPY.joinSignIn}
+        </p>
+      )}
 
       <form className="mt-6" onSubmit={onSubmit}>
         {mode === 'sign-up' && (

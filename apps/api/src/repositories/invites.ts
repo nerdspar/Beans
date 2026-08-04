@@ -144,13 +144,36 @@ export async function acceptInvite(
       throw new InviteError('This invite link has expired')
     }
 
-    // v1 allows one household per user, enforced by unique(user_id) on household_members. Checked
-    // here too so the failure is an explanation rather than a constraint violation.
-    const existing = await client.query('select 1 from household_members where user_id = $1', [
-      userId,
-    ])
-    if (existing.rowCount !== null && existing.rowCount > 0) {
-      throw new InviteError('You already belong to a household')
+    /**
+     * v1 allows one household per user, enforced by unique(user_id) on household_members.
+     *
+     * A household is now created automatically on first sign-in, so anyone who signs up before
+     * opening their invite link already has one. Refusing outright would dead-end them permanently:
+     * no way to join, and no way to undo the household they never asked for. So an **empty**
+     * household is handed over — if it holds no accounts and no other members, nothing can be lost
+     * by discarding it.
+     *
+     * A household with anything in it is never touched. That is real data belonging to a real
+     * person, and merging two households is not a decision to infer from a click on a link.
+     */
+    const existing = await client.query<{ household_id: string }>(
+      'select household_id from household_members where user_id = $1',
+      [userId],
+    )
+    const currentHouseholdId = existing.rows[0]?.household_id ?? null
+
+    if (currentHouseholdId === invite.household_id) {
+      throw new InviteError('You already belong to this household')
+    }
+
+    if (currentHouseholdId !== null) {
+      await discardEmptyHousehold(client, currentHouseholdId, userId)
+
+      // Discarding re-scoped the connection, so put it back before the membership is written.
+      await client.query('select set_config($1, $2, true)', [
+        'app.current_household',
+        invite.household_id,
+      ])
     }
 
     await client.query(
@@ -174,6 +197,40 @@ export async function acceptInvite(
   } finally {
     client.release()
   }
+}
+
+/**
+ * Discards a household that has nothing in it, so its owner can accept an invite instead.
+ *
+ * Throws rather than deleting when the household holds accounts or another member. Both checks run
+ * under that household's own RLS scope, which is why the caller has to re-scope afterwards.
+ */
+async function discardEmptyHousehold(
+  client: PoolClient,
+  householdId: string,
+  userId: string,
+): Promise<void> {
+  await client.query('select set_config($1, $2, true)', ['app.current_household', householdId])
+
+  const accounts = await client.query('select 1 from accounts limit 1')
+  if ((accounts.rowCount ?? 0) > 0) {
+    throw new InviteError(
+      'You already belong to a household that has accounts in it. Beans supports one household per person.',
+    )
+  }
+
+  const others = await client.query(
+    'select 1 from household_members where user_id <> $1 limit 1',
+    [userId],
+  )
+  if ((others.rowCount ?? 0) > 0) {
+    throw new InviteError(
+      'You already belong to a household with other members in it. Beans supports one household per person.',
+    )
+  }
+
+  // Cascades to the membership row, so the unique(user_id) constraint is clear for the insert.
+  await client.query('delete from households where id = $1', [householdId])
 }
 
 /**

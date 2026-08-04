@@ -6,6 +6,7 @@ import { DesktopShell } from './shells/desktop/DesktopShell.js'
 import { MobileShell } from './shells/mobile/MobileShell.js'
 import { useIsDesktop } from './shells/use-shell.js'
 import { useWorkingSet } from './working-set/use-working-set.js'
+import { readPendingInvite } from './auth/pending-invite.js'
 import { useSession } from './auth/use-session.js'
 import { AccountDetail } from './screens/AccountDetail.js'
 import { Accounts } from './screens/Accounts.js'
@@ -16,6 +17,7 @@ import { Portfolio } from './screens/Portfolio.js'
 import { CashFlow } from './screens/CashFlow.js'
 import { Transactions } from './screens/Transactions.js'
 import { CreateHousehold } from './screens/CreateHousehold.js'
+import { JoinHousehold } from './screens/JoinHousehold.js'
 import { SignIn } from './screens/SignIn.js'
 import { NetWorth } from './screens/NetWorth.js'
 import { Placeholder } from './screens/Placeholder.js'
@@ -65,6 +67,16 @@ function Gate(): ReactNode {
   if (session.isLoading) return null
 
   if (session.user === null) return <SignIn />
+
+  /*
+   * Before the household gate, never after.
+   *
+   * A household is created automatically for anyone without one, and v1 allows a user exactly one.
+   * Letting that run first would hand an invited person their own empty household and leave them
+   * unable to accept the invite they arrived holding.
+   */
+  if (readPendingInvite() !== null) return <JoinHousehold />
+
   if (workingSet.needsHousehold) return <CreateHousehold />
 
   return (

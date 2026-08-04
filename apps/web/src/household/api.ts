@@ -45,3 +45,39 @@ export function createInvite(email: string): Promise<CreatedInvite> {
 export function revokeInvite(id: string): Promise<void> {
   return send(`/api/households/invites/${id}`, { method: 'DELETE' })
 }
+
+export function joinHousehold(token: string): Promise<{ householdId: string }> {
+  return send('/api/households/join', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token }),
+  })
+}
+
+export function renameHousehold(name: string): Promise<{ name: string }> {
+  return send('/api/households/me', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+}
+
+/**
+ * Creates the household a signed-in user does not yet have.
+ *
+ * Deduplicated by a module-level promise. React StrictMode invokes effects twice in development,
+ * and two concurrent creates would race: the second violates `unique(user_id)` on
+ * household_members and surfaces as a failure over a household that had just been created
+ * successfully.
+ */
+let creating: Promise<void> | null = null
+
+export function ensureHousehold(name: string): Promise<void> {
+  creating ??= send<unknown>('/api/households', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name }),
+  }).then(() => undefined)
+
+  return creating
+}

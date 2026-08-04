@@ -1,30 +1,26 @@
-import { AUTH_COPY } from '@beans/shared'
+import { AUTH_COPY, HOUSEHOLD_COPY } from '@beans/shared'
 import { useMutation } from '@tanstack/react-query'
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
+import { ensureHousehold } from '../household/api.js'
 import { cn } from '../lib/cn.js'
 
 /**
- * The step between signing up and having anywhere to put money.
+ * The household a signed-in user does not yet have, created without asking.
  *
- * A user exists the moment they sign up; a household does not, and every financial table is keyed to
- * one. Without this screen a new account signs in successfully and lands on a net worth page that
- * can only tell them they have no household — a dead end reachable by doing everything right.
+ * A user exists the moment they sign up; a household does not, and every financial table is keyed
+ * to one — so something has to create it before the app is usable. This used to be a form asking
+ * for a name, which is a strange first thing to demand: a household of one needs no name, and the
+ * person being asked has no concept yet of what it is for. The name is asked for on the household
+ * page instead, at the point it starts to matter, which is when somebody else is about to see it.
+ *
+ * Deliberately **not** reached when an invite is pending — see the gate in App.tsx. Creating a
+ * household for an invited person would consume their one allowed membership and strand them.
  */
-
 export function CreateHousehold(): ReactNode {
-  const [name, setName] = useState('')
+  const started = useRef(false)
 
   const create = useMutation({
-    mutationFn: async () => {
-      const response = await fetch('/api/households', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: name.trim() }),
-      })
-
-      if (!response.ok) throw new Error(AUTH_COPY.householdFailed)
-    },
+    mutationFn: () => ensureHousehold(HOUSEHOLD_COPY.defaultName),
     /*
      * Reload, matching sign-in and sign-out. The query that reports "no household" is the
      * working-set sync, which is parked in an error state with retries disabled — invalidating it
@@ -35,54 +31,41 @@ export function CreateHousehold(): ReactNode {
     },
   })
 
-  const canSubmit = name.trim().length > 0
-
-  const onSubmit = (event: FormEvent): void => {
-    event.preventDefault()
-    if (canSubmit && !create.isPending) create.mutate()
-  }
+  // StrictMode invokes effects twice; `ensureHousehold` dedupes as well, so this is belt and
+  // braces against creating two households for one person.
+  useEffect(() => {
+    if (started.current) return
+    started.current = true
+    create.mutate()
+  }, [create])
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-6 py-12">
-      <h1 className="text-2xl font-semibold">{AUTH_COPY.householdTitle}</h1>
-      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{AUTH_COPY.householdBlurb}</p>
-
-      <form className="mt-6" onSubmit={onSubmit}>
-        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
-          {AUTH_COPY.householdNameLabel}
-          <input
-            type="text"
-            value={name}
-            autoComplete="off"
-            placeholder={AUTH_COPY.householdPlaceholder}
-            onChange={(event) => setName(event.target.value)}
+    <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-6">
+      {create.error instanceof Error ? (
+        <>
+          <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
+            {AUTH_COPY.householdFailed}
+          </p>
+          <button
+            type="button"
+            onClick={() => create.mutate()}
+            disabled={create.isPending}
             className={cn(
-              'mt-1 block min-h-12 w-full rounded-lg border px-3 text-base',
-              'border-slate-300 bg-white text-slate-900',
-              'dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100',
-              'focus-visible:outline-2 focus-visible:outline-sky-500',
+              'mt-5 min-h-12 w-full rounded-xl text-sm font-semibold',
+              'bg-sky-600 text-white hover:bg-sky-500 disabled:opacity-50',
+              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500',
             )}
-          />
-        </label>
-
-        <p role="alert" className="mt-2 min-h-5 text-xs text-rose-600 dark:text-rose-400">
-          {create.error instanceof Error ? create.error.message : null}
+          >
+            {AUTH_COPY.retry}
+          </button>
+        </>
+      ) : (
+        // Near-instant in practice, so this is a fallback for a slow connection rather than a
+        // step the user is expected to watch.
+        <p role="status" className="text-sm text-slate-500 dark:text-slate-400">
+          {AUTH_COPY.settingUp}
         </p>
-
-        <button
-          type="submit"
-          disabled={!canSubmit || create.isPending}
-          className={cn(
-            'mt-2 min-h-12 w-full rounded-xl text-sm font-semibold',
-            'bg-sky-600 text-white hover:bg-sky-500',
-            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500',
-            'disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400',
-            'dark:disabled:bg-slate-800 dark:disabled:text-slate-600',
-          )}
-        >
-          {create.isPending ? AUTH_COPY.working : AUTH_COPY.createHousehold}
-        </button>
-      </form>
-    </div>
+      )}
+    </main>
   )
 }
