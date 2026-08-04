@@ -174,6 +174,27 @@ async function main(): Promise<void> {
   }
 
   await withHouseholdContext(deps, userId, async (context) => {
+    /*
+     * Refuses to write fake accounts into a household that already has some.
+     *
+     * Development and production currently share one database, deliberately — real data has found
+     * bugs no fixture would have. The cost is that this command, whose entire job is to invent
+     * plausible financial data, points at real money by default. "Remember not to run it" is not a
+     * safety mechanism, so it checks.
+     */
+    const existing = await context.client.query<{ count: string }>(
+      'select count(*) as count from accounts',
+    )
+    const count = Number(existing.rows[0]?.count ?? 0)
+
+    if (count > 0 && !process.argv.includes('--force')) {
+      throw new Error(
+        `This household already has ${count} account${count === 1 ? '' : 's'}. ` +
+          `Seeding would add ${ACCOUNTS.length} invented ones alongside them, which is almost ` +
+          `certainly not what you want against real data. Re-run with --force if it is.`,
+      )
+    }
+
     const connectionId = await seedConnection(context)
     for (const spec of ACCOUNTS) {
       await seedAccount(context, connectionId, spec)
