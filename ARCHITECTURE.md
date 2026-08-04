@@ -761,6 +761,29 @@ mistaken for a complete one.
 ordinary week of groceries as a page of errors. Spending is not a problem, it is what a current
 account is for, and marking the rarer direction is what makes the colour informative.
 
+### 14.2 Cash flow, as built
+
+`/cash-flow` totals income and spending by calendar month, and its correctness rests entirely on
+excluding transfers. Paying a credit card is an outflow from checking and an inflow to the card;
+counted naively it adds the same amount to **both** sides. Net is unaffected, which is exactly why
+the error survives inspection — observed directly: confirming one $400 payment took $400 off income
+and $400 off spending, and left net identical.
+
+Exclusion lives in one function in `packages/shared` (§9) and the screen calls it. Detection is a
+pure function too, so the mortgage case is testable without a database: a payment leaves checking as
+one amount while the balance drops by only the principal, so the amounts differ and the matcher
+declines. **A test asserts that refusal**, because loosening the tolerance is the obvious improvement
+and would silently erase interest expense.
+
+Nothing is excluded on the strength of a proposal — only confirmation. A matcher quietly deciding
+what counts as income would be worse than no matcher. The count of what was excluded is shown, so a
+total that ignores some transactions is never doing it silently.
+
+Spending stays **negative** through every layer and is negated only for display. The screen also uses
+words for a month's result — "$412 more than you earned" rather than a bare negative — because for a
+monthly figure the direction is the point, and the wording stays plain: no commiseration, no
+encouragement, no joke.
+
 ### 15.1a Managing accounts
 
 `/accounts` lists every account grouped by the connection it came from, with manual accounts as

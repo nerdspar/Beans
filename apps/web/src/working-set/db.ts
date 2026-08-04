@@ -104,6 +104,17 @@ export type SyncState = {
   coverageFrom: string | null
 }
 
+/**
+ * Confirmed transfer pair members, replaced wholesale on every sync.
+ *
+ * Stored under `meta` rather than as its own store because it is a small set that is always sent in
+ * full — a client holding a stale half of a pair would count one side of a card payment as income.
+ */
+export async function readConfirmedTransferIds(): Promise<string[]> {
+  const db = await workingSetDb()
+  return ((await db.get('meta', 'confirmedTransferIds')) as string[] | undefined) ?? []
+}
+
 export async function readSyncState(): Promise<SyncState> {
   const db = await workingSetDb()
   const [cursor, coverageFrom] = await Promise.all([
@@ -198,6 +209,7 @@ export async function applyDelta(response: WorkingSetResponse): Promise<void> {
     }
   }
 
+  await tx.objectStore('meta').put(response.confirmedTransferIds, 'confirmedTransferIds')
   await tx.objectStore('meta').put(response.cursor, 'cursor')
   await tx.objectStore('meta').put(response.coverageFrom, 'coverageFrom')
 
@@ -228,12 +240,14 @@ export async function readAll(): Promise<{
   accounts: StoredAccount[]
   balances: StoredBalance[]
   transactions: StoredTransaction[]
+  confirmedTransferIds: string[]
 }> {
   const db = await workingSetDb()
-  const [accounts, balances, transactions] = await Promise.all([
+  const [accounts, balances, transactions, confirmedTransferIds] = await Promise.all([
     db.getAll('accounts'),
     db.getAll('balances'),
     db.getAll('transactions'),
+    readConfirmedTransferIds(),
   ])
-  return { accounts, balances, transactions }
+  return { accounts, balances, transactions, confirmedTransferIds }
 }

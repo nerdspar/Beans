@@ -14,6 +14,7 @@ import { connectionRoutes } from './routes/connections.js'
 import { householdRoutes } from './routes/households.js'
 import { preferenceRoutes } from './routes/preferences.js'
 import { staticSiteRoutes } from './routes/static-site.js'
+import { transferRoutes } from './routes/transfers.js'
 import { workingSetRoutes } from './routes/working-set.js'
 import type { Pool } from 'pg'
 
@@ -67,6 +68,7 @@ export async function buildServer({
   await fastify.register(accountRoutes, { auth, deps: contextDeps })
   await fastify.register(preferenceRoutes, { auth, pool })
   await fastify.register(workingSetRoutes, { auth, context: contextDeps })
+  await fastify.register(transferRoutes, { auth, deps: contextDeps })
 
   /**
    * Reports what the container can actually do, not merely that the process is alive.

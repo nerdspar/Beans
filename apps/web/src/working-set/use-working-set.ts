@@ -19,6 +19,8 @@ export type WorkingSetState = {
   data: DerivedWorkingSet | null
   /** Every cached transaction, unsorted. The screens that want them do their own filtering. */
   transactions: StoredTransaction[]
+  /** Transaction ids in a confirmed transfer pair (ARCHITECTURE.md §9). */
+  confirmedTransferIds: ReadonlySet<string>
   isLoading: boolean
   /** Signed in but not yet in a household — onboarding, not a failure. */
   needsHousehold: boolean
@@ -35,6 +37,7 @@ export function useWorkingSet(): WorkingSetState {
     accounts: unknown[]
     balances: unknown[]
     transactions: unknown[]
+    confirmedTransferIds: string[]
   }> = useQuery({
     queryKey: WORKING_SET_KEY,
     queryFn: readAll,
@@ -85,6 +88,12 @@ export function useWorkingSet(): WorkingSetState {
     [stored.data],
   )
 
+  /** Members of a confirmed transfer pair, which cash flow must not count as income or spending. */
+  const confirmedTransferIds = useMemo(
+    () => new Set(stored.data?.confirmedTransferIds ?? []),
+    [stored.data],
+  )
+
   const syncError = sync.error instanceof Error ? sync.error : null
 
   /*
@@ -106,6 +115,7 @@ export function useWorkingSet(): WorkingSetState {
   return {
     data: derived,
     transactions,
+    confirmedTransferIds,
     // Loading only while there is nothing to show. Once the store has content, a sync in flight is
     // a background refresh and must not blank the screen the user is reading.
     isLoading: stored.isLoading || (derived === null && sync.isLoading),

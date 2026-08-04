@@ -9,6 +9,7 @@ import {
   type WorkingSetResponse,
   type WorkingSetTransaction,
 } from '@beans/shared'
+import { confirmedPairMembers } from './transfers.js'
 import type { HouseholdContext } from './household-context.js'
 
 /**
@@ -76,6 +77,7 @@ export async function readWorkingSet(
       cursor: nextCursor,
       fullResyncRequired: true,
       coverageFrom,
+      confirmedTransferIds: [],
       accounts: [],
       balances: [],
       transactions: [],
@@ -93,11 +95,15 @@ export async function readWorkingSet(
   const balances = await readBalances(context, since, coverageFrom)
   const transactions = await readTransactions(context, since, coverageFrom)
   const deletions = await readDeletions(context, since)
+  // Always sent in full, never filtered by cursor: a client holding half of a pair would exclude one
+  // side of a card payment and count the other as income.
+  const confirmedTransferIds = await confirmedPairMembers(context)
 
   return {
     cursor: nextCursor,
     fullResyncRequired: false,
     coverageFrom,
+    confirmedTransferIds,
     accounts,
     balances,
     transactions,

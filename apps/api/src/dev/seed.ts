@@ -226,6 +226,53 @@ function range(from: number, to: number): number[] {
   return Array.from({ length: to - from }, (_, index) => from + index)
 }
 
+/**
+ * Monthly credit card payments, as matching pairs.
+ *
+ * The seed had none, so transfer detection had nothing to find and cash flow could not be checked
+ * against the error it exists to prevent. This is the highest-volume real case: an outflow from
+ * checking and an inflow to the card, equal and within a day or two, which counted naively adds the
+ * same amount to both income and spending.
+ */
+async function seedCardPayments(context: HouseholdContext): Promise<void> {
+  const accounts = await context.client.query<{ id: string; type: string }>(
+    `select id, type from accounts where type in ('depository', 'credit') order by created_at`,
+  )
+
+  const checking = accounts.rows.find((row) => row.type === 'depository')
+  const cards = accounts.rows.filter((row) => row.type === 'credit')
+  if (checking === undefined || cards.length === 0) return
+
+  for (const [cardIndex, card] of cards.entries()) {
+    for (let month = 0; month < 6; month += 1) {
+      const daysAgo = 15 + month * 30
+      const amount = BigInt(40_000 + cardIndex * 7_500 + month * 1_100)
+
+      for (const [accountId, signed, offset, label] of [
+        [checking.id, -amount, 0, 'Payment to card'],
+        // The credit lands a day later, which is the shape the three-day window exists for.
+        [card.id, amount, -1, 'Payment received'],
+      ] as const) {
+        await context.client.query(
+          `insert into transactions
+             (household_id, account_id, simplefin_id, posted_date, amount, description, payee)
+           values ($1, $2, $3, $4, $5, $6, $7)
+           on conflict (account_id, simplefin_id) where simplefin_id is not null do nothing`,
+          [
+            context.householdId,
+            accountId,
+            `seed-payment-${cardIndex}-${month}-${accountId}`,
+            isoDate(daysAgo + offset),
+            context.cipher.encryptMoney(signed),
+            context.cipher.encryptText(label),
+            context.cipher.encryptText('Card payment'),
+          ],
+        )
+      }
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const email = process.argv[2]
   if (email === undefined) {
@@ -272,6 +319,8 @@ async function main(): Promise<void> {
     for (const [index, spec] of ACCOUNTS.entries()) {
       await seedAccount(context, connectionId, spec, index)
     }
+
+    await seedCardPayments(context)
   })
 
   console.log(

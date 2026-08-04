@@ -113,6 +113,14 @@ export const workingSetResponseSchema = z.object({
   /** The earliest date this response covers. Older history is fetched on demand. */
   coverageFrom: isoDate,
 
+  /**
+   * Transaction ids in a confirmed transfer pair.
+   *
+   * Sent whole rather than as a delta: there are few of them, and a client holding a stale partial
+   * set would count a card payment as income — the error the pairing exists to prevent.
+   */
+  confirmedTransferIds: z.array(z.string().uuid()),
+
   accounts: z.array(workingSetAccountSchema),
   balances: z.array(workingSetBalanceSchema),
   transactions: z.array(workingSetTransactionSchema),
