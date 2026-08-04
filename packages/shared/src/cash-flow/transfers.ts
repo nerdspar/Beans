@@ -341,7 +341,12 @@ export function cumulativeDailyFlow(
  * Equal length rather than "the previous calendar month", so the comparison holds for any range the
  * user picked. Comparing 31 days against 28 would make February look thrifty every year.
  */
-export function precedingWindow(from: IsoDate, to: IsoDate): { from: IsoDate; to: IsoDate } {
+export function precedingWindow(
+  from: IsoDate,
+  to: IsoDate,
+): { start: IsoDate; end: IsoDate } {
   const span = daysBetween(from, to)
-  return { from: addDays(from, -(span + 1)), to: addDays(to, -(span + 1)) }
+  // `{ start, end }` to match DateWindow. Two shapes for one concept is a bug waiting for whoever
+  // passes the wrong one to a function that reads the other.
+  return { start: addDays(from, -(span + 1)), end: addDays(to, -(span + 1)) }
 }

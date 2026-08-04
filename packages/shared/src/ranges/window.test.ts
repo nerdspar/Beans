@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { daysBetween } from '../balance-history/dates.js'
 import {
+  monthWindow,
+  previousMonthWindow,
   resolveWindow,
   sliceToWindow,
   validateCustomRange,
@@ -120,5 +122,52 @@ describe('validateCustomRange', () => {
 
   it('allows a start in the future to be reported as an ordering problem, not silently accepted', () => {
     expect(validateCustomRange('2027-01-01', '2027-02-01', '2026-08-03')).toBe('future')
+  })
+})
+
+/**
+ * The chart's window, which is not the totals' window.
+ *
+ * "This month" ends today — that is what the totals should cover. A chart drawn over the same span
+ * would redraw its own axis every day and give a month in progress no room to run into.
+ */
+describe('monthWindow', () => {
+  it('covers the whole month a date falls in', () => {
+    expect(monthWindow('2026-08-04')).toEqual({ start: '2026-08-01', end: '2026-08-31' })
+  })
+
+  it('handles a thirty-day month', () => {
+    expect(monthWindow('2026-09-15')).toEqual({ start: '2026-09-01', end: '2026-09-30' })
+  })
+
+  it('handles February', () => {
+    expect(monthWindow('2026-02-10')).toEqual({ start: '2026-02-01', end: '2026-02-28' })
+  })
+
+  /** The case a month-length table gets wrong, which is why there is not one. */
+  it('handles a leap February', () => {
+    expect(monthWindow('2028-02-10')).toEqual({ start: '2028-02-01', end: '2028-02-29' })
+  })
+
+  it('is stable on the first and last days', () => {
+    expect(monthWindow('2026-08-01')).toEqual(monthWindow('2026-08-31'))
+  })
+})
+
+describe('previousMonthWindow', () => {
+  it('returns the whole month before', () => {
+    expect(previousMonthWindow('2026-08-04')).toEqual({ start: '2026-07-01', end: '2026-07-31' })
+  })
+
+  it('crosses a year boundary', () => {
+    expect(previousMonthWindow('2026-01-09')).toEqual({ start: '2025-12-01', end: '2025-12-31' })
+  })
+
+  /**
+   * A calendar month rather than an equal-length span, for a range that *is* a calendar month.
+   * "This month against last month" is the question; 31 days against the previous 31 is not.
+   */
+  it('gives February the month before it, not thirty-one days back', () => {
+    expect(previousMonthWindow('2026-03-05')).toEqual({ start: '2026-02-01', end: '2026-02-28' })
   })
 })

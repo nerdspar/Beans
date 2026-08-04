@@ -9,7 +9,9 @@ import {
   compareDates,
   cumulativeDailyFlow,
   incomeByCategory,
+  monthWindow,
   precedingWindow,
+  previousMonthWindow,
   spendingByCategory,
   uncategorizedTotal,
   summarizeCashFlow,
@@ -96,6 +98,7 @@ export function CashFlow(): ReactNode {
     uncategorizedSpending,
     uncategorizedIncome,
     window,
+    singleMonth,
     daily,
     dailyBefore,
     entries,
@@ -144,7 +147,25 @@ export function CashFlow(): ReactNode {
           : workingSet.categories.get(transaction.categoryId)?.kind,
     }))
 
-    const previous = precedingWindow(window.start, window.end)
+    /*
+     * The chart's window is not the totals' window.
+     *
+     * "This month" resolves to start-of-month through *today*, which is right for the totals — they
+     * should report what has happened. Drawing the chart over the same span would redraw its own
+     * axis every day and leave a month in progress no room to run into, so the chart takes the whole
+     * calendar month and stops its solid line at today instead.
+     */
+    const singleMonth = window.start.slice(0, 7) === window.end.slice(0, 7)
+    const chartWindow = singleMonth ? monthWindow(window.start) : window
+
+    /*
+     * A calendar month compares against the calendar month before it — that is the question being
+     * asked, and it is what makes "over last month" in the header mean anything. Equal-length spans
+     * are right for everything else, where there are no month boundaries to respect.
+     */
+    const comparisonWindow = singleMonth
+      ? previousMonthWindow(window.start)
+      : precedingWindow(window.start, window.end)
 
     /*
      * The running total follows the tab. On Income it accumulates only money in, on Expenses only
@@ -159,17 +180,18 @@ export function CashFlow(): ReactNode {
       uncategorizedSpending: uncategorizedTotal(spending),
       uncategorizedIncome: uncategorizedTotal(income),
       window,
+      singleMonth,
       daily: cumulativeDailyFlow(
         allRows,
-        window.start,
-        window.end,
+        chartWindow.start,
+        chartWindow.end,
         direction,
         workingSet.confirmedTransferIds,
       ),
       dailyBefore: cumulativeDailyFlow(
         allRows,
-        previous.from,
-        previous.to,
+        comparisonWindow.start,
+        comparisonWindow.end,
         direction,
         workingSet.confirmedTransferIds,
       ),
@@ -343,7 +365,7 @@ export function CashFlow(): ReactNode {
             say nothing about any month in it, and a bar per day for thirty days is unreadable. The
             question changes with the span, so the chart does.
           */}
-          {summary.periods.length <= 1 && daily.length > 1 && (
+          {singleMonth && daily.length > 1 && (
             <section className="mt-6">
               <CumulativeFlow
                 series={daily}
@@ -378,7 +400,7 @@ export function CashFlow(): ReactNode {
           )}
 
           {/* Kept below the chart: this is its table fallback as much as it is detail. */}
-          {summary.periods.length > 1 && (
+          {!singleMonth && (
             <>
               <h2 className="mt-6 text-sm font-semibold">{CASH_FLOW_COPY.byMonth}</h2>
               <ul className="mt-2 space-y-3">
@@ -398,7 +420,7 @@ export function CashFlow(): ReactNode {
             here, and scrolling here moves the line — the two are one view of the same days, and
             reading either alone means holding the other in your head.
           */}
-          {summary.periods.length <= 1 && (
+          {singleMonth && (
             <section className="mt-6">
               <h2 className="text-sm font-semibold">{CASH_FLOW_COPY.activityHeading}</h2>
 
@@ -470,6 +492,7 @@ export function CashFlow(): ReactNode {
       ) : (
         <Breakdown
           periods={summary.periods}
+          singleMonth={singleMonth}
           daily={daily}
           dailyBefore={dailyBefore}
           elapsedCount={elapsedDays}
@@ -859,6 +882,7 @@ function Caveats({
  */
 function Breakdown({
   periods,
+  singleMonth,
   daily,
   dailyBefore,
   elapsedCount,
@@ -870,6 +894,7 @@ function Breakdown({
   categories,
 }: {
   periods: readonly CashFlowPeriod[]
+  singleMonth: boolean
   daily: readonly { date: string; cumulativeCents: bigint }[]
   dailyBefore: readonly { date: string; cumulativeCents: bigint }[]
   elapsedCount: number
@@ -899,7 +924,7 @@ function Breakdown({
         The same split as the combined tab: one month gets the running total, more gets bars. A tab
         that showed only bars would answer "which month" while the other two answered "which day".
       */}
-      {periods.length <= 1 && daily.length > 1 && (
+      {singleMonth && daily.length > 1 && (
         <section className="mt-6">
           <CumulativeFlow
             series={daily}
@@ -921,7 +946,7 @@ function Breakdown({
         </section>
       )}
 
-      {periods.length > 1 && (
+      {!singleMonth && (
         <MonthlyBars
           className="mt-6"
           periods={periods}

@@ -115,3 +115,27 @@ export function validateCustomRange(
   if (compareDates(end, today) > 0) return 'future'
   return null
 }
+
+/**
+ * The whole calendar month containing a date, both endpoints inclusive.
+ *
+ * Distinct from the window a range resolves to. "This month" ends *today*, which is what the totals
+ * should cover — but a chart drawn over that span would redraw its own axis every day and give a
+ * month in progress no room to run into. The chart wants the month; the totals want what has
+ * happened.
+ */
+export function monthWindow(date: IsoDate): DateWindow {
+  const start = startOfMonth(date)
+  /*
+   * Thirty-two days past the first is always inside the next month, whatever its length. Taking the
+   * first of *that* month and stepping back one day lands on this month's last day — February and
+   * leap years included, with no month-length table.
+   */
+  const nextMonth = startOfMonth(addDays(start, 32))
+  return { start, end: addDays(nextMonth, -1) }
+}
+
+/** The calendar month before the one containing `date`. */
+export function previousMonthWindow(date: IsoDate): DateWindow {
+  return monthWindow(addDays(startOfMonth(date), -1))
+}

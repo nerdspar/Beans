@@ -405,27 +405,27 @@ describe('precedingWindow', () => {
   /** Equal length, not the previous calendar month — 31 days against 28 flatters February. */
   it('returns the window of equal length immediately before', () => {
     expect(precedingWindow('2026-08-01', '2026-08-31')).toEqual({
-      from: '2026-07-01',
-      to: '2026-07-31',
+      start: '2026-07-01',
+      end: '2026-07-31',
     })
   })
 
   it('leaves no gap and no overlap with the window it precedes', () => {
     const previous = precedingWindow('2026-08-01', '2026-08-31')
     // The day after the previous window ends is the day this one starts.
-    expect(previous.to).toBe('2026-07-31')
+    expect(previous.end).toBe('2026-07-31')
   })
 
   it('keeps a short window short', () => {
     expect(precedingWindow('2026-08-10', '2026-08-12')).toEqual({
-      from: '2026-08-07',
-      to: '2026-08-09',
+      start: '2026-08-07',
+      end: '2026-08-09',
     })
   })
 
   /** February against January is the case a calendar-month rule gets wrong. */
   it('compares equal spans across months of different lengths', () => {
     const previous = precedingWindow('2026-02-01', '2026-02-28')
-    expect(previous).toEqual({ from: '2026-01-04', to: '2026-01-31' })
+    expect(previous).toEqual({ start: '2026-01-04', end: '2026-01-31' })
   })
 })
