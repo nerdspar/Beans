@@ -26,9 +26,29 @@
 #
 #   3. The master key must exist, be valid JSON, and be readable by uid 568.
 #
+#      **Generate a new one ONLY for an empty database. Otherwise copy the existing key.**
+#
+#      The master key is not a per-deployment secret; it belongs to the data. Every household's data
+#      key is stored wrapped by it, so a database that already holds households can only be opened by
+#      the key that wrapped them. Pointing a new deployment at an existing database with a fresh key
+#      fails on the first read with:
+#
+#          Decryption failed: authentication failed
+#
+#      which is AES-GCM refusing a wrong key rather than anything being corrupt. Nothing is damaged;
+#      the right key simply is not present. Note the version does not catch this — a fresh key is
+#      also version 1, so the lookup succeeds and only the authentication tag disagrees.
+#
+#      If this deployment points at the database used in development — which it does, if it mounts
+#      the same data directory — then copy that key rather than generating one:
+#
+#          scp secrets/master.key <nas>:/mnt/NAS/Data/beans/secrets/master.key
+#
 #      **It is a JSON document, not a bare base64 string** — the shape carries a version so the key
 #      can be rotated without downtime (ARCHITECTURE.md §5), and the loader rejects anything else at
 #      boot. `{"currentVersion":1,"keys":{"1":"<32 bytes, base64>"}}`
+#
+#      For a genuinely empty database, generate one (`pnpm generate:master-key` does the same thing):
 #
 #        mkdir -p /mnt/NAS/Data/beans/secrets
 #        printf '{"currentVersion":1,"keys":{"1":"%s"}}\n' "$(head -c 32 /dev/urandom | base64)" \

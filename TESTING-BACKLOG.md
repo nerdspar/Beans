@@ -164,4 +164,12 @@ behavior is a separate question.
       production bundle was exercised directly with `node` on the development machine, which covers
       the application but not the image: the entrypoint, the non-root user, the mounted master key,
       and whether migrations apply on first boot against the real database are all unproven.
+- [ ] **There is no re-wrap job, so the master key cannot actually be rotated.** `households.key_version`
+      exists, `LocalMasterKeyProvider` accepts several keys at once, and the "no master key for
+      version N" error tells the operator to complete a re-wrap — but nothing implements one.
+      ARCHITECTURE §5 claims rotation without downtime and that is currently untrue. It matters in
+      practice: the first deployment necessarily reuses whatever key encrypted the existing data, so
+      a development key becomes the production key with no supported way off it. The job needs to
+      unwrap each household's DEK with its current version and re-wrap it with the new one, in a
+      transaction, leaving both keys present until every row has moved.
 
