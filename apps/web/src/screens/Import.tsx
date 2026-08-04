@@ -11,6 +11,7 @@ import {
   type Inspection,
 } from '../import/api.js'
 import { cn } from '../lib/cn.js'
+import { SearchableSelect } from '../lib/SearchableSelect.js'
 import { WORKING_SET_KEY } from '../working-set/use-working-set.js'
 
 /**
@@ -55,6 +56,16 @@ export function Import(): ReactNode {
 
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: listManagedAccounts })
   const openAccounts = (accounts.data ?? []).filter((account) => !account.isClosed)
+
+  /*
+   * Built once and reused by every picker on this screen — the matching list renders one per
+   * account named in the file, and a household can easily have forty of each.
+   */
+  const accountOptions = openAccounts.map((account) => ({
+    value: account.id,
+    label: account.name,
+    hint: [account.institutionName, account.mask].filter(Boolean).join(' · '),
+  }))
 
   const inspect = useMutation({
     mutationFn: async (file: File) => {
@@ -217,18 +228,13 @@ export function Import(): ReactNode {
           */}
           {namedAccounts === null ? (
             <Field label={IMPORT_COPY.account} help={IMPORT_COPY.accountHelp}>
-              <select
+              <SearchableSelect
                 value={accountId}
-                onChange={(event) => setAccountId(event.target.value)}
-                className={selectClass}
-              >
-                <option value="">—</option>
-                {openAccounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.institutionName ?? ''} {account.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setAccountId}
+                label={IMPORT_COPY.account}
+                placeholder="—"
+                options={accountOptions}
+              />
             </Field>
           ) : (
             <section className="mt-4">
@@ -247,23 +253,20 @@ export function Import(): ReactNode {
                       <span className="min-w-0 flex-1 truncate text-sm font-medium" title={name}>
                         {name}
                       </span>
-                      <select
+                      <SearchableSelect
+                        className="w-56 shrink-0"
                         value={accountMap[name] ?? ''}
-                        aria-label={name}
-                        onChange={(event) =>
-                          setAccountMap((current) => ({ ...current, [name]: event.target.value }))
+                        onChange={(next) =>
+                          setAccountMap((current) => ({ ...current, [name]: next }))
                         }
-                        className={cn(selectClass, 'w-44 shrink-0')}
-                      >
-                        <option value="">{IMPORT_COPY.accountUnmatched}</option>
-                        {openAccounts.map((account) => (
-                          <option key={account.id} value={account.id}>
-                            {account.institutionName ?? ''} {account.name}
-                          </option>
-                        ))}
-                        {/* Last, because matching an existing account is the common case. */}
-                        <option value={CREATE_SENTINEL}>{IMPORT_COPY.accountCreate}</option>
-                      </select>
+                        label={name}
+                        options={[
+                          { value: '', label: IMPORT_COPY.accountUnmatched },
+                          ...accountOptions,
+                          // Last, because matching an existing account is the common case.
+                          { value: CREATE_SENTINEL, label: IMPORT_COPY.accountCreate },
+                        ]}
+                      />
                     </div>
 
                     {accountMap[name] === CREATE_SENTINEL && (

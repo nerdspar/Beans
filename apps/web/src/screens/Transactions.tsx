@@ -14,6 +14,7 @@ import { useDeferredValue, useMemo, useState, type ReactNode } from 'react'
 import { CategorySheet } from '../categories/CategorySheet.js'
 import { listCategories } from '../categories/api.js'
 import { cn } from '../lib/cn.js'
+import { SearchableSelect } from '../lib/SearchableSelect.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
 import { DEFAULT_RANGE, type RangeSelection } from '../net-worth/range.js'
 import { WORKING_SET_KEY, useWorkingSet } from '../working-set/use-working-set.js'
@@ -187,22 +188,22 @@ export function Transactions(): ReactNode {
         </label>
 
         <div className="mt-2 flex items-center justify-between gap-3">
-          <select
+          <SearchableSelect
+            className="max-w-[60%]"
             value={accountId}
-            onChange={(event) => setAccountId(event.target.value)}
-            className={cn(
-              'min-h-9 max-w-[60%] rounded-lg border px-2 text-sm',
-              'border-slate-300 bg-white text-slate-900',
-              'dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100',
-            )}
-          >
-            <option value="">{TRANSACTIONS_COPY.allAccounts}</option>
-            {[...(accounts?.values() ?? [])].map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </select>
+            onChange={setAccountId}
+            label={TRANSACTIONS_COPY.allAccounts}
+            options={[
+              { value: '', label: TRANSACTIONS_COPY.allAccounts },
+              ...[...(accounts?.values() ?? [])].map((account) => ({
+                value: account.id,
+                label: account.name,
+                // Searchable as well as shown: an account is often easier to recall by its bank
+                // or its last four digits than by whatever it ended up being called.
+                hint: [account.institutionName, account.mask].filter(Boolean).join(' · '),
+              })),
+            ]}
+          />
 
           {/* So a filtered list is never mistaken for the whole of it. */}
           <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">

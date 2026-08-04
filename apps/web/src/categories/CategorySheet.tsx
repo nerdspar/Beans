@@ -1,4 +1,4 @@
-import { CATEGORY_COPY } from '@beans/shared'
+import { CATEGORY_COPY, PICKER_COPY } from '@beans/shared'
 import * as Dialog from '@radix-ui/react-dialog'
 import { useMutation } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
@@ -33,6 +33,7 @@ export function CategorySheet({
 }): ReactNode {
   const [chosen, setChosen] = useState<string | null>(transaction.categoryId)
   const [alsoRule, setAlsoRule] = useState(false)
+  const [filter, setFilter] = useState('')
 
   /*
    * The text a rule would match on. Payee first because it is the merchant name at most institutions
@@ -53,13 +54,34 @@ export function CategorySheet({
 
   const chosenName = categories.find((category) => category.id === chosen)?.name ?? ''
 
-  // Parents first, each followed by its children, so the picker reads as the two-level tree it is.
+  const needle = filter.trim().toLowerCase()
+
+  /*
+   * Parents first, each followed by its children, so the picker reads as the two-level tree it is.
+   *
+   * Filtering keeps the tree rather than flattening it: a bare list of matching children strips the
+   * context that tells you which "Insurance" you are looking at. A parent that matches keeps all of
+   * its children — searching for a group is how you ask to see the group.
+   */
   const grouped = categories
     .filter((category) => category.parentId === null)
-    .map((parent) => ({
-      parent,
-      children: categories.filter((category) => category.parentId === parent.id),
-    }))
+    .map((parent) => {
+      const children = categories.filter((category) => category.parentId === parent.id)
+      if (needle === '') return { parent, children }
+
+      const parentMatches = parent.name.toLowerCase().includes(needle)
+      return {
+        parent,
+        children: parentMatches
+          ? children
+          : children.filter((child) => child.name.toLowerCase().includes(needle)),
+        parentMatches,
+      }
+    })
+    .filter(
+      (group) =>
+        needle === '' || group.parentMatches === true || group.children.length > 0,
+    )
 
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
@@ -84,12 +106,40 @@ export function CategorySheet({
             {matchText || '—'}
           </Dialog.Description>
 
+          {/* Only once the list is long enough to be worth narrowing. */}
+          {categories.length >= 8 && (
+            <div className="px-5 pt-3">
+              <input
+                type="text"
+                value={filter}
+                onChange={(event) => setFilter(event.target.value)}
+                placeholder={PICKER_COPY.searchPlaceholder}
+                aria-label={PICKER_COPY.search}
+                className={cn(
+                  'min-h-10 w-full rounded-lg border px-3 text-base',
+                  'border-slate-300 bg-white text-slate-900',
+                  'dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100',
+                  'focus-visible:outline-2 focus-visible:outline-sky-500',
+                )}
+              />
+            </div>
+          )}
+
           <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-            <Option
-              label={CATEGORY_COPY.uncategorized}
-              selected={chosen === null}
-              onSelect={() => setChosen(null)}
-            />
+            {grouped.length === 0 && (
+              <p className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">
+                {PICKER_COPY.noMatches}
+              </p>
+            )}
+
+            {/* Hidden while filtering unless it matches — it is an option, not a header. */}
+            {(needle === '' || CATEGORY_COPY.uncategorized.toLowerCase().includes(needle)) && (
+              <Option
+                label={CATEGORY_COPY.uncategorized}
+                selected={chosen === null}
+                onSelect={() => setChosen(null)}
+              />
+            )}
 
             {grouped.map(({ parent, children }) => (
               <div key={parent.id} className="mt-2">
