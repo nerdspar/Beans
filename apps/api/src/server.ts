@@ -13,7 +13,7 @@ import { accountRoutes } from './routes/accounts.js'
 import { categoryRoutes } from './routes/categories.js'
 import { connectionRoutes } from './routes/connections.js'
 import { householdRoutes } from './routes/households.js'
-import { importRoutes } from './routes/imports.js'
+import { importRoutes, MAX_IMPORT_BYTES } from './routes/imports.js'
 import { preferenceRoutes } from './routes/preferences.js'
 import { staticSiteRoutes } from './routes/static-site.js'
 import { transferRoutes } from './routes/transfers.js'
@@ -51,6 +51,19 @@ export async function buildServer({
     // Behind Nginx Proxy Manager, so the client IP and protocol arrive in forwarded headers.
     // Without this, rate limiting would see every request as coming from the proxy.
     trustProxy: true,
+
+    /*
+     * Large enough that the import route's own limit is the one that fires.
+     *
+     * Fastify defaults to 1 MiB, which is well under the 10 MB the import route accepts — so a real
+     * multi-year export was rejected by the framework with a bare "Payload Too Large" before any
+     * route ran, and the route's limit was decoration. The two limits have to agree about which one
+     * is authoritative, and it should be the one that can explain itself.
+     *
+     * The margin covers JSON string escaping: the CSV is sent as a JSON string field, and quotes,
+     * backslashes and newlines each cost an extra byte on the wire.
+     */
+    bodyLimit: MAX_IMPORT_BYTES + 2 * 1024 * 1024,
   })
 
   await fastify.register(cors, {

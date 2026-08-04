@@ -6,6 +6,8 @@ export type Inspection = {
   delimiter: string
   mapping: Array<{ columnIndex: number; role: string }>
   samples: string[][]
+  /** Per column: its distinct values, or null when there are too many to be categorical. */
+  distinct: Array<string[] | null>
 }
 
 export type StageResult = { importId: string; rowCount: number; parsedCount: number }
@@ -43,7 +45,10 @@ export function stageImport(input: {
   content: string
   presetId: string
   kind: 'transactions' | 'balances'
-  targetAccountId: string
+  /** Omitted when `accountMap` carries the routing instead. */
+  targetAccountId?: string
+  /** Maps each account named in the file to a Beans account. */
+  accountMap?: Array<{ value: string; accountId: string }>
   originalFilename: string
   mapping: Array<{ columnIndex: number; role: string }>
 }): Promise<StageResult> {

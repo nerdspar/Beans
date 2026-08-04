@@ -55,10 +55,18 @@ export type StageOptions = {
   mapping: readonly ColumnMapping[]
   preset: ImportPreset
   kind: ImportKind
-  targetAccountId: string
+  /** Used for every row when the file names no account. Ignored when `accountMap` is in play. */
+  targetAccountId?: string | undefined
+  /** Maps each account name found in the file to a Beans account. */
+  accountMap?: ReadonlyArray<{ value: string; accountId: string }> | undefined
   originalFilename: string
   /** Overrides detection, for a column that is genuinely ambiguous. */
   dateFormat?: DateFormat
+}
+
+/** Case- and whitespace-insensitive, matching how the values were collected at inspect time. */
+function accountKey(value: string): string {
+  return value.trim().toLowerCase()
 }
 
 export type StageResult = {
@@ -83,6 +91,24 @@ export async function stageImport(
   options: StageOptions,
 ): Promise<StageResult> {
   const { csv, mapping, preset, kind, targetAccountId, originalFilename } = options
+
+  /*
+   * How each row finds its account.
+   *
+   * A single export routinely covers every account a household has — the Empower file names the
+   * institution and account on every row. Staging used to stamp one `targetAccountId` onto all of
+   * them, so a multi-account file imported cleanly with every transaction in the wrong place. The
+   * per-row column has always existed in `import_rows`; only the value written was constant.
+   *
+   * When the file names accounts, resolution is **strict**: a row whose account was not mapped is
+   * staged as failed and named in the preview. Falling back to a default account for unmapped rows
+   * would reintroduce exactly the silent misfiling this replaces — the failure has to be visible.
+   */
+  const accountColumn = mapping.find((column) => column.role === 'account')
+  const accountMap = new Map(
+    (options.accountMap ?? []).map((entry) => [accountKey(entry.value), entry.accountId]),
+  )
+  const routeByAccountColumn = accountColumn !== undefined && accountMap.size > 0
 
   const problems = validateMapping(mapping, kind)
   if (hasBlockingProblem(problems)) {
@@ -150,7 +176,26 @@ export async function stageImport(
   for (const [index, cells] of csv.rows.entries()) {
     const result = parseImportRow(cells, { mapping, preset, dateFormat })
 
-    if (result.ok) {
+    let rowAccountId: string | null = targetAccountId ?? null
+    let unmappedAccount: string | null = null
+
+    if (routeByAccountColumn) {
+      const named = result.ok ? result.row.account : (cells[accountColumn.columnIndex]?.trim() ?? '')
+      rowAccountId = named === null || named === '' ? null : (accountMap.get(accountKey(named)) ?? null)
+      if (rowAccountId === null) unmappedAccount = named === '' ? null : named
+    }
+
+    // An unroutable row fails loudly here rather than being dropped at commit, where the only trace
+    // would have been a count that did not add up.
+    const failedReason = !result.ok
+      ? result.reason
+      : rowAccountId === null
+        ? unmappedAccount === null
+          ? 'No account named in this row'
+          : `No account is mapped to “${unmappedAccount}”`
+        : null
+
+    if (failedReason === null) {
       parsedCount += 1
     } else {
       failedCount += 1
@@ -168,9 +213,9 @@ export async function stageImport(
         // not been committed yet.
         context.cipher.encryptJson(cells),
         result.ok ? context.cipher.encryptJson(toStored(result.row)) : null,
-        targetAccountId,
-        result.ok ? 'pending' : 'failed',
-        result.ok ? null : result.reason,
+        rowAccountId,
+        failedReason === null ? 'pending' : 'failed',
+        failedReason,
       ],
     )
   }

@@ -150,3 +150,34 @@ export function columnSamples(
 
   return samples
 }
+
+/**
+ * The distinct values in a column, or null when there are too many to be a category.
+ *
+ * Used to find the accounts named in a multi-account export. A column with a handful of repeated
+ * values is a categorical column; one with thousands is a description. Returning null rather than a
+ * huge array is the signal for the difference, and it keeps the inspect response small on a file
+ * with tens of thousands of rows.
+ */
+export function distinctColumnValues(
+  rows: readonly string[][],
+  columnIndex: number,
+  limit = 60,
+): string[] | null {
+  const seen = new Map<string, string>()
+
+  for (const row of rows) {
+    const value = row[columnIndex]?.trim()
+    if (value === undefined || value === '') continue
+
+    // Keyed case-insensitively so "Amazon Card" and "AMAZON CARD" are one account, but the first
+    // spelling seen is what gets shown — the user should recognize their own file.
+    const key = value.toLowerCase()
+    if (!seen.has(key)) {
+      if (seen.size >= limit) return null
+      seen.set(key, value)
+    }
+  }
+
+  return [...seen.values()].sort((left, right) => left.localeCompare(right))
+}

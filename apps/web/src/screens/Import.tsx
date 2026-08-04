@@ -33,9 +33,12 @@ export function Import(): ReactNode {
   const [presetId, setPresetId] = useState('empower')
   const [accountId, setAccountId] = useState('')
   const [mapping, setMapping] = useState<Array<{ columnIndex: number; role: string }>>([])
+  /** Account name as it appears in the file → Beans account id. Empty string means skip. */
+  const [accountMap, setAccountMap] = useState<Record<string, string>>({})
   const queryClient = useQueryClient()
 
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: listManagedAccounts })
+  const openAccounts = (accounts.data ?? []).filter((account) => !account.isClosed)
 
   const inspect = useMutation({
     mutationFn: async (file: File) => {
@@ -44,9 +47,27 @@ export function Import(): ReactNode {
     },
     onSuccess: (result) => {
       setMapping(result.inspection.mapping)
+      setAccountMap({})
       setStage({ kind: 'map', ...result })
     },
   })
+
+  /*
+   * The account values the file itself names, when a column has been mapped to `account`.
+   *
+   * Read from the mapping rather than from the guess, so changing which column means "account"
+   * updates this without another upload — inspect returns the distinct values for every column.
+   */
+  const namedAccounts =
+    stage.kind === 'map'
+      ? (stage.inspection.distinct[
+          mapping.find((column) => column.role === 'account')?.columnIndex ?? -1
+        ] ?? null)
+      : null
+
+  const matchedCount = (namedAccounts ?? []).filter(
+    (name) => (accountMap[name] ?? '') !== '',
+  ).length
 
   const stageRows = useMutation({
     mutationFn: (input: { content: string; filename: string }) =>
@@ -54,7 +75,15 @@ export function Import(): ReactNode {
         content: input.content,
         presetId,
         kind: 'transactions',
-        targetAccountId: accountId,
+        // One or the other, never both: a file that names its accounts routes per row, and a file
+        // that does not goes to the single chosen account.
+        ...(namedAccounts === null
+          ? { targetAccountId: accountId }
+          : {
+              accountMap: namedAccounts
+                .filter((name) => (accountMap[name] ?? '') !== '')
+                .map((name) => ({ value: name, accountId: accountMap[name] as string })),
+            }),
         originalFilename: input.filename,
         mapping,
       }),
@@ -121,22 +150,72 @@ export function Import(): ReactNode {
 
       {stage.kind === 'map' && (
         <div className="mt-5">
-          <Field label={IMPORT_COPY.account} help={IMPORT_COPY.accountHelp}>
-            <select
-              value={accountId}
-              onChange={(event) => setAccountId(event.target.value)}
-              className={selectClass}
-            >
-              <option value="">—</option>
-              {(accounts.data ?? [])
-                .filter((account) => !account.isClosed)
-                .map((account) => (
+          {/*
+            One account, or many. A whole-portfolio export names an account on every row, and
+            offering a single destination for it would quietly file everything in one place.
+          */}
+          {namedAccounts === null ? (
+            <Field label={IMPORT_COPY.account} help={IMPORT_COPY.accountHelp}>
+              <select
+                value={accountId}
+                onChange={(event) => setAccountId(event.target.value)}
+                className={selectClass}
+              >
+                <option value="">—</option>
+                {openAccounts.map((account) => (
                   <option key={account.id} value={account.id}>
                     {account.institutionName ?? ''} {account.name}
                   </option>
                 ))}
-            </select>
-          </Field>
+              </select>
+            </Field>
+          ) : (
+            <section className="mt-4">
+              <h2 className="text-sm font-semibold">{IMPORT_COPY.accountsHeading}</h2>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {IMPORT_COPY.accountsHelp}
+              </p>
+
+              <ul className="mt-2 space-y-2">
+                {namedAccounts.map((name) => (
+                  <li
+                    key={name}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-800"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium" title={name}>
+                      {name}
+                    </span>
+                    <select
+                      value={accountMap[name] ?? ''}
+                      aria-label={name}
+                      onChange={(event) =>
+                        setAccountMap((current) => ({ ...current, [name]: event.target.value }))
+                      }
+                      className={cn(selectClass, 'w-44 shrink-0')}
+                    >
+                      <option value="">{IMPORT_COPY.accountUnmatched}</option>
+                      {openAccounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.institutionName ?? ''} {account.name}
+                        </option>
+                      ))}
+                    </select>
+                  </li>
+                ))}
+              </ul>
+
+              <p
+                className={cn(
+                  'mt-2 text-xs',
+                  matchedCount === namedAccounts.length
+                    ? 'text-slate-500 dark:text-slate-400'
+                    : 'text-amber-700 dark:text-amber-400',
+                )}
+              >
+                {IMPORT_COPY.accountsMatched(matchedCount, namedAccounts.length)}
+              </p>
+            </section>
+          )}
 
           <Field label={IMPORT_COPY.source} help={IMPORT_COPY.sourceHelp}>
             <select
@@ -197,7 +276,11 @@ export function Import(): ReactNode {
 
           <button
             type="button"
-            disabled={accountId === '' || mapping.length === 0 || stageRows.isPending}
+            disabled={
+              (namedAccounts === null ? accountId === '' : matchedCount === 0) ||
+              mapping.length === 0 ||
+              stageRows.isPending
+            }
             onClick={() => stageRows.mutate({ content: stage.content, filename: stage.filename })}
             className={primaryClass}
           >

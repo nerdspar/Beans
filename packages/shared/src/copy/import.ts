@@ -17,6 +17,20 @@ export const IMPORT_COPY = {
 
   account: 'Import into',
   accountHelp: 'Every row goes to this account.',
+
+  /*
+   * The multi-account case. A whole-portfolio export names its accounts on every row, and mapping
+   * them is the difference between history landing where it belongs and all of it landing in one
+   * account — which imports cleanly and is entirely wrong.
+   */
+  accountsHeading: 'Match the accounts',
+  accountsHelp:
+    'This file covers more than one account. Match each one to yours. Anything left unmatched is skipped, not guessed — it will be listed in the preview.',
+  accountUnmatched: 'Skip',
+  accountsMatched: (matched: number, total: number): string =>
+    matched === total
+      ? `All ${total} matched.`
+      : `${matched} of ${total} matched. The rest will be skipped.`,
   source: 'Where it came from',
   /** Named because getting it wrong inverts every amount, and nothing downstream would notice. */
   sourceHelp:

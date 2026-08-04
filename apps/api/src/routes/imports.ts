@@ -3,7 +3,7 @@ import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import type { Auth } from '../auth/auth.js'
 import { getSession } from '../auth/routes.js'
-import { columnSamples, parseCsv } from '../import/csv.js'
+import { columnSamples, distinctColumnValues, parseCsv } from '../import/csv.js'
 import { commitImport, previewImport, reverseImport, stageImport } from '../import/staging.js'
 import {
   NoHouseholdError,
@@ -21,22 +21,48 @@ import {
 
 export type ImportRoutesOptions = { auth: Auth; deps: ContextDependencies }
 
-/** Ten megabytes. A decade of transactions from any provider is far below this. */
-const MAX_CSV_BYTES = 10 * 1024 * 1024
+/**
+ * Ten megabytes. A decade of transactions from any provider is far below this.
+ *
+ * Exported because the server's `bodyLimit` is derived from it. Fastify's 1 MiB default used to
+ * reject a real export before this route ever ran, with a bare "Payload Too Large" and no hint that
+ * a limit ten times larger was sitting here — two limits disagreeing about which one was real.
+ */
+export const MAX_IMPORT_BYTES = 10 * 1024 * 1024
 
-const inspectBody = z.object({ content: z.string().min(1).max(MAX_CSV_BYTES) })
+const contentField = z
+  .string()
+  .min(1, 'A CSV file is required')
+  // Distinguished from "missing", because "too large" tells the user to split the file and
+  // "required" tells them to pick one — and being sent to do the wrong thing wastes real time.
+  .max(MAX_IMPORT_BYTES, 'That file is larger than 10 MB. Split it and import the parts separately.')
+
+const inspectBody = z.object({ content: contentField })
 
 const stageBody = z.object({
-  content: z.string().min(1).max(MAX_CSV_BYTES),
+  content: contentField,
   presetId: z.string().min(1),
   kind: z.enum(['transactions', 'balances']),
-  targetAccountId: z.string().uuid(),
+  /*
+   * One of these is required, and `accountMap` wins when the file names accounts. Both are optional
+   * individually because a single-account export and a whole-portfolio export are both normal.
+   */
+  targetAccountId: z.string().uuid().optional(),
+  accountMap: z
+    .array(z.object({ value: z.string().min(1), accountId: z.string().uuid() }))
+    .max(200)
+    .optional(),
   originalFilename: z.string().min(1).max(260),
   mapping: z
     .array(z.object({ columnIndex: z.number().int().min(0), role: z.string().min(1) }))
     .min(1),
   dateFormat: z.enum(['iso', 'month-first', 'day-first', 'ambiguous', 'unrecognized']).optional(),
 })
+
+/** The specific complaint, so an oversized file does not read as a missing one. */
+function firstMessage(error: z.ZodError, fallback: string): string {
+  return error.issues[0]?.message ?? fallback
+}
 
 export const importRoutes: FastifyPluginAsync<ImportRoutesOptions> = async (fastify, options) => {
   const { auth, deps } = options
@@ -69,7 +95,9 @@ export const importRoutes: FastifyPluginAsync<ImportRoutesOptions> = async (fast
     if (user === null) return
 
     const body = inspectBody.safeParse(request.body)
-    if (!body.success) return reply.status(400).send({ error: 'A CSV file is required' })
+    if (!body.success) {
+      return reply.status(400).send({ error: firstMessage(body.error, 'A CSV file is required') })
+    }
 
     try {
       const csv = parseCsv(body.data.content)
@@ -84,6 +112,14 @@ export const importRoutes: FastifyPluginAsync<ImportRoutesOptions> = async (fast
          * positive, which is exactly the mistake that inverts a year of spending.
          */
         samples: csv.headers.map((_header, index) => columnSamples(csv.rows, index, 3)),
+        /*
+         * The distinct values per column, where a column has few enough to be categorical.
+         *
+         * Returned for every column rather than just the guessed account column, so changing which
+         * column means "account" on the mapping screen does not require re-uploading the file — the
+         * client already holds what it needs.
+         */
+        distinct: csv.headers.map((_header, index) => distinctColumnValues(csv.rows, index)),
       })
     } catch (error) {
       return handleError(error, reply) ?? reply.status(400).send({ error: 'Could not read that CSV' })
@@ -95,10 +131,25 @@ export const importRoutes: FastifyPluginAsync<ImportRoutesOptions> = async (fast
     if (user === null) return
 
     const body = stageBody.safeParse(request.body)
-    if (!body.success) return reply.status(400).send({ error: 'Invalid import' })
+    if (!body.success) {
+      return reply.status(400).send({ error: firstMessage(body.error, 'Invalid import') })
+    }
 
     const preset = findPreset(body.data.presetId)
     if (preset === undefined) return reply.status(400).send({ error: 'Unknown preset' })
+
+    const namesAccounts = body.data.mapping.some((column) => column.role === 'account')
+    const hasAccountMap = (body.data.accountMap ?? []).length > 0
+
+    // Refused rather than defaulted: picking an account for a file that names its own would put
+    // every row in one place, which is precisely the mistake this check exists to prevent.
+    if (!hasAccountMap && body.data.targetAccountId === undefined) {
+      return reply.status(400).send({
+        error: namesAccounts
+          ? 'Map the accounts in this file to your accounts before importing.'
+          : 'Choose which account these rows belong to.',
+      })
+    }
 
     try {
       const result = await withHouseholdContext(deps, user.id, (context) =>
@@ -108,6 +159,7 @@ export const importRoutes: FastifyPluginAsync<ImportRoutesOptions> = async (fast
           preset,
           kind: body.data.kind,
           targetAccountId: body.data.targetAccountId,
+          accountMap: body.data.accountMap,
           originalFilename: body.data.originalFilename,
           ...(body.data.dateFormat === undefined ? {} : { dateFormat: body.data.dateFormat }),
         }),

@@ -106,6 +106,169 @@ describeIntegration('csv import', () => {
     await createHousehold(deps, USER, 'The Goldbergs')
   })
 
+  /**
+   * A whole-portfolio export, shaped after the real thing: an account named on every row, dollar
+   * signs, and quoted thousands separators.
+   */
+  const MULTI_ACCOUNT_CSV = `Date,Description,Category,Institution,Account Name,Amount,Tags
+2026-07-21,Malden Catholic,Education,Bank of America,Rental Checking,-$122.17,
+2026-07-20,Amazon,General Merchandise,Chase,Amazon Card,-$27.60,
+2026-07-20,Transfer,Transfers,Wealthfront,Joint Cash Account,"-$1,000.00",
+2026-07-19,Whole Foods Market,Groceries,Chase,Amazon Card,-$77.94,
+`
+
+  /**
+   * Routing a file that names its own accounts.
+   *
+   * Staging used to write one `targetAccountId` onto every row, so an export covering a whole
+   * portfolio imported cleanly with all of it filed against a single account. Nothing failed and
+   * nothing warned; the balances were simply wrong afterwards.
+   */
+  describe('multi-account routing', () => {
+    async function stageMulti(
+      context: HouseholdContext,
+      accountMap: ReadonlyArray<{ value: string; accountId: string }>,
+    ): Promise<string> {
+      const csv = parseCsv(MULTI_ACCOUNT_CSV)
+      const result = await stageImport(context, {
+        csv,
+        mapping: guessMapping(csv.headers),
+        preset: findPreset('empower')!,
+        kind: 'transactions',
+        accountMap,
+        originalFilename: 'empower-all-accounts.csv',
+      })
+      return result.importId
+    }
+
+    const stagedRows = async (context: HouseholdContext, importId: string) => {
+      const rows = await context.client.query<{
+        row_number: number
+        status: string
+        status_reason: string | null
+        target_account_id: string | null
+      }>(
+        `select row_number, status, status_reason, target_account_id
+           from import_rows where import_id = $1 order by row_number`,
+        [importId],
+      )
+      return rows.rows
+    }
+
+    it('files each row against the account its own row names', async () => {
+      const result = await withHouseholdContext(deps, USER, async (ctx) => {
+        const card = await makeAccount(ctx)
+        const checking = await makeAccount(ctx)
+        const cash = await makeAccount(ctx)
+
+        const importId = await stageMulti(ctx, [
+          { value: 'Amazon Card', accountId: card },
+          { value: 'Rental Checking', accountId: checking },
+          { value: 'Joint Cash Account', accountId: cash },
+        ])
+
+        return { rows: await stagedRows(ctx, importId), card, checking, cash }
+      })
+
+      expect(result.rows.map((row) => row.target_account_id)).toEqual([
+        result.checking,
+        result.card,
+        result.cash,
+        result.card,
+      ])
+      expect(result.rows.every((row) => row.status === 'pending')).toBe(true)
+    })
+
+    /**
+     * The rule that makes the routing trustworthy. Sending unmatched rows to a default account is
+     * exactly the silent misfiling this replaces, so they fail visibly and name what was missing.
+     */
+    it('fails an unmapped row rather than filing it somewhere plausible', async () => {
+      const rows = await withHouseholdContext(deps, USER, async (ctx) => {
+        const card = await makeAccount(ctx)
+        const importId = await stageMulti(ctx, [{ value: 'Amazon Card', accountId: card }])
+        return await stagedRows(ctx, importId)
+      })
+
+      const failed = rows.filter((row) => row.status === 'failed')
+      expect(failed).toHaveLength(2)
+      expect(failed.every((row) => row.target_account_id === null)).toBe(true)
+      // Named, so the preview says which account is missing instead of just a count.
+      expect(failed[0]?.status_reason).toContain('Rental Checking')
+      expect(failed[1]?.status_reason).toContain('Joint Cash Account')
+    })
+
+    it('matches account names case-insensitively', async () => {
+      const rows = await withHouseholdContext(deps, USER, async (ctx) => {
+        const card = await makeAccount(ctx)
+        const importId = await stageMulti(ctx, [{ value: 'aMaZoN cArD', accountId: card }])
+        return await stagedRows(ctx, importId)
+      })
+
+      expect(rows.filter((row) => row.status === 'pending')).toHaveLength(2)
+    })
+
+    it('commits each row to its own account', async () => {
+      const result = await withHouseholdContext(deps, USER, async (ctx) => {
+        const card = await makeAccount(ctx)
+        const checking = await makeAccount(ctx)
+        const cash = await makeAccount(ctx)
+
+        const importId = await stageMulti(ctx, [
+          { value: 'Amazon Card', accountId: card },
+          { value: 'Rental Checking', accountId: checking },
+          { value: 'Joint Cash Account', accountId: cash },
+        ])
+        const committed = await commitImport(ctx, importId, NOW)
+
+        const perAccount = await ctx.client.query<{ account_id: string; count: string }>(
+          'select account_id, count(*)::text as count from transactions group by account_id',
+        )
+
+        return { committed, perAccount: perAccount.rows, card, checking, cash }
+      })
+
+      expect(result.committed.committed).toBe(4)
+      const byAccount = new Map(result.perAccount.map((row) => [row.account_id, row.count]))
+      expect(byAccount.get(result.card)).toBe('2')
+      expect(byAccount.get(result.checking)).toBe('1')
+      expect(byAccount.get(result.cash)).toBe('1')
+    })
+
+    /** Quoted thousands separators are not decoration this can afford to lose. */
+    it('parses an amount written as "-$1,000.00"', async () => {
+      const amounts = await withHouseholdContext(deps, USER, async (ctx) => {
+        const cash = await makeAccount(ctx)
+        const importId = await stageMulti(ctx, [{ value: 'Joint Cash Account', accountId: cash }])
+        await commitImport(ctx, importId, NOW)
+
+        const rows = await ctx.client.query<{ amount: Buffer }>(
+          'select amount from transactions where account_id = $1',
+          [cash],
+        )
+        return rows.rows.map((row) => ctx.cipher.decryptMoney(row.amount))
+      })
+
+      expect(amounts).toEqual([-100_000n])
+    })
+
+    /**
+     * The single-destination path is unchanged. An account column in the file is not enough on its
+     * own to trigger routing — a map has to be supplied — so a file exported from one account's page
+     * still imports to the account the user picked.
+     */
+    it('still sends every row to one account when no map is supplied', async () => {
+      const rows = await withHouseholdContext(deps, USER, async (ctx) => {
+        const accountId = await makeAccount(ctx)
+        const importId = await stage(ctx, accountId)
+        return await stagedRows(ctx, importId)
+      })
+
+      expect(rows).toHaveLength(3)
+      expect(new Set(rows.map((row) => row.target_account_id)).size).toBe(1)
+    })
+  })
+
   describe('csv parsing', () => {
     it('detects the delimiter and header row', () => {
       const csv = parseCsv(EMPOWER_CSV)
