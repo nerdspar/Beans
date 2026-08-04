@@ -254,6 +254,7 @@ export function Import(): ReactNode {
                         {name}
                       </span>
                       <SearchableSelect
+                        align="end"
                         className="w-56 shrink-0"
                         value={accountMap[name] ?? ''}
                         onChange={(next) =>

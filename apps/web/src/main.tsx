@@ -17,8 +17,29 @@ if (container === null) {
   throw new Error('No #root element')
 }
 
-createRoot(container).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+/**
+ * A component workbench, development only.
+ *
+ * **Dynamically imported inside a statically false branch**, which is what actually keeps it out of
+ * a production build. A top-level import guarded by `import.meta.env.DEV` does not: the branch is
+ * removed but the module stays in the bundle, fixtures and all — verified by grepping `dist`, after
+ * a comment claiming otherwise turned out to be wrong.
+ *
+ * It exists because everything that renders a dropdown or a chart sits behind sign-in, which made
+ * layout and gesture unverifiable — exactly the things typechecking has no opinion about.
+ */
+if (import.meta.env.DEV && window.location.pathname === '/preview') {
+  void import('./screens/DevPreview.js').then(({ DevPreview }) => {
+    createRoot(container).render(
+      <StrictMode>
+        <DevPreview />
+      </StrictMode>,
+    )
+  })
+} else {
+  createRoot(container).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  )
+}

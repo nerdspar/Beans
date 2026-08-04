@@ -36,6 +36,14 @@ export type SearchableSelectProps = {
   placeholder?: string
   className?: string
   disabled?: boolean
+  /**
+   * Which edge of the trigger the panel is anchored to.
+   *
+   * The panel is wider than the trigger, so a narrow control near the right edge of the screen needs
+   * to open leftwards or it runs off. Stated by the caller rather than measured — the callers know
+   * where they sit, and a layout effect that measures and repositions flickers on first paint.
+   */
+  align?: 'start' | 'end'
 }
 
 /** Below this a search box is noise, so it is hidden and the list behaves like a plain menu. */
@@ -49,6 +57,7 @@ export function SearchableSelect({
   placeholder,
   className,
   disabled = false,
+  align = 'start',
 }: SearchableSelectProps): ReactNode {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -193,7 +202,17 @@ export function SearchableSelect({
       {open && (
         <div
           className={cn(
-            'absolute z-50 mt-1 w-full min-w-56 overflow-hidden rounded-xl border shadow-lg',
+            'absolute z-50 mt-1 overflow-hidden rounded-xl border shadow-lg',
+            /*
+             * Sized to its contents, not to the trigger.
+             *
+             * Inheriting the trigger's width truncated every account name to a few characters —
+             * "Joint 3.30% …" tells you nothing, and the whole point of the list is choosing
+             * between things you can tell apart. At least as wide as the trigger so it never looks
+             * detached, and capped short of the viewport so it cannot run off a phone.
+             */
+            'w-max min-w-full max-w-[min(28rem,calc(100vw-2rem))]',
+            align === 'end' ? 'right-0' : 'left-0',
             'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900',
           )}
         >
