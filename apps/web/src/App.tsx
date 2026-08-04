@@ -10,6 +10,9 @@ import { useSession } from './auth/use-session.js'
 import { AccountDetail } from './screens/AccountDetail.js'
 import { Accounts } from './screens/Accounts.js'
 import { Categories } from './screens/Categories.js'
+import { Household } from './screens/Household.js'
+import { Import } from './screens/Import.js'
+import { Portfolio } from './screens/Portfolio.js'
 import { CashFlow } from './screens/CashFlow.js'
 import { Transactions } from './screens/Transactions.js'
 import { CreateHousehold } from './screens/CreateHousehold.js'
@@ -92,6 +95,9 @@ function Routes(): ReactNode {
       <Route path="/transactions" component={Transactions} />
       <Route path="/cash-flow" component={CashFlow} />
       <Route path="/categories" component={Categories} />
+      <Route path="/portfolio" component={Portfolio} />
+      <Route path="/household" component={Household} />
+      <Route path="/import" component={Import} />
       <Route path="/settings" component={TabSettings} />
       {/* Not in the destination registry: a workbench for judging the transition, not a screen. */}
       <Route path="/prototype/transition" component={TransitionPrototype} />
@@ -103,7 +109,10 @@ function Routes(): ReactNode {
           destination.key !== 'accounts' &&
           destination.key !== 'transactions' &&
           destination.key !== 'cash-flow' &&
-          destination.key !== 'categories',
+          destination.key !== 'categories' &&
+          destination.key !== 'portfolio' &&
+          destination.key !== 'household' &&
+          destination.key !== 'import',
       ).map((destination) => (
         <Route key={destination.key} path={destination.path}>
           <Placeholder destination={destination} />

@@ -822,6 +822,35 @@ words for a month's result — "$412 more than you earned" rather than a bare ne
 monthly figure the direction is the point, and the wording stays plain: no commiseration, no
 encouragement, no joke.
 
+### 14.3 Portfolio, household, import
+
+**Portfolio is account level**, because that is what the data supports: SimpleFIN reports a balance
+per investment account and no holdings inside it, so no positions are shown and none are implied.
+The one breakdown that is both available and consequential is tax treatment — it decides what a
+withdrawal is worth, and phase 5 projection depends on it. The screen states that history begins when
+Beans first saw each account, since an investment balance cannot be reconstructed backwards (§4) and
+a short chart is a fact about Beans rather than about the account.
+
+**Inviting** is the only action whose effect reaches another person, and it is irreversible in the
+sense that matters: revoking does not unsee a balance. What joining exposes is stated above the
+field, not discovered afterwards. The member list shows user ids rather than emails because the
+household endpoint deliberately does not expose other people's addresses.
+
+**Import** is four steps and the order is the point: nothing reaches `transactions` until the rows
+have been looked at. Staging parses into `import_rows`; the preview reads from there. The mapping
+step shows **sample values, not just headers** — "Amount" and "Debit" look equally plausible until
+you notice one column is never negative, which is the mistake that inverts a year of spending.
+Reversal exists for the mistake found later still.
+
+### 14.4 The working set belongs to a household
+
+The cache records which household it holds and empties itself when that changes. Sign-out clears it,
+so ordinarily this never fires; it exists for the cases where sign-out did not happen — a failed
+request, a tab closed mid-flight, an expired cookie and a different person signing in on the same
+device. Syncing a delta on top of the previous household's rows would merge two people's finances
+into one net worth and nothing downstream would notice. Verified by planting a foreign household id:
+30 stale accounts were detected, cleared, and resynced to the correct 10.
+
 ### 15.1a Managing accounts
 
 `/accounts` lists every account grouped by the connection it came from, with manual accounts as

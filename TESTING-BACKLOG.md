@@ -179,4 +179,11 @@ behavior is a separate question.
 - [ ] **Rules cannot be reordered or edited.** They can be created, listed in application order, and
       deleted. Since the first match wins, order decides outcomes — and the only way to change it
       today is deleting a rule and creating it again.
+- [ ] **Import against a real export.** The flow was exercised with a three-row CSV: mapped, staged,
+      previewed, committed and reversed. What that does not cover is a real Empower or Mint file —
+      thousands of rows, a debit/credit pair rather than one signed column, dates in an ambiguous
+      format, and the seam logic that decides where imported history stops and synced history starts.
+- [ ] **Invites have never been accepted.** Creating and revoking work, and the link is shown because
+      mail is unconfigured. Nobody has followed one, so joining a household, the second member's view
+      of shared accounts, and `is_shared` on a private account are all unproven.
 

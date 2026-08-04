@@ -11,7 +11,7 @@ import {
   type CashFlowPeriod,
 } from '@beans/shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Search } from 'lucide-react'
+import { ChevronRight, Search } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { cn } from '../lib/cn.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
@@ -39,6 +39,12 @@ export function CashFlow(): ReactNode {
   const workingSet = useWorkingSet()
   const queryClient = useQueryClient()
   const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE)
+  /*
+   * Collapsed by default once there is nothing to decide. Proposals are a chore that appears after a
+   * sync and then sits there; the totals above are what the screen is for, and a long list of
+   * settled suggestions should not push them off the top.
+   */
+  const [showProposals, setShowProposals] = useState(false)
 
   const proposals = useQuery({ queryKey: ['transfers', 'proposed'], queryFn: listProposedTransfers })
 
@@ -168,7 +174,25 @@ export function CashFlow(): ReactNode {
 
       <section className="mt-8">
         <div className="flex items-baseline justify-between gap-3">
-          <h2 className="text-sm font-semibold">{CASH_FLOW_COPY.reviewHeading}</h2>
+          <button
+            type="button"
+            onClick={() => setShowProposals(!showProposals)}
+            aria-expanded={showProposals}
+            className="flex items-center gap-1.5 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-sky-500"
+          >
+            <ChevronRight
+              className={cn('size-4 transition-transform', showProposals && 'rotate-90')}
+              aria-hidden
+            />
+            {CASH_FLOW_COPY.reviewHeading}
+            {/* The count is on the summary line, so a pending decision is visible while collapsed. */}
+            {pending.length > 0 && (
+              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800 dark:bg-sky-950 dark:text-sky-300">
+                {pending.length}
+              </span>
+            )}
+          </button>
+
           <button
             type="button"
             onClick={() => detect.mutate()}
@@ -184,9 +208,11 @@ export function CashFlow(): ReactNode {
           </button>
         </div>
 
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          {CASH_FLOW_COPY.reviewBlurb}
-        </p>
+        {showProposals && (
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {CASH_FLOW_COPY.reviewBlurb}
+          </p>
+        )}
 
         {/*
           Shown rather than swallowed. A confirmation that silently fails looks identical to one
@@ -198,23 +224,24 @@ export function CashFlow(): ReactNode {
           </p>
         )}
 
-        {pending.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-            {CASH_FLOW_COPY.reviewNone}
-          </p>
-        ) : (
-          <ul className="mt-3 space-y-2">
-            {pending.map((transfer) => (
-              <li key={transfer.id}>
-                <ProposalCard
-                  transfer={transfer}
-                  isPending={resolve.isPending}
-                  onDecide={(decision) => resolve.mutate({ id: transfer.id, decision })}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
+        {showProposals &&
+          (pending.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+              {CASH_FLOW_COPY.reviewNone}
+            </p>
+          ) : (
+            <ul className="mt-3 space-y-2">
+              {pending.map((transfer) => (
+                <li key={transfer.id}>
+                  <ProposalCard
+                    transfer={transfer}
+                    isPending={resolve.isPending}
+                    onDecide={(decision) => resolve.mutate({ id: transfer.id, decision })}
+                  />
+                </li>
+              ))}
+            </ul>
+          ))}
       </section>
     </div>
   )

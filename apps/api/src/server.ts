@@ -13,6 +13,7 @@ import { accountRoutes } from './routes/accounts.js'
 import { categoryRoutes } from './routes/categories.js'
 import { connectionRoutes } from './routes/connections.js'
 import { householdRoutes } from './routes/households.js'
+import { importRoutes } from './routes/imports.js'
 import { preferenceRoutes } from './routes/preferences.js'
 import { staticSiteRoutes } from './routes/static-site.js'
 import { transferRoutes } from './routes/transfers.js'
@@ -68,6 +69,7 @@ export async function buildServer({
   await fastify.register(connectionRoutes, { auth, deps: contextDeps })
   await fastify.register(accountRoutes, { auth, deps: contextDeps })
   await fastify.register(categoryRoutes, { auth, deps: contextDeps })
+  await fastify.register(importRoutes, { auth, deps: contextDeps })
   await fastify.register(preferenceRoutes, { auth, pool })
   await fastify.register(workingSetRoutes, { auth, context: contextDeps })
   await fastify.register(transferRoutes, { auth, deps: contextDeps })

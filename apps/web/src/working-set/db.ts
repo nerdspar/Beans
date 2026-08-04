@@ -102,6 +102,8 @@ export function workingSetDb(): Promise<IDBPDatabase<BeansDB>> {
 export type SyncState = {
   cursor: string | null
   coverageFrom: string | null
+  /** Whose data is cached. A mismatch means the store belongs to somebody else. */
+  householdId: string | null
 }
 
 /**
@@ -131,12 +133,17 @@ export async function readCategories(): Promise<StoredCategory[]> {
 
 export async function readSyncState(): Promise<SyncState> {
   const db = await workingSetDb()
-  const [cursor, coverageFrom] = await Promise.all([
+  const [cursor, coverageFrom, householdId] = await Promise.all([
     db.get('meta', 'cursor') as Promise<string | undefined>,
     db.get('meta', 'coverageFrom') as Promise<string | undefined>,
+    db.get('meta', 'householdId') as Promise<string | undefined>,
   ])
 
-  return { cursor: cursor ?? null, coverageFrom: coverageFrom ?? null }
+  return {
+    cursor: cursor ?? null,
+    coverageFrom: coverageFrom ?? null,
+    householdId: householdId ?? null,
+  }
 }
 
 /**
@@ -225,6 +232,7 @@ export async function applyDelta(response: WorkingSetResponse): Promise<void> {
 
   await tx.objectStore('meta').put(response.confirmedTransferIds, 'confirmedTransferIds')
   await tx.objectStore('meta').put(response.categories, 'categories')
+  await tx.objectStore('meta').put(response.householdId, 'householdId')
   await tx.objectStore('meta').put(response.cursor, 'cursor')
   await tx.objectStore('meta').put(response.coverageFrom, 'coverageFrom')
 

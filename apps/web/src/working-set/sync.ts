@@ -74,8 +74,22 @@ async function request(cursor: string | null): Promise<WorkingSetResponse> {
 }
 
 export async function syncWorkingSet(): Promise<SyncOutcome> {
-  const { cursor } = await readSyncState()
+  const { cursor, householdId } = await readSyncState()
   let response = await request(cursor)
+
+  /*
+   * The cache belongs to somebody else.
+   *
+   * Sign-out clears the store, so in the ordinary case this never fires. It exists for the cases
+   * where sign-out did not happen — a failed request, a tab closed mid-flight, a cookie that expired
+   * and a different person signing in on the same device. Syncing a delta on top of the previous
+   * household's rows would merge two people's finances into one net worth, and nothing downstream
+   * would notice.
+   */
+  if (householdId !== null && householdId !== response.householdId) {
+    await clearWorkingSet()
+    response = await request(null)
+  }
 
   /*
    * The server could not prove what was deleted, so the local set may contain rows that no longer

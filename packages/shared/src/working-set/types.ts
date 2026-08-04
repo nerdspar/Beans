@@ -122,6 +122,16 @@ export const workingSetResponseSchema = z.object({
   coverageFrom: isoDate,
 
   /**
+   * Whose data this is.
+   *
+   * The client stores it alongside the cache and empties everything when it changes. Without it a
+   * sign-in following an unclean sign-out — a failed sign-out request, a closed tab, an expired
+   * cookie — would sync one household's delta on top of another's rows and silently merge two
+   * people's finances into one net worth.
+   */
+  householdId: z.string().uuid(),
+
+  /**
    * Transaction ids in a confirmed transfer pair.
    *
    * Sent whole rather than as a delta: there are few of them, and a client holding a stale partial
