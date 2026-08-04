@@ -207,6 +207,122 @@ describeIntegration('sync service', () => {
     expect(connection.failures).toBe(1)
   })
 
+  /**
+   * Detection runs on sync, not on a button.
+   *
+   * It used to run only when somebody pressed "Find" on the cash flow screen — so proposals existed
+   * only for a user who already suspected they were there. Every unconfirmed transfer meanwhile
+   * inflated income and spending by the same amount, leaving net untouched and nothing on screen to
+   * say so.
+   */
+  describe('transfer detection', () => {
+    /** A card payment: money leaves checking and lands on the card, same amount, next day. */
+    const transferBody = {
+      errors: [],
+      accounts: [
+        {
+          org: { domain: 'www.chase.com', name: 'Chase' },
+          id: 'ACT-card',
+          name: 'Amazon Card',
+          currency: 'USD',
+          balance: '-3386.39',
+          'balance-date': epoch('2026-08-03T11:00:00Z'),
+          transactions: [
+            {
+              id: 'TX-card-payment',
+              posted: epoch('2026-08-02T00:00:00Z'),
+              amount: '500.00',
+              description: 'PAYMENT THANK YOU',
+            },
+          ],
+        },
+        {
+          org: { domain: 'www.chase.com', name: 'Chase' },
+          id: 'ACT-checking',
+          name: 'Checking',
+          currency: 'USD',
+          balance: '4000.00',
+          'balance-date': epoch('2026-08-03T11:00:00Z'),
+          transactions: [
+            {
+              id: 'TX-checking-payment',
+              posted: epoch('2026-08-01T00:00:00Z'),
+              amount: '-500.00',
+              description: 'CHASE CREDIT CRD AUTOPAY',
+            },
+          ],
+        },
+      ],
+    }
+
+    it('proposes a transfer without anyone asking for one', async () => {
+      const proposals = await withHouseholdContext(deps, USER, async (ctx) => {
+        const fetcher = makeFetcher(transferBody)
+        const { connectionId } = await createConnection(ctx, SETUP_TOKEN, fetcher)
+        const discovery = await discoverAccounts(ctx, connectionId, fetcher)
+        await confirmAccounts(
+          ctx,
+          connectionId,
+          discovery.accounts.map((candidate) => ({
+            simplefinAccountId: candidate.simplefinAccountId,
+            // Both as cash: the pairing is about amounts and dates, not types, and a card typed as
+            // credit here would drag the sign convention into a test that is not about signs.
+            type: 'depository' as const,
+            signInverted: false,
+            include: true,
+          })),
+          discovery.accounts,
+          NOW,
+        )
+
+        await runSync(ctx, connectionId, fetcher, 'manual', NOW)
+
+        const rows = await ctx.client.query<{ status: string }>(
+          'select status from transfer_matches',
+        )
+        return rows.rows
+      })
+
+      expect(proposals).toHaveLength(1)
+      expect(proposals[0]?.status).toBe('proposed')
+    })
+
+    /**
+     * Proposing is not deciding. A proposal changes no total — only confirmation excludes anything,
+     * and that stays a human answer (ARCHITECTURE.md §9).
+     */
+    it('leaves the proposal unconfirmed, so no total moves on its own', async () => {
+      const confirmed = await withHouseholdContext(deps, USER, async (ctx) => {
+        const fetcher = makeFetcher(transferBody)
+        const { connectionId } = await createConnection(ctx, SETUP_TOKEN, fetcher)
+        const discovery = await discoverAccounts(ctx, connectionId, fetcher)
+        await confirmAccounts(
+          ctx,
+          connectionId,
+          discovery.accounts.map((candidate) => ({
+            simplefinAccountId: candidate.simplefinAccountId,
+            // Both as cash: the pairing is about amounts and dates, not types, and a card typed as
+            // credit here would drag the sign convention into a test that is not about signs.
+            type: 'depository' as const,
+            signInverted: false,
+            include: true,
+          })),
+          discovery.accounts,
+          NOW,
+        )
+
+        await runSync(ctx, connectionId, fetcher, 'manual', NOW)
+
+        const rows = await ctx.client.query(
+          "select 1 from transfer_matches where status = 'confirmed'",
+        )
+        return rows.rowCount
+      })
+
+      expect(confirmed).toBe(0)
+    })
+  })
+
   describe('budget enforcement', () => {
     /**
      * The daily budget is computed by summing `requests_spent` over today's runs, so it survives a

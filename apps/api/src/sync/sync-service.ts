@@ -2,6 +2,7 @@ import { toIsoDate } from '@beans/shared'
 import { rebuildAccountHistory, type RebuildResult } from '../balance-history/rebuild.js'
 import type { Fetcher } from '../simplefin/client.js'
 import type { HouseholdContext } from '../repositories/household-context.js'
+import { detectTransfers } from '../repositories/transfers.js'
 import { canSync, type SyncTrigger } from './quota.js'
 import { connectionStatusFor, syncConnection, type SyncOutcome } from './sync-connection.js'
 
@@ -130,6 +131,28 @@ export async function runSync(
     const rebuilds: RebuildResult[] = []
     for (const accountId of outcome.accountIds) {
       rebuilds.push(await rebuildAccountHistory(context, accountId, today))
+    }
+
+    /**
+     * Look for transfers the moment their transactions exist.
+     *
+     * Detection used to run only when somebody pressed "Find" on the cash flow screen, which meant
+     * proposals existed only if you already suspected they were there. Nobody presses a button to
+     * check for a problem they cannot see — so every unconfirmed transfer sat inflating both income
+     * and spending by the same amount, with net looking untouched and nothing on screen to say so.
+     *
+     * Proposing is not deciding. A proposal changes no total; only confirmation excludes anything,
+     * and that stays a human answer (ARCHITECTURE.md §9).
+     *
+     * Deliberately not fatal. A matcher failure must not fail a sync that has already written
+     * balances and transactions correctly — the worst case is proposals arriving one sync late.
+     */
+    try {
+      await detectTransfers(context)
+    } catch (error) {
+      outcome.errors.push(
+        `Could not check for transfers: ${error instanceof Error ? error.message : 'unknown error'}`,
+      )
     }
 
     // A drifting series means the account's balance and its transactions are in opposite sign
