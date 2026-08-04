@@ -56,7 +56,8 @@ export const NET_WORTH_STATE_COPY = {
   emptyAction: 'Connect an institution',
 
   failed: 'Could not load your accounts',
-  failedDetail: 'The last known balances are shown if there are any. Beans will try again shortly.',
+  /** Followed by the actual error. Beans is self-hosted: the person reading this can act on it. */
+  failedDetail: 'Beans will keep trying. What went wrong:',
 } as const
 
 /**

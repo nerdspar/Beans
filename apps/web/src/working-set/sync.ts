@@ -35,8 +35,19 @@ async function request(cursor: string | null): Promise<WorkingSetResponse> {
 
   if (response.status === 401) throw new NotSignedInError('Not signed in')
   if (response.status === 409) throw new NoHouseholdYetError('No household yet')
+
   if (!response.ok) {
-    throw new Error(`Working set sync failed with ${response.status}`)
+    /*
+     * The server's message is included when it has one. Beans is self-hosted, so the person seeing
+     * this failure is also the person who can fix it — withholding what went wrong to keep the
+     * screen tidy costs them the only clue they had.
+     */
+    const detail = (await response.json().catch(() => null)) as { error?: string } | null
+    throw new Error(
+      detail?.error === undefined
+        ? `The server answered ${response.status}.`
+        : `${detail.error} (${response.status})`,
+    )
   }
 
   /*
@@ -44,7 +55,22 @@ async function request(cursor: string | null): Promise<WorkingSetResponse> {
    * become money — a value that fails the decimal-string shape must not be written to a store the
    * whole app then reads as truth.
    */
-  return workingSetResponseSchema.parse(await response.json())
+  const parsed = workingSetResponseSchema.safeParse(await response.json())
+  if (!parsed.success) {
+    /*
+     * Names the first offending field. A response that is well-formed JSON but the wrong shape is
+     * the hardest failure to diagnose from the outside — "expected string, received date at
+     * balances.0.asOfDate" points straight at the cause, where "could not load" points nowhere.
+     */
+    const first = parsed.error.issues[0]
+    throw new Error(
+      first === undefined
+        ? 'The server sent something Beans could not read.'
+        : `Unexpected data from the server: ${first.message} at ${first.path.join('.') || 'the response root'}.`,
+    )
+  }
+
+  return parsed.data
 }
 
 export async function syncWorkingSet(): Promise<SyncOutcome> {

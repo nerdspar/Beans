@@ -63,6 +63,8 @@ export function NetWorth(): ReactNode {
       <StateMessage
         title={failed ? NET_WORTH_STATE_COPY.failed : NET_WORTH_STATE_COPY.empty}
         detail={failed ? NET_WORTH_STATE_COPY.failedDetail : NET_WORTH_STATE_COPY.emptyDetail}
+        // The real message, verbatim. Self-hosted means the reader is the operator.
+        {...(failed && workingSet.error !== null ? { technical: workingSet.error.message } : {})}
         /*
          * Only on the empty state, not the failed one. "Connect an institution" is the next step
          * when there is nothing here; when a load failed it is the wrong advice, and offering it
@@ -384,10 +386,13 @@ function StateMessage({
   title,
   detail,
   action,
+  technical,
 }: {
   title: string
   detail?: string
   action?: { href: string; label: string }
+  /** The underlying error, shown as-is. Never invented, never paraphrased. */
+  technical?: string
 }): ReactNode {
   return (
     <div className="mx-auto flex max-w-2xl flex-col items-center px-6 py-24 text-center">
@@ -395,6 +400,12 @@ function StateMessage({
       {detail !== undefined && (
         <p className="mt-2 max-w-sm text-sm text-slate-500 dark:text-slate-400">{detail}</p>
       )}
+      {technical !== undefined && (
+        <p className="mt-2 max-w-sm rounded-lg bg-slate-100 px-3 py-2 text-left font-mono text-xs text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+          {technical}
+        </p>
+      )}
+
       {action !== undefined && (
         <Link
           href={action.href}
