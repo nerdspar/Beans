@@ -12,6 +12,17 @@ export const TRANSACTIONS_COPY = {
   searchPlaceholder: 'Payee, description, amount',
   allAccounts: 'All accounts',
 
+  /*
+   * Split by direction, not by category.
+   *
+   * "Deposits" and "Expenses" describe where the money went rather than what it was for, which is
+   * the question this filter answers — and it works on every account, including a card where a
+   * deposit is a payment rather than income.
+   */
+  flowAll: 'All',
+  flowIn: 'Deposits',
+  flowOut: 'Expenses',
+
   loading: 'Counting the beans.',
 
   empty: 'Nothing here yet',

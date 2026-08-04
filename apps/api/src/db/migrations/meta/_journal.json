@@ -64,6 +64,13 @@
       "when": 1785852827847,
       "tag": "0008_dark_mole_man",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785860657092,
+      "tag": "0009_same_king_cobra",
+      "breakpoints": true
     }
   ]
 }

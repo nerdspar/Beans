@@ -1,6 +1,8 @@
+import { HISTORY_SETTING_COPY } from '@beans/shared'
 import { ChevronDown, ChevronUp, Plus, X } from 'lucide-react'
 import { type ReactNode } from 'react'
 import { cn } from '../lib/cn.js'
+import { usePreferences } from '../preferences/use-preferences.js'
 import { TAB_SLOTS, tabbableDestinations } from '../navigation/destinations.js'
 import { useTabOrder } from '../navigation/use-tab-order.js'
 
@@ -14,6 +16,7 @@ import { useTabOrder } from '../navigation/use-tab-order.js'
  */
 export function TabSettings(): ReactNode {
   const { tabs, setTabOrder, resetTabOrder, isSaving } = useTabOrder()
+  const { preferences, patch } = usePreferences()
 
   const chosen = tabs
   const chosenKeys = chosen.map((tab) => tab.key)
@@ -38,6 +41,33 @@ export function TabSettings(): ReactNode {
   return (
     <div className="mx-auto max-w-3xl p-6">
       <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
+
+      <section className="mt-8" aria-labelledby="history-heading">
+        <h2 id="history-heading" className="text-base font-semibold">
+          {HISTORY_SETTING_COPY.heading}
+        </h2>
+
+        <label className="mt-3 flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={preferences.showIncompleteHistory}
+            onChange={(event) => patch({ showIncompleteHistory: event.target.checked })}
+            className="mt-0.5 size-4 shrink-0 accent-sky-600"
+          />
+          <span className="text-sm">
+            <span className="font-medium">{HISTORY_SETTING_COPY.label}</span>
+            {/*
+              The consequence of the current state, not of the switch. Describing the other option
+              is how a toggle ends up read backwards.
+            */}
+            <span className="mt-0.5 block text-slate-500 dark:text-slate-400">
+              {preferences.showIncompleteHistory
+                ? HISTORY_SETTING_COPY.on
+                : HISTORY_SETTING_COPY.off}
+            </span>
+          </span>
+        </label>
+      </section>
 
       <section className="mt-8" aria-labelledby="tabs-heading">
         <h2 id="tabs-heading" className="text-base font-semibold">

@@ -10,16 +10,20 @@ import {
   type NetWorthSection,
   type TaxTreatment,
 } from '@beans/shared'
-import { AlertTriangle, ChevronLeft, Info } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { AlertTriangle, ChevronLeft, Info, Pencil, Plus } from 'lucide-react'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'wouter'
+import { AccountEditor, ManualBalanceForm } from '../accounts/AccountForms.js'
+import { listManagedAccounts, type ManagedAccount } from '../accounts/api.js'
 import { accountHealth, formatLastUpdated } from '../accounts/display.js'
 import { CategoryChart } from '../charts/CategoryChart.js'
 import { cn } from '../lib/cn.js'
 import { SECTION_COLORS, SECTION_LABELS } from '../net-worth/colors.js'
 import { describeChange, formatAxisValue, toChartSeries } from '../net-worth/display.js'
 import type { DerivedAccount } from '../working-set/derive.js'
-import { useWorkingSet } from '../working-set/use-working-set.js'
+import { WORKING_SET_KEY, useWorkingSet } from '../working-set/use-working-set.js'
+import type { StoredTransaction } from '../working-set/db.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
 import { DEFAULT_RANGE, resolveWindow, sliceToWindow, todayIso, type RangeSelection } from '../net-worth/range.js'
 
@@ -37,9 +41,28 @@ const CHART_HEIGHT = 190
 /** Below this the flat stretch is a few pixels wide and captioning it says more than it explains. */
 const MIN_CARRIED_DAYS_TO_MENTION = 3
 
+/** Enough to recognize the account's rhythm without becoming the Activity screen. */
+const RECENT_TRANSACTION_COUNT = 8
+
 export function AccountDetail({ params }: { params: { id: string } }): ReactNode {
   const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE)
   const workingSet = useWorkingSet()
+
+  /*
+   * Newest first, and computed before the early returns so the hook order does not change between
+   * a loading account and a loaded one.
+   */
+  const recent = useMemo(
+    () =>
+      workingSet.transactions
+        .filter((transaction) => transaction.accountId === params.id)
+        .sort(
+          (left, right) =>
+            compareDates(right.postedDate, left.postedDate) || left.id.localeCompare(right.id),
+        )
+        .slice(0, RECENT_TRANSACTION_COUNT),
+    [workingSet.transactions, params.id],
+  )
 
   if (workingSet.isLoading) {
     return <div className="p-6 text-sm text-slate-500">{NET_WORTH_STATE_COPY.loading}</div>
@@ -51,7 +74,13 @@ export function AccountDetail({ params }: { params: { id: string } }): ReactNode
   }
 
   return (
-    <AccountView account={account} section={account.section} range={range} onRange={setRange} />
+    <AccountView
+      account={account}
+      section={account.section}
+      range={range}
+      onRange={setRange}
+      recent={recent}
+    />
   )
 }
 
@@ -60,12 +89,39 @@ function AccountView({
   section,
   range,
   onRange,
+  recent,
 }: {
   account: DerivedAccount
   section: NetWorthSection
   range: RangeSelection
   onRange: (value: RangeSelection) => void
+  recent: readonly StoredTransaction[]
 }): ReactNode {
+  const [sheet, setSheet] = useState<'none' | 'edit' | 'value'>('none')
+  const queryClient = useQueryClient()
+
+  /*
+   * The editors take the managed shape, which carries fields the working set does not — the sign
+   * convention flag, the tax treatment, whether the type was user-set. Fetched only when this
+   * account is manual, since that is the only case with a button to open one.
+   */
+  const managed = useQuery({
+    queryKey: ['accounts'],
+    queryFn: listManagedAccounts,
+    enabled: account.isManual,
+  })
+
+  const managedAccount: ManagedAccount | undefined = managed.data?.find(
+    (candidate) => candidate.id === account.id,
+  )
+
+  const afterSave = async (): Promise<void> => {
+    setSheet('none')
+    await queryClient.invalidateQueries({ queryKey: ['accounts'] })
+    // Editing changes balances and history, both of which this screen is drawing.
+    await queryClient.invalidateQueries({ queryKey: ['working-set', 'sync'] })
+    await queryClient.invalidateQueries({ queryKey: WORKING_SET_KEY })
+  }
   const today = todayIso()
   const { assessment, banner } = accountHealth(account, today)
 
@@ -140,10 +196,32 @@ function AccountView({
       )}
 
       {account.isManual && (
-        <Note>
-          <span className="font-medium">{ACCOUNT_COPY.manualAccount}.</span>{' '}
-          {ACCOUNT_COPY.manualAccountDetail}
-        </Note>
+        <>
+          <Note>
+            <span className="font-medium">{ACCOUNT_COPY.manualAccount}.</span>{' '}
+            {ACCOUNT_COPY.manualAccountDetail}
+          </Note>
+
+          {/*
+            Both actions here rather than only on the accounts list. A manual account has no
+            provider to correct it, so editing is the only way it ever changes — and this is the
+            screen somebody is looking at when they notice it is wrong.
+          */}
+          <div className="flex gap-2 px-5 pt-3">
+            <ActionButton
+              icon={<Plus className="size-4" aria-hidden />}
+              label={ACCOUNT_COPY.manualRecord}
+              disabled={managedAccount === undefined}
+              onClick={() => setSheet('value')}
+            />
+            <ActionButton
+              icon={<Pencil className="size-4" aria-hidden />}
+              label={ACCOUNT_COPY.manualEdit}
+              disabled={managedAccount === undefined}
+              onClick={() => setSheet('edit')}
+            />
+          </div>
+        </>
       )}
 
       <div className="flex items-baseline justify-between gap-3 px-5 pt-4">
@@ -201,10 +279,51 @@ function AccountView({
         <Field label={ACCOUNT_COPY.lastUpdated} value={formatLastUpdated(account)} />
       </dl>
 
-      <h2 className="px-5 pb-1 pt-6 text-sm font-semibold">{ACCOUNT_COPY.activityHeading}</h2>
-      <p className="px-5 text-sm text-slate-500 dark:text-slate-400">
-        {ACCOUNT_COPY.activityUnavailable}
-      </p>
+      <div className="flex items-baseline justify-between gap-3 px-5 pb-1 pt-6">
+        <h2 className="text-sm font-semibold">{ACCOUNT_COPY.activityHeading}</h2>
+        {recent.length > 0 && (
+          <Link
+            href={`/transactions?account=${encodeURIComponent(account.id)}`}
+            className="text-xs font-medium text-sky-700 hover:underline dark:text-sky-400"
+          >
+            {ACCOUNT_COPY.activityAll}
+          </Link>
+        )}
+      </div>
+
+      {recent.length === 0 ? (
+        <p className="px-5 text-sm text-slate-500 dark:text-slate-400">
+          {ACCOUNT_COPY.activityUnavailable}
+        </p>
+      ) : (
+        <ul className="divide-y divide-slate-200 px-5 dark:divide-slate-800">
+          {recent.map((transaction) => (
+            <li key={transaction.id} className="flex items-baseline justify-between gap-3 py-2.5">
+              <div className="min-w-0">
+                <p className="truncate text-sm">
+                  {transaction.payee ?? transaction.description ?? '—'}
+                </p>
+                <p className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                  {transaction.postedDate}
+                </p>
+              </div>
+              {/*
+                Money in is called out, money out is not. Every account here is dominated by
+                spending, so colouring the outflows would tint the whole list and distinguish
+                nothing — and Beans does not decorate a number moving the wrong way.
+              */}
+              <span
+                className={cn(
+                  'shrink-0 text-sm tabular-nums',
+                  transaction.amountCents > 0n && 'text-emerald-600 dark:text-emerald-400',
+                )}
+              >
+                {formatCents(transaction.amountCents)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {/* Signs are decided at ingest; this only names the convention so the screen is self-explaining. */}
       {isLiabilitySection(section) && (
@@ -212,7 +331,50 @@ function AccountView({
           Shown as a negative amount because it is money owed.
         </p>
       )}
+
+      {sheet === 'edit' && managedAccount !== undefined && (
+        <AccountEditor
+          account={managedAccount}
+          onClose={() => setSheet('none')}
+          onSaved={afterSave}
+        />
+      )}
+      {sheet === 'value' && managedAccount !== undefined && (
+        <ManualBalanceForm
+          account={managedAccount}
+          onClose={() => setSheet('none')}
+          onSaved={afterSave}
+        />
+      )}
     </div>
+  )
+}
+
+function ActionButton({
+  icon,
+  label,
+  disabled,
+  onClick,
+}: {
+  icon: ReactNode
+  label: string
+  disabled: boolean
+  onClick: () => void
+}): ReactNode {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        'inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 text-sm font-medium',
+        'border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800',
+        'focus-visible:outline-2 focus-visible:outline-sky-500 disabled:opacity-50',
+      )}
+    >
+      {icon}
+      {label}
+    </button>
   )
 }
 

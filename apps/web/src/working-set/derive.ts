@@ -180,9 +180,10 @@ function sumSeries(parts: ReadonlyArray<{ series: SeriesPoint[] }>): {
 export function deriveWorkingSet(
   accounts: readonly StoredAccount[],
   balances: readonly StoredBalance[],
-  options: { to?: IsoDate } = {},
+  options: { to?: IsoDate; showIncompleteHistory?: boolean } = {},
 ): DerivedWorkingSet {
   const to = options.to ?? toIsoDate(new Date())
+  const showIncomplete = options.showIncompleteHistory ?? true
 
   const byAccount = new Map<string, StoredBalance[]>()
   for (const balance of balances) {
@@ -261,11 +262,27 @@ export function deriveWorkingSet(
   // Net worth is a plain sum, because every amount is already signed to add directly to it.
   const household = sumSeries(sections)
 
+  /*
+   * The setting, applied at the last moment.
+   *
+   * Trimming here rather than inside `sumSeries` keeps one code path building the totals and one
+   * decision about how much of them to show — and keeps `completeFrom` meaningful either way, since
+   * the trimmed series then simply starts at it.
+   */
+  const trim = <T extends { date: string }>(series: T[], from: IsoDate | null): T[] =>
+    showIncomplete || from === null ? series : series.filter((point) => point.date >= from)
+
+  const shownHousehold = trim(household.series, household.completeFrom)
+
   return {
-    sections,
-    household: household.series,
-    coverageStart: household.coverageStart,
-    completeFrom: household.completeFrom,
+    sections: sections.map((group) => ({
+      ...group,
+      series: trim(group.series, household.completeFrom),
+    })),
+    household: shownHousehold,
+    coverageStart: shownHousehold[0]?.date ?? household.coverageStart,
+    // Null once the incomplete part has been trimmed away: there is no longer a region to mark.
+    completeFrom: showIncomplete ? household.completeFrom : null,
     // Reported from the accounts rather than the sections: a section whose parts disagree would
     // otherwise hide that any part of its own total is incomplete.
     coverageIsLimited:

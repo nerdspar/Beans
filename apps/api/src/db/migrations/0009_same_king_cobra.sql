@@ -1,0 +1,1 @@
+ALTER TABLE "user_preferences" ADD COLUMN "show_incomplete_history" boolean DEFAULT true NOT NULL;

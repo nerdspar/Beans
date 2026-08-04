@@ -31,7 +31,12 @@ export const ACCOUNT_COPY = {
    * Transactions do not exist yet. Saying so plainly beats an empty list, which reads as "this
    * account has no transactions" — a claim Beans is in no position to make.
    */
-  activityUnavailable: 'Transactions land here once syncing is built.',
+  activityUnavailable: 'Nothing has posted to this account yet.',
+  /** The list is deliberately short — this is a summary, and Activity is the full record. */
+  activityAll: 'See all activity',
+  /* A manual account has no provider to correct it, so the only way it changes is by being edited. */
+  manualEdit: 'Edit account',
+  manualRecord: 'Record value',
 
   notFound: 'No such account',
   notFoundDetail: 'This account may have been removed, or the link may be out of date.',
@@ -54,6 +59,20 @@ export const ACCOUNT_COPY = {
  * $4,200 over the year" is answering a question nobody is asking, and two numbers competing for the
  * same glance is how a header stops being read at all.
  */
+/**
+ * The choice between more history and complete history.
+ *
+ * Both options are defensible, which is why this is a setting rather than a decision. The copy
+ * names the cost of each rather than recommending one — a household that has just connected
+ * everything wants the complete total; one with five years and a new house wants the history.
+ */
+export const HISTORY_SETTING_COPY = {
+  heading: 'Net worth history',
+  label: 'Show history before every account was tracked',
+  on: 'The chart goes back as far as any account reaches. Earlier parts leave out accounts added later, and are marked where that applies.',
+  off: 'The chart starts where every account has data. Less history, all of it complete — but it shortens again each time you add an account.',
+} as const
+
 export const NET_WORTH_SCRUB_COPY = {
   label: 'Read net worth by date. Use the arrow keys to move a day at a time.',
   /** Spoken as the slider moves, so the value is heard rather than only seen. */

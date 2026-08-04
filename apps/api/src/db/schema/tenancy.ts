@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import {
+  boolean,
   index,
   integer,
   jsonb,
@@ -177,6 +178,16 @@ export const userPreferences = pgTable(
     tabOrder: jsonb('tab_order').$type<string[] | null>(),
 
     theme: text('theme').notNull().default('system'),
+
+    /**
+     * Whether net worth is drawn back to the earliest account, or only where every account reaches.
+     *
+     * Defaults to showing it. The alternative discards real history to avoid one explicable step
+     * (ARCHITECTURE.md §15.2), and someone who prefers that trade should choose it rather than have
+     * a year of their chart disappear the day they add an asset.
+     */
+    showIncompleteHistory: boolean('show_incomplete_history').notNull().default(true),
+
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

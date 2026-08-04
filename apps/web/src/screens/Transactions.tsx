@@ -40,7 +40,17 @@ export function Transactions(): ReactNode {
   const [editing, setEditing] = useState<Entry | null>(null)
 
   const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE)
-  const [accountId, setAccountId] = useState<string>('')
+  /*
+   * Seeded from the URL so "See all activity" on an account arrives already filtered to it.
+   *
+   * Read once, into state, rather than tracked: this is a starting point, and re-deriving it would
+   * fight the user the moment they changed the dropdown.
+   */
+  const [accountId, setAccountId] = useState<string>(
+    () => new URLSearchParams(window.location.search).get('account') ?? '',
+  )
+  /** Direction of money, by sign. Amounts are signed to add to net worth, so this needs no lookup. */
+  const [flow, setFlow] = useState<'all' | 'in' | 'out'>('all')
   const [query, setQuery] = useState('')
 
   /*
@@ -63,6 +73,15 @@ export function Transactions(): ReactNode {
 
     const matched = inWindow.filter((transaction) => {
       if (accountId !== '' && transaction.accountId !== accountId) return false
+
+      /*
+       * Zero-amount rows count as neither, and there are real ones — a reversed pending charge, a
+       * fee waived to nothing. Filing them under expenses because they are "not positive" would put
+       * them somewhere they do not belong.
+       */
+      if (flow === 'in' && transaction.amountCents <= 0n) return false
+      if (flow === 'out' && transaction.amountCents >= 0n) return false
+
       if (needle === '') return true
 
       /*
@@ -87,7 +106,7 @@ export function Transactions(): ReactNode {
     )
 
     return { visible: matched, total: inWindow.length }
-  }, [workingSet.transactions, range, today, accountId, deferredQuery])
+  }, [workingSet.transactions, range, today, accountId, flow, deferredQuery])
 
   if (workingSet.isLoading) {
     return <Message title={TRANSACTIONS_COPY.loading} />
@@ -111,6 +130,40 @@ export function Transactions(): ReactNode {
         <div className="flex items-baseline justify-between gap-3">
           <h1 className="text-2xl font-semibold">{TRANSACTIONS_COPY.title}</h1>
           <RangeControl value={range} onChange={setRange} />
+        </div>
+
+        {/*
+          Direction first, above the search box: it is the coarsest cut and the one most often
+          wanted, and putting it under the search would bury it beneath a field people type in.
+        */}
+        <div
+          role="group"
+          aria-label={TRANSACTIONS_COPY.flowAll}
+          className="mt-3 flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-900"
+        >
+          {(
+            [
+              ['all', TRANSACTIONS_COPY.flowAll],
+              ['in', TRANSACTIONS_COPY.flowIn],
+              ['out', TRANSACTIONS_COPY.flowOut],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setFlow(value)}
+              aria-pressed={flow === value}
+              className={cn(
+                'min-h-9 flex-1 rounded-md text-sm font-medium',
+                'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-sky-500',
+                flow === value
+                  ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100',
+              )}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         <label className="relative mt-3 block">

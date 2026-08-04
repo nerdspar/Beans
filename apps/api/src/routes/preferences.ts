@@ -20,10 +20,18 @@ export type PreferenceRoutesOptions = {
   pool: Pool
 }
 
+/**
+ * A partial update: every field is optional and only what is sent changes.
+ *
+ * `tabOrder` is nullable *and* optional, and the two mean different things — null clears the
+ * preference so a later change to the shipped default reaches this user, undefined leaves it alone.
+ * Whole-object semantics would mean the settings screen had to send the tab order back every time
+ * it toggled something unrelated, and get it wrong exactly once to wipe it.
+ */
 const putBody = z.object({
-  /** Null means "no preference", so a later change to the shipped default reaches this user. */
-  tabOrder: z.array(z.string().min(1)).max(8).nullable(),
+  tabOrder: z.array(z.string().min(1)).max(8).nullable().optional(),
   theme: z.enum(['light', 'dark', 'system']).optional(),
+  showIncompleteHistory: z.boolean().optional(),
 })
 
 export const preferenceRoutes: FastifyPluginAsync<PreferenceRoutesOptions> = async (
@@ -57,8 +65,12 @@ export const preferenceRoutes: FastifyPluginAsync<PreferenceRoutesOptions> = asy
     }
 
     const preferences = await asUser(session.user.id, async (query) => {
-      const result = await query<{ tab_order: string[] | null; theme: string }>(
-        'select tab_order, theme from user_preferences where user_id = $1',
+      const result = await query<{
+        tab_order: string[] | null
+        theme: string
+        show_incomplete_history: boolean
+      }>(
+        'select tab_order, theme, show_incomplete_history from user_preferences where user_id = $1',
         [session.user.id],
       )
       return result.rows[0]
@@ -67,6 +79,9 @@ export const preferenceRoutes: FastifyPluginAsync<PreferenceRoutesOptions> = asy
     return reply.send({
       tabOrder: preferences?.tab_order ?? null,
       theme: preferences?.theme ?? 'system',
+      // Shown by default: the alternative discards real history, which nobody should get without
+      // having asked for it.
+      showIncompleteHistory: preferences?.show_incomplete_history ?? true,
     })
   })
 
@@ -91,12 +106,24 @@ export const preferenceRoutes: FastifyPluginAsync<PreferenceRoutesOptions> = asy
        * resolved, so a stale one degrades to the default rather than breaking navigation.
        */
       await query(
-        `insert into user_preferences (user_id, tab_order, theme)
-         values ($1, $2, coalesce($3, 'system'))
+        `insert into user_preferences (user_id, tab_order, theme, show_incomplete_history)
+         values ($1, $2, coalesce($3, 'system'), coalesce($4, true))
          on conflict (user_id) do update
-           set tab_order = excluded.tab_order,
-               theme = coalesce($3, user_preferences.theme)`,
-        [session.user.id, body.data.tabOrder, body.data.theme ?? null],
+           set tab_order = case
+                 when $5 then excluded.tab_order
+                 else user_preferences.tab_order
+               end,
+               theme = coalesce($3, user_preferences.theme),
+               show_incomplete_history =
+                 coalesce($4, user_preferences.show_incomplete_history)`,
+        [
+          session.user.id,
+          body.data.tabOrder ?? null,
+          body.data.theme ?? null,
+          body.data.showIncompleteHistory ?? null,
+          // Distinguishes "clear the tab order" from "leave it alone" — both arrive as null above.
+          'tabOrder' in body.data,
+        ],
       )
     })
 

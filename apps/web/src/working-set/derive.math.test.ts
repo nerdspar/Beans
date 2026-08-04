@@ -136,6 +136,35 @@ describe('deriveWorkingSet', () => {
       expect(result.coverageIsLimited).toBe(true)
     })
 
+    /**
+     * The setting, for someone who prefers the old trade: less history, all of it complete.
+     *
+     * Off by default, because it discards real history to avoid one explicable step and nobody
+     * should get that without asking — but it is a legitimate preference and this is where it lands.
+     */
+    it('trims to the common start when incomplete history is switched off', () => {
+      const result = deriveWorkingSet(accounts, snapshots, {
+        to: TODAY,
+        showIncompleteHistory: false,
+      })
+
+      expect(result.household.map((point) => point.date)).toEqual([TODAY])
+      expect(result.coverageStart).toBe(TODAY)
+      // Nothing partial is left, so there is no region for the chart to mark.
+      expect(result.completeFrom).toBeNull()
+    })
+
+    it('trims each section the same way, so the parts still add up to the total', () => {
+      const result = deriveWorkingSet(accounts, snapshots, {
+        to: TODAY,
+        showIncompleteHistory: false,
+      })
+
+      for (const group of result.sections) {
+        expect(group.series.map((point) => point.date)).toEqual([TODAY])
+      }
+    })
+
     it('claims no boundary when every account reaches equally far back', () => {
       const aligned = [
         account({ id: 'a', coverageStartDate: '2026-08-01' }),

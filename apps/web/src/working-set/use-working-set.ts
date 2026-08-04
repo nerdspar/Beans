@@ -7,6 +7,7 @@ import {
   type StoredCategory,
   type StoredTransaction,
 } from './db.js'
+import { usePreferences } from '../preferences/use-preferences.js'
 import { deriveWorkingSet, type DerivedWorkingSet } from './derive.js'
 import { NoHouseholdYetError, NotSignedInError, syncWorkingSet } from './sync.js'
 
@@ -78,13 +79,16 @@ export function useWorkingSet(): WorkingSetState {
     }
   }, [changed, queryClient, sync.dataUpdatedAt])
 
+  const { preferences } = usePreferences()
+
   const derived = useMemo(() => {
     if (stored.data === undefined) return null
     return deriveWorkingSet(
       stored.data.accounts as Parameters<typeof deriveWorkingSet>[0],
       stored.data.balances as Parameters<typeof deriveWorkingSet>[1],
+      { showIncompleteHistory: preferences.showIncompleteHistory },
     )
-  }, [stored.data])
+  }, [stored.data, preferences.showIncompleteHistory])
 
   /*
    * Kept out of `deriveWorkingSet`, which builds the balance series. Transactions do not participate
