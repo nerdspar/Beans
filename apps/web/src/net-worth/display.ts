@@ -127,3 +127,17 @@ export function formatAxisValue(
 
   return formatCents(display, { compact: true, compactFractionDigits: fractionDigits })
 }
+
+const SHORT_DATE = new Intl.DateTimeFormat(undefined, {
+  month: 'numeric',
+  day: 'numeric',
+  year: 'numeric',
+  // UTC, for the same reason as everywhere else a YYYY-MM-DD meets Date: parsed as UTC midnight
+  // and formatted locally, every date west of Greenwich renders as the previous day.
+  timeZone: 'UTC',
+})
+
+/** The date a chart is being read at. Shared, so net worth and one account agree on the format. */
+export function formatShortDate(date: string | undefined): string {
+  return date === undefined ? '' : SHORT_DATE.format(new Date(`${date}T00:00:00Z`))
+}

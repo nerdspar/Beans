@@ -1,5 +1,6 @@
 import {
   ACCOUNT_COPY,
+  NET_WORTH_SCRUB_COPY,
   NET_WORTH_STATE_COPY,
   carriedNotice,
   compareDates,
@@ -20,7 +21,12 @@ import { accountHealth, formatLastUpdated } from '../accounts/display.js'
 import { CategoryChart } from '../charts/CategoryChart.js'
 import { cn } from '../lib/cn.js'
 import { SECTION_COLORS, SECTION_LABELS } from '../net-worth/colors.js'
-import { describeChange, formatAxisValue, toChartSeries } from '../net-worth/display.js'
+import {
+  describeChange,
+  formatAxisValue,
+  formatShortDate,
+  toChartSeries,
+} from '../net-worth/display.js'
 import type { DerivedAccount } from '../working-set/derive.js'
 import { WORKING_SET_KEY, useWorkingSet } from '../working-set/use-working-set.js'
 import type { StoredTransaction } from '../working-set/db.js'
@@ -98,6 +104,7 @@ function AccountView({
   recent: readonly StoredTransaction[]
 }): ReactNode {
   const [sheet, setSheet] = useState<'none' | 'edit' | 'value'>('none')
+  const [scrubIndex, setScrubIndex] = useState<number | null>(null)
   const queryClient = useQueryClient()
 
   /*
@@ -144,9 +151,32 @@ function AccountView({
     [section],
   )
 
-  const total = series.at(-1)?.value ?? account.currentBalanceCents ?? 0n
-  const change = total - (series[0]?.value ?? total)
+  /*
+   * The day being read off the chart, as an index into the sliced series.
+   *
+   * Same interaction as net worth, one account at a time. Changing the range drops it: the window
+   * is rewritten underneath, so an index held across it would come to mean a different date.
+   *
+   * Clamped rather than trusted — a sync landing mid-read can shorten the series, and an index past
+   * the end would read as zero, which is a balance this account never had.
+   */
+  const reading =
+    scrubIndex === null ? null : (series[Math.min(scrubIndex, series.length - 1)] ?? null)
+
+  const latest = series.at(-1)?.value ?? account.currentBalanceCents ?? 0n
+  const total = reading?.value ?? latest
+  const change = latest - (series[0]?.value ?? latest)
   const described = describeChange(change, section)
+
+  const describePoint = useCallback(
+    (index: number): string => {
+      const point = series[Math.min(Math.max(index, 0), series.length - 1)]
+      return point === undefined
+        ? ''
+        : NET_WORTH_SCRUB_COPY.describe(formatShortDate(point.date), formatCents(point.value))
+    },
+    [series],
+  )
 
   return (
     <div className="mx-auto max-w-2xl pb-10">
@@ -231,18 +261,34 @@ function AccountView({
       <div className="flex items-baseline justify-between gap-3 px-5 pt-4">
         <div>
           <div className="text-3xl font-semibold tabular-nums">{formatCents(total)}</div>
-          <div
-            className={cn(
-              'mt-0.5 text-sm font-medium tabular-nums',
-              described.favourable
-                ? 'text-emerald-600 dark:text-emerald-400'
-                : 'text-rose-600 dark:text-rose-400',
-            )}
-          >
-            {described.text}
-          </div>
+          {/* Matching net worth: the date replaces the change while a day is being read. */}
+          {reading === null ? (
+            <div
+              className={cn(
+                'mt-0.5 text-sm font-medium tabular-nums',
+                described.favourable
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-rose-600 dark:text-rose-400',
+              )}
+            >
+              {described.text}
+            </div>
+          ) : (
+            <div
+              className="mt-0.5 text-sm font-medium tabular-nums text-slate-500 dark:text-slate-400"
+              role="status"
+            >
+              {formatShortDate(reading.date)}
+            </div>
+          )}
         </div>
-        <RangeControl value={range} onChange={onRange} />
+        <RangeControl
+          value={range}
+          onChange={(next) => {
+            setScrubIndex(null)
+            onRange(next)
+          }}
+        />
       </div>
 
       {/*
@@ -256,6 +302,10 @@ function AccountView({
           color={SECTION_COLORS[section]}
           formatValue={formatValue}
           height={CHART_HEIGHT}
+          scrubIndex={scrubIndex}
+          onScrub={setScrubIndex}
+          describePoint={describePoint}
+          scrubLabel={NET_WORTH_SCRUB_COPY.label}
         />
       </div>
 

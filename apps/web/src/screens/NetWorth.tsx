@@ -17,6 +17,7 @@ import {
   describeChange,
   formatAxisValue,
   formatSectionTotal,
+  formatShortDate,
   toChartSeries,
 } from '../net-worth/display.js'
 import { useWorkingSet } from '../working-set/use-working-set.js'
@@ -85,18 +86,6 @@ export function NetWorth(): ReactNode {
  * `useActiveSection` keys off the section list, and an early return before it would change the hook
  * order between an empty household and a populated one.
  */
-const SHORT_DATE = new Intl.DateTimeFormat(undefined, {
-  month: 'numeric',
-  day: 'numeric',
-  year: 'numeric',
-  // UTC, for the same reason as everywhere else a YYYY-MM-DD meets Date.
-  timeZone: 'UTC',
-})
-
-function formatShortDate(date: string | undefined): string {
-  return date === undefined ? '' : SHORT_DATE.format(new Date(`${date}T00:00:00Z`))
-}
-
 function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactNode {
   const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE)
 

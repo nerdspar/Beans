@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { AreaChart } from '../charts/AreaChart.js'
+import { CategoryChart } from '../charts/CategoryChart.js'
 import { SearchableSelect } from '../lib/SearchableSelect.js'
 
 /**
@@ -49,8 +50,10 @@ export function DevPreview(): ReactNode {
   const [narrow, setNarrow] = useState('')
   const [wide, setWide] = useState('')
   const [scrub, setScrub] = useState<number | null>(null)
+  const [categoryScrub, setCategoryScrub] = useState<number | null>(null)
 
   const scrubbed = scrub === null ? undefined : SERIES[scrub]
+  const category = categoryScrub === null ? undefined : SERIES[categoryScrub]
 
   return (
     <div className="mx-auto max-w-2xl space-y-10 p-6">
@@ -84,6 +87,25 @@ export function DevPreview(): ReactNode {
             options={[{ value: '', label: 'Skip' }, ...ACCOUNTS]}
           />
         </div>
+      </section>
+
+      <section className="space-y-2">
+        {/* The wrapper the account detail screen uses — it has to pass the scrub props through. */}
+        <h2 className="text-sm font-semibold">CategoryChart — scrubber passthrough</h2>
+        <p className="text-xs tabular-nums text-slate-500">
+          {category === undefined ? 'Not reading' : `${category.date} · ${category.value}`}
+        </p>
+        <CategoryChart
+          categoryKey="preview"
+          series={SERIES}
+          color="#34d399"
+          formatValue={(cents) => `$${Math.round(Number(cents) / 100)}`}
+          height={140}
+          scrubIndex={categoryScrub}
+          onScrub={setCategoryScrub}
+          describePoint={(index) => SERIES[index]?.date ?? ''}
+          scrubLabel="Read account by date"
+        />
       </section>
 
       <section className="space-y-2">
