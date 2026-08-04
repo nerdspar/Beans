@@ -46,6 +46,7 @@ export const CASH_FLOW_COPY = {
    */
   comparedWith: 'Dotted: the period before, day by day.',
   runningTotal: 'Running total',
+  byMonthReading: 'Month',
   activityHeading: 'What happened',
   activityEmpty: 'Nothing posted in this period.',
 

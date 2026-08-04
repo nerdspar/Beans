@@ -1,4 +1,11 @@
-import { useMemo, type ReactNode } from 'react'
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react'
 import { cn } from '../lib/cn.js'
 
 /**
@@ -34,6 +41,25 @@ export type MonthlyBarsProps = {
   averageLabel: (formatted: string) => string
   height?: number
   className?: string
+
+  /** The month being read, as an index into `periods`. Null when none is. */
+  scrubIndex?: number | null
+  onScrub?: ((index: number | null) => void) | undefined
+  describePoint?: ((index: number) => string) | undefined
+  scrubLabel?: string
+}
+
+/**
+ * The month under a pointer.
+ *
+ * Slot-based rather than nearest-point, which is what separates this from the line charts. A bar
+ * owns a width, so anywhere inside it is that month — nearest-point would flip to the next month
+ * halfway across the one you are pointing at.
+ */
+export function monthAtPosition(offsetX: number, width: number, count: number): number | null {
+  if (count === 0 || width <= 0) return null
+  const fraction = Math.min(Math.max(offsetX / width, 0), 1)
+  return Math.min(count - 1, Math.floor(fraction * count))
 }
 
 const INCOME_COLOR = '#34d399'
@@ -60,7 +86,59 @@ export function MonthlyBars({
   averageLabel,
   height = 190,
   className,
+  scrubIndex = null,
+  onScrub,
+  describePoint,
+  scrubLabel,
 }: MonthlyBarsProps): ReactNode {
+  const plotRef = useRef<HTMLDivElement>(null)
+
+  const scrubTo = useCallback(
+    (clientX: number): void => {
+      const box = plotRef.current?.getBoundingClientRect()
+      if (box === undefined) return
+      const index = monthAtPosition(clientX - box.left, box.width, periods.length)
+      if (index !== null) onScrub?.(index)
+    },
+    [periods.length, onScrub],
+  )
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    event.currentTarget.setPointerCapture(event.pointerId)
+    scrubTo(event.clientX)
+  }
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const dragging = event.currentTarget.hasPointerCapture(event.pointerId)
+    if (event.pointerType === 'mouse' || dragging) scrubTo(event.clientX)
+  }
+
+  const endScrub = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    onScrub?.(null)
+  }
+
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (periods.length === 0 || onScrub === undefined) return
+
+    const last = periods.length - 1
+    const from = scrubIndex ?? last
+    const absolute: Record<string, number | null> = { Escape: null, Home: 0, End: last }
+    // A month at a time; there is no larger unit worth jumping by on a chart of twelve.
+    const step: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1 }
+
+    if (event.key in absolute) {
+      onScrub(absolute[event.key] ?? null)
+    } else if (event.key in step) {
+      onScrub(Math.min(last, Math.max(0, from + (step[event.key] ?? 0))))
+    } else {
+      return
+    }
+
+    event.preventDefault()
+  }
   const geometry = useMemo(() => {
     if (periods.length === 0) return null
 
@@ -129,6 +207,7 @@ export function MonthlyBars({
         }
       }),
       barWidth,
+      slot,
       zero: y(0),
     }
   }, [periods, mode, height])
@@ -148,6 +227,23 @@ export function MonthlyBars({
         // Decorative: the month list beneath is the table fallback a screen reader should read.
         aria-hidden
       >
+        {/*
+          The month being read, as a band rather than a line.
+          
+          A bar owns a width, so the thing being pointed at is a span — a hairline through the
+          middle of it would be pointing at a coordinate the data does not have. Drawn first, so the
+          bars stay legible on top of it.
+        */}
+        {scrubIndex !== null && geometry.bars[scrubIndex] !== undefined && (
+          <rect
+            x={(geometry.bars[scrubIndex]?.centre ?? 0) - geometry.slot / 2}
+            y={0}
+            width={geometry.slot}
+            height={geometry.plotHeight}
+            className="fill-slate-400/15 dark:fill-slate-400/10"
+          />
+        )}
+
         {geometry.bars.map((bar) => (
           <g key={bar.month}>
             {showIncome && (
@@ -219,10 +315,15 @@ export function MonthlyBars({
         belongs to.
       */}
       {mode === 'net' &&
-        geometry.bars.map((bar) => (
+        geometry.bars.map((bar, index) => (
           <div
             key={`dot-${bar.month}`}
-            className="pointer-events-none absolute size-2 rounded-full border border-white bg-slate-500 dark:border-slate-950 dark:bg-slate-300"
+            className={cn(
+              'pointer-events-none absolute rounded-full border bg-slate-500',
+              'border-white dark:border-slate-950 dark:bg-slate-300',
+              // The month being read gets the bigger dot, so the reading has a definite place.
+              index === scrubIndex ? 'size-3 border-2' : 'size-2',
+            )}
             style={{
               left: `${(bar.centre / geometry.width) * 100}%`,
               top: bar.netY,
@@ -242,6 +343,31 @@ export function MonthlyBars({
       >
         {averageLabel(formatValue(geometry.averageCents))}
       </span>
+
+      {onScrub !== undefined && (
+        <div
+          ref={plotRef}
+          role="slider"
+          tabIndex={0}
+          aria-label={scrubLabel ?? 'Read by month'}
+          aria-valuemin={0}
+          aria-valuemax={Math.max(0, periods.length - 1)}
+          aria-valuenow={scrubIndex ?? Math.max(0, periods.length - 1)}
+          aria-valuetext={describePoint?.(scrubIndex ?? periods.length - 1)}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endScrub}
+          onPointerCancel={endScrub}
+          onPointerLeave={endScrub}
+          onKeyDown={onKeyDown}
+          onBlur={() => onScrub(null)}
+          className={cn(
+            'absolute inset-x-0 top-0 cursor-crosshair touch-pan-y',
+            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500',
+          )}
+          style={{ height: geometry.plotHeight }}
+        />
+      )}
 
       <div
         className="flex text-[11px] tabular-nums text-slate-500 dark:text-slate-400"

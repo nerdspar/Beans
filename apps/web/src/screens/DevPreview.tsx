@@ -86,10 +86,12 @@ export function DevPreview(): ReactNode {
   const [scrub, setScrub] = useState<number | null>(null)
   const [categoryScrub, setCategoryScrub] = useState<number | null>(null)
   const [flowScrub, setFlowScrub] = useState<number | null>(null)
+  const [monthScrub, setMonthScrub] = useState<number | null>(null)
 
   const scrubbed = scrub === null ? undefined : SERIES[scrub]
   const category = categoryScrub === null ? undefined : SERIES[categoryScrub]
   const flowPoint = flowScrub === null ? undefined : THIS_MONTH[flowScrub]
+  const monthRead = monthScrub === null ? undefined : MONTHS[monthScrub]
 
   return (
     <div className="mx-auto max-w-2xl space-y-10 p-6">
@@ -145,11 +147,18 @@ export function DevPreview(): ReactNode {
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold">MonthlyBars — net (both directions)</h2>
+        <p className="text-xs tabular-nums text-slate-500">
+          {monthRead === undefined ? 'Not reading' : `${monthRead.month} · ${money(monthRead.netCents)}`}
+        </p>
         <MonthlyBars
           periods={MONTHS}
           mode="net"
           formatValue={money}
           averageLabel={(amount) => `Avg ${amount}`}
+          scrubIndex={monthScrub}
+          onScrub={setMonthScrub}
+          describePoint={(index) => MONTHS[index]?.month ?? ''}
+          scrubLabel="Read by month"
         />
       </section>
 

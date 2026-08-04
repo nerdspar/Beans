@@ -62,6 +62,8 @@ export function CashFlow(): ReactNode {
   const [tab, setTab] = useState<'cash-flow' | 'income' | 'expenses'>('cash-flow')
   /** The day being read off the running total. Drives the header and scrolls the list. */
   const [scrubIndex, setScrubIndex] = useState<number | null>(null)
+  /** The month being read off the bars. Separate from the daily reading — different charts. */
+  const [monthIndex, setMonthIndex] = useState<number | null>(null)
   const listRef = useRef<HTMLUListElement>(null)
   /*
    * Which side is driving.
@@ -216,6 +218,18 @@ export function CashFlow(): ReactNode {
     return index === -1 ? daily.length : index
   }, [daily, today])
 
+  /*
+   * The month under the pointer, clamped. A sync landing mid-read can shorten the list, and an
+   * index past the end would read as zero — a month the household never had.
+   */
+  const dailyReading =
+    scrubIndex === null ? null : (daily[Math.min(scrubIndex, daily.length - 1)] ?? null)
+
+  const monthReading =
+    monthIndex === null
+      ? null
+      : (summary.periods[Math.min(monthIndex, summary.periods.length - 1)] ?? null)
+
   const onScrub = useCallback(
     (index: number | null): void => {
       driver.current = index === null ? 'none' : 'chart'
@@ -292,7 +306,14 @@ export function CashFlow(): ReactNode {
     <div className="mx-auto max-w-2xl px-5 pb-16 pt-5">
       <div className="flex items-baseline justify-between gap-3">
         <h1 className="text-2xl font-semibold">{CASH_FLOW_COPY.title}</h1>
-        <RangeControl value={range} onChange={setRange} />
+        <RangeControl
+          value={range}
+          onChange={(next) => {
+            setScrubIndex(null)
+            setMonthIndex(null)
+            setRange(next)
+          }}
+        />
       </div>
 
       {/*
@@ -320,7 +341,12 @@ export function CashFlow(): ReactNode {
             type="button"
             role="tab"
             aria-selected={tab === value}
-            onClick={() => setTab(value)}
+            onClick={() => {
+              // The index would point at a different day or month under the next tab's series.
+              setScrubIndex(null)
+              setMonthIndex(null)
+              setTab(value)
+            }}
             className={cn(
               'min-h-9 flex-1 rounded-md text-sm font-medium',
               'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-sky-500',
@@ -346,17 +372,46 @@ export function CashFlow(): ReactNode {
         <Message title={CASH_FLOW_COPY.empty} detail={CASH_FLOW_COPY.emptyDetail} />
       ) : tab === 'cash-flow' ? (
         <>
+          {/*
+            The totals follow the reading. Pointing at a month while the figures above it describe
+            the whole range would put two answers on screen to one question.
+          */}
           <div className="mt-4 grid grid-cols-3 gap-3">
-            <Total label={CASH_FLOW_COPY.income} cents={summary.incomeCents} tone="income" />
+            <Total
+              label={CASH_FLOW_COPY.income}
+              cents={monthReading?.incomeCents ?? summary.incomeCents}
+              tone="income"
+            />
             {/* Negated for display only. It stays negative everywhere else so it adds directly. */}
-            <Total label={CASH_FLOW_COPY.spending} cents={-summary.spendingCents} />
-            <Total label={CASH_FLOW_COPY.net} cents={summary.netCents} tone="net" />
+            <Total
+              label={CASH_FLOW_COPY.spending}
+              cents={-(monthReading?.spendingCents ?? summary.spendingCents)}
+            />
+            <Total
+              label={CASH_FLOW_COPY.net}
+              cents={monthReading?.netCents ?? summary.netCents}
+              tone="net"
+            />
           </div>
 
-          {/* Said out loud: a total that quietly ignored some transactions would be unaccountable. */}
-          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-            {CASH_FLOW_COPY.transfersExcluded(summary.excludedCount)}
-          </p>
+          {/*
+            What is being read, or the transfers note. The note is a caveat on the range's totals,
+            so it has nothing to say while a single month is being pointed at.
+          */}
+          {monthReading !== null ? (
+            <p role="status" className="mt-2 text-xs font-medium tabular-nums">
+              {formatMonth(monthReading.month)}
+            </p>
+          ) : dailyReading !== null ? (
+            <p role="status" className="mt-2 text-xs font-medium tabular-nums">
+              {formatShortDate(dailyReading.date)} · {formatCents(dailyReading.cumulativeCents)}
+            </p>
+          ) : (
+            /* Said out loud: a total that quietly ignored transactions would be unaccountable. */
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              {CASH_FLOW_COPY.transfersExcluded(summary.excludedCount)}
+            </p>
+          )}
 
           {/*
             One month gets the running total; more than one gets bars.
@@ -396,6 +451,10 @@ export function CashFlow(): ReactNode {
               mode="net"
               formatValue={formatCents}
               averageLabel={CASH_FLOW_COPY.average}
+              scrubIndex={monthIndex}
+              onScrub={setMonthIndex}
+              describePoint={(index) => describeMonth(summary.periods, index, 'net')}
+              scrubLabel={CASH_FLOW_COPY.byMonthReading}
             />
           )}
 
@@ -497,6 +556,27 @@ export function CashFlow(): ReactNode {
           dailyBefore={dailyBefore}
           elapsedCount={elapsedDays}
           mode={tab === 'income' ? 'income' : 'spending'}
+          scrubIndex={scrubIndex}
+          onScrub={onScrub}
+          monthIndex={monthIndex}
+          onMonthScrub={setMonthIndex}
+          reading={
+            monthReading !== null
+              ? {
+                  label: formatMonth(monthReading.month),
+                  cents:
+                    tab === 'income' ? monthReading.incomeCents : -monthReading.spendingCents,
+                }
+              : dailyReading !== null
+                ? {
+                    label: formatShortDate(dailyReading.date),
+                    cents:
+                      tab === 'income'
+                        ? dailyReading.cumulativeCents
+                        : -dailyReading.cumulativeCents,
+                  }
+                : null
+          }
           totals={tab === 'income' ? byIncomeCategory : byCategory}
           totalCents={tab === 'income' ? summary.incomeCents : -summary.spendingCents}
           label={tab === 'income' ? CASH_FLOW_COPY.income : CASH_FLOW_COPY.spending}
@@ -887,6 +967,11 @@ function Breakdown({
   dailyBefore,
   elapsedCount,
   mode,
+  scrubIndex,
+  onScrub,
+  monthIndex,
+  onMonthScrub,
+  reading,
   totals,
   totalCents,
   label,
@@ -899,6 +984,12 @@ function Breakdown({
   dailyBefore: readonly { date: string; cumulativeCents: bigint }[]
   elapsedCount: number
   mode: 'income' | 'spending'
+  scrubIndex: number | null
+  onScrub: (index: number | null) => void
+  monthIndex: number | null
+  onMonthScrub: (index: number | null) => void
+  /** What is being pointed at, if anything. Replaces the range total while it is. */
+  reading: { label: string; cents: bigint } | null
   totals: readonly { categoryId: string | null; cents: bigint }[]
   totalCents: bigint
   label: string
@@ -914,9 +1005,15 @@ function Breakdown({
       <div className="mt-4">
         {/* `exactOptionalPropertyTypes`: an absent tone and an explicit undefined are not the same. */}
         {label === CASH_FLOW_COPY.income ? (
-          <Total label={label} cents={totalCents} tone="income" />
+          <Total label={label} cents={reading?.cents ?? totalCents} tone="income" />
         ) : (
-          <Total label={label} cents={totalCents} />
+          <Total label={label} cents={reading?.cents ?? totalCents} />
+        )}
+
+        {reading !== null && (
+          <p role="status" className="mt-1 text-xs font-medium tabular-nums">
+            {reading.label}
+          </p>
         )}
       </div>
 
@@ -939,6 +1036,17 @@ function Breakdown({
               formatAxisValue(mode === 'spending' ? -cents : cents, 'household', digits)
             }
             elapsedCount={elapsedCount}
+            scrubIndex={scrubIndex}
+            onScrub={onScrub}
+            describePoint={(index) => {
+              const point = daily[Math.min(Math.max(index, 0), daily.length - 1)]
+              return point === undefined
+                ? ''
+                : `${formatShortDate(point.date)}: ${formatCents(
+                    mode === 'spending' ? -point.cumulativeCents : point.cumulativeCents,
+                  )}`
+            }}
+            scrubLabel={CASH_FLOW_COPY.runningTotal}
           />
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             {CASH_FLOW_COPY.comparedWith}
@@ -951,6 +1059,10 @@ function Breakdown({
           className="mt-6"
           periods={periods}
           mode={mode}
+          scrubIndex={monthIndex}
+          onScrub={onMonthScrub}
+          describePoint={(index) => describeMonth(periods, index, mode)}
+          scrubLabel={CASH_FLOW_COPY.byMonthReading}
           /*
            * Negated for the label only, and only here. Spending stays negative in the data and is
            * drawn below the zero line as such; "Avg $-15,942" under a heading that already says
@@ -1019,4 +1131,23 @@ function groupByDate<T extends { postedDate: string }>(rows: readonly T[]): Arra
 
   // Insertion order is already newest-first, because the rows arrive sorted.
   return [...byDate.entries()]
+}
+
+/** Read out as the month slider moves, so the figure is heard rather than only seen. */
+function describeMonth(
+  periods: readonly CashFlowPeriod[],
+  index: number,
+  mode: 'net' | 'income' | 'spending',
+): string {
+  const period = periods[Math.min(Math.max(index, 0), periods.length - 1)]
+  if (period === undefined) return ''
+
+  const cents =
+    mode === 'income'
+      ? period.incomeCents
+      : mode === 'spending'
+        ? -period.spendingCents
+        : period.netCents
+
+  return `${formatMonth(period.month)}: ${formatCents(cents)}`
 }
