@@ -1,4 +1,11 @@
-import { useMemo, type ReactNode } from 'react'
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react'
 import { cn } from '../lib/cn.js'
 
 /**
@@ -38,6 +45,20 @@ export type AreaChartProps = {
   formatValue: (cents: bigint, fractionDigits: number) => string
   className?: string
   height?: number
+
+  /**
+   * The point being read, as an index into `series`. Null when nothing is.
+   *
+   * Positional rather than a date because the chart already thinks in indexes, and the series is
+   * one point per day — so moving by one index is moving by one day, which is the whole interaction.
+   */
+  scrubIndex?: number | null
+  /** Called with the index under the pointer, or null when the reading ends. */
+  onScrub?: ((index: number | null) => void) | undefined
+  /** Read out when the scrubber has focus. Given the index, returns something worth hearing. */
+  describePoint?: ((index: number) => string) | undefined
+  /** Labels the scrubber for assistive technology. */
+  scrubLabel?: string
 }
 
 const GRID_LINES = 5
@@ -134,13 +155,114 @@ function toPixelUnits(cents: bigint): number {
   return Number(cents)
 }
 
+/**
+ * The day under a pointer, as an index into the series.
+ *
+ * Separated from the component because it is the whole interaction and the rest is DOM plumbing:
+ * a rectangle, a coordinate, and the question of which day that is.
+ *
+ * **Rounds to the nearest day rather than flooring.** Flooring lands the marker on the point before
+ * the finger for the whole right half of every day's width — imperceptible in pixels, and obvious
+ * in the number at the top, which is the thing actually being read.
+ *
+ * Clamped at both ends so a drag that leaves the chart holds at the first or last day instead of
+ * running off into an index that does not exist.
+ */
+export function indexAtPosition(
+  offsetX: number,
+  width: number,
+  length: number,
+): number | null {
+  if (length === 0 || width <= 0) return null
+  if (length === 1) return 0
+
+  const fraction = Math.min(Math.max(offsetX / width, 0), 1)
+  return Math.round(fraction * (length - 1))
+}
+
 export function AreaChart({
   series,
   color,
   formatValue,
   className,
   height = 220,
+  scrubIndex = null,
+  onScrub,
+  describePoint,
+  scrubLabel,
 }: AreaChartProps): ReactNode {
+  const plotRef = useRef<HTMLDivElement>(null)
+
+  const scrubTo = useCallback(
+    (clientX: number): void => {
+      const box = plotRef.current?.getBoundingClientRect()
+      if (box === undefined) return
+
+      const index = indexAtPosition(clientX - box.left, box.width, series.length)
+      if (index !== null) onScrub?.(index)
+    },
+    [series.length, onScrub],
+  )
+
+  /**
+   * One handler for mouse, pen and touch.
+   *
+   * A mouse reports movement without any button held, which is the hover the desktop wants. Touch
+   * reports movement only while the finger is down, which is the drag the phone wants. Pointer
+   * events give both without branching on a breakpoint, and without the synthetic-mouse-event
+   * duplication that comes from handling touch and mouse separately.
+   */
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    // Captured so a finger that slides off the chart keeps scrubbing rather than dropping the
+    // reading mid-gesture.
+    event.currentTarget.setPointerCapture(event.pointerId)
+    scrubTo(event.clientX)
+  }
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const isDragging = event.currentTarget.hasPointerCapture(event.pointerId)
+    if (event.pointerType === 'mouse' || isDragging) scrubTo(event.clientX)
+  }
+
+  const endScrub = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    onScrub?.(null)
+  }
+
+  /**
+   * The same interaction from the keyboard, which is the only way it exists for anyone not using a
+   * pointer. Arrow keys move a day at a time — the literal unit the chart is drawn in — and the
+   * larger jumps exist because stepping through a year one day at a time is not a real option.
+   */
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (series.length === 0 || onScrub === undefined) return
+
+    const last = series.length - 1
+    const from = scrubIndex ?? last
+
+    const absolute: Record<string, number | null> = { Escape: null, Home: 0, End: last }
+    const step: Record<string, number> = {
+      ArrowLeft: -1,
+      ArrowRight: 1,
+      // A week, because stepping through a year one day at a time is not a real option.
+      PageUp: -7,
+      PageDown: 7,
+    }
+
+    if (event.key in absolute) {
+      onScrub(absolute[event.key] ?? null)
+    } else if (event.key in step) {
+      onScrub(Math.min(last, Math.max(0, from + (step[event.key] ?? 0))))
+    } else {
+      // Not ours — leave it to the browser.
+      return
+    }
+
+    // Stops arrow keys scrolling the page out from under a chart being read.
+    event.preventDefault()
+  }
   const geometry = useMemo(() => {
     if (series.length === 0) {
       return null
@@ -204,9 +326,26 @@ export function AreaChart({
     const startDate = series[0]?.date
     const endDate = series[series.length - 1]?.date
 
+    /*
+     * Where a given index sits, as a fraction of the width and a pixel offset from the top.
+     *
+     * A fraction rather than a viewBox coordinate because the SVG is stretched with
+     * `preserveAspectRatio="none"` — anything round drawn inside it comes out an ellipse, so the
+     * marker is a DOM element positioned over the plot instead.
+     */
+    const at = (index: number): { left: number; top: number } | null => {
+      const point = series[index]
+      if (point === undefined) return null
+      return {
+        left: series.length === 1 ? 0 : index / (series.length - 1),
+        top: y(toPixelUnits(point.value)),
+      }
+    }
+
     return {
       width,
       plotHeight,
+      at,
       precision: labelPrecision(
         ticks.map((tick) => tick.value),
         formatValue,
@@ -229,6 +368,9 @@ export function AreaChart({
       </div>
     )
   }
+
+  const marker = scrubIndex === null ? null : geometry.at(scrubIndex)
+  const scrubbedDate = scrubIndex === null ? undefined : series[scrubIndex]?.date
 
   return (
     <div className={cn('relative', className)}>
@@ -274,6 +416,23 @@ export function AreaChart({
           vectorEffect="non-scaling-stroke"
           style={{ transition: 'stroke 140ms ease-out' }}
         />
+
+        {/*
+          The reading line. Drawn in SVG because `non-scaling-stroke` keeps it one pixel wide
+          however far the viewBox is stretched; the dot cannot be, since a circle in a chart with
+          `preserveAspectRatio="none"` comes out an ellipse.
+        */}
+        {marker !== null && (
+          <line
+            x1={marker.left * geometry.width}
+            x2={marker.left * geometry.width}
+            y1={0}
+            y2={geometry.plotHeight}
+            className="stroke-slate-400 dark:stroke-slate-500"
+            strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
       </svg>
 
       {/*
@@ -289,6 +448,56 @@ export function AreaChart({
         <span>{geometry.start}</span>
         <span>{geometry.end}</span>
       </div>
+
+      {/* Round because it is a DOM element — see the reading line above for why it has to be. */}
+      {marker !== null && (
+        <div
+          className="pointer-events-none absolute size-2.5 rounded-full border-2 border-white dark:border-slate-950"
+          style={{
+            left: `${marker.left * 100}%`,
+            top: marker.top,
+            transform: 'translate(-50%, -50%)',
+            backgroundColor: color,
+          }}
+          aria-hidden
+        />
+      )}
+
+      {/*
+        The surface that reads the chart.
+        
+        Sits over the plot only, not the date axis beneath it, so the grab area matches what is
+        being read. Exposed as a slider rather than hidden like the chart itself: this is the one
+        part of the chart that is interactive, and a keyboard user needs it to exist.
+      */}
+      {onScrub !== undefined && (
+        <div
+          ref={plotRef}
+          role="slider"
+          tabIndex={0}
+          aria-label={scrubLabel ?? 'Read the chart by date'}
+          aria-valuemin={0}
+          aria-valuemax={Math.max(0, series.length - 1)}
+          aria-valuenow={scrubIndex ?? Math.max(0, series.length - 1)}
+          aria-valuetext={describePoint?.(scrubIndex ?? series.length - 1) ?? scrubbedDate}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endScrub}
+          onPointerCancel={endScrub}
+          // Only meaningful for a mouse: a captured touch never fires this, and a mouse leaving
+          // the chart has stopped reading it.
+          onPointerLeave={endScrub}
+          onKeyDown={onKeyDown}
+          onBlur={() => onScrub(null)}
+          className={cn(
+            'absolute inset-x-0 top-0 cursor-crosshair',
+            // Stops a vertical page scroll from stealing a horizontal drag on touch.
+            'touch-pan-y',
+            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500',
+          )}
+          style={{ height: geometry.plotHeight }}
+        />
+      )}
 
       {/* Value labels, positioned over the grid lines rather than drawn in SVG so they stay crisp. */}
       <div

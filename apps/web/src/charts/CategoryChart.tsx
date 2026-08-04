@@ -34,6 +34,12 @@ export type CategoryChartProps = {
   formatValue: (cents: bigint, fractionDigits: number) => string
   height?: number
   className?: string
+
+  /** Reading the chart. Applied to the incoming layer only — see below. */
+  scrubIndex?: number | null
+  onScrub?: ((index: number | null) => void) | undefined
+  describePoint?: ((index: number) => string) | undefined
+  scrubLabel?: string
 }
 
 /**
@@ -57,6 +63,10 @@ export function CategoryChart({
   formatValue,
   height = 220,
   className,
+  scrubIndex = null,
+  onScrub,
+  describePoint,
+  scrubLabel,
 }: CategoryChartProps): ReactNode {
   const [current, setCurrent] = useState<Layer>({ key: categoryKey, series, color })
   const [outgoing, setOutgoing] = useState<Layer | null>(null)
@@ -99,6 +109,11 @@ export function CategoryChart({
           className="absolute inset-0 motion-reduce:hidden"
           style={{ animation: `beans-fade-out ${TRANSITION_MS}ms ease-out forwards` }}
         >
+          {/*
+            No scrubber on the way out. The outgoing layer is mid-fade and about to be removed, and
+            a second reading line and dot fading out beside the live ones reads as a glitch rather
+            than a transition.
+          */}
           <AreaChart
             series={outgoing.series}
             color={outgoing.color}
@@ -118,6 +133,10 @@ export function CategoryChart({
           color={current.color}
           formatValue={formatValue}
           height={height}
+          scrubIndex={scrubIndex}
+          onScrub={onScrub}
+          describePoint={describePoint}
+          {...(scrubLabel === undefined ? {} : { scrubLabel })}
         />
       </div>
     </div>

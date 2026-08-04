@@ -7,6 +7,7 @@ export {
 
 export {
   ACCOUNT_COPY,
+  NET_WORTH_SCRUB_COPY,
   NET_WORTH_STATE_COPY,
   carriedNotice,
   coverageNotice,

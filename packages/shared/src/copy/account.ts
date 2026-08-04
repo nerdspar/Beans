@@ -47,6 +47,19 @@ export const ACCOUNT_COPY = {
  * Signed-out and no-household are **not** here: `Gate` resolves both before this screen renders, and
  * their copy lives with the screens that actually show it in `AUTH_COPY`.
  */
+/**
+ * Reading the chart by date.
+ *
+ * The date replaces the change line rather than sitting beside it. While a day is being read, "up
+ * $4,200 over the year" is answering a question nobody is asking, and two numbers competing for the
+ * same glance is how a header stops being read at all.
+ */
+export const NET_WORTH_SCRUB_COPY = {
+  label: 'Read net worth by date. Use the arrow keys to move a day at a time.',
+  /** Spoken as the slider moves, so the value is heard rather than only seen. */
+  describe: (date: string, value: string): string => `${date}: ${value}`,
+} as const
+
 export const NET_WORTH_STATE_COPY = {
   loading: 'Counting the beans.',
 

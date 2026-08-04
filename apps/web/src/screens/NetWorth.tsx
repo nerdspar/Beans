@@ -1,5 +1,6 @@
 import {
   CONNECTION_STATUS_LABEL,
+  NET_WORTH_SCRUB_COPY,
   NET_WORTH_STATE_COPY,
   coverageNotice,
   formatCents,
@@ -99,6 +100,16 @@ function formatShortDate(date: string | undefined): string {
 function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactNode {
   const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE)
 
+  /**
+   * The day being read off the chart, as an index into the sliced series. Null when none is.
+   *
+   * An index rather than a date so that scrolling between sections keeps the reading in place —
+   * every section is sliced to the same window, so the same index is the same day. Changing the
+   * range is different: it rewrites the window underneath, so the reading is dropped rather than
+   * silently coming to mean another date.
+   */
+  const [scrubIndex, setScrubIndex] = useState<number | null>(null)
+
   const sections = workingSet.sections
   const sectionKeys = useMemo(() => sections.map((group) => group.section), [sections])
 
@@ -129,9 +140,30 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
   const series =
     activeGroup === undefined ? sliced.household : (sliced.bySection.get(activeGroup.section) ?? [])
 
-  const total = series.at(-1)?.value ?? 0n
-  const change = total - (series[0]?.value ?? 0n)
+  /*
+   * Clamped rather than trusted. The series can shrink underneath a held reading — a sync lands, a
+   * section with less history becomes active — and an index past the end would read as zero, which
+   * is a number the household never had.
+   */
+  const reading = scrubIndex === null ? null : (series[Math.min(scrubIndex, series.length - 1)] ?? null)
+
+  const latest = series.at(-1)?.value ?? 0n
+  const total = reading?.value ?? latest
+  const change = latest - (series[0]?.value ?? 0n)
   const described = describeChange(change, scope)
+
+  const describePoint = useCallback(
+    (index: number): string => {
+      const point = series[Math.min(Math.max(index, 0), series.length - 1)]
+      return point === undefined
+        ? ''
+        : NET_WORTH_SCRUB_COPY.describe(
+            formatShortDate(point.date),
+            formatSectionTotal(point.value, scope),
+          )
+    },
+    [series, scope],
+  )
 
   const chartSeries = toChartSeries(series, scope)
 
@@ -168,18 +200,39 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
             <div className="text-3xl font-semibold tabular-nums">
               {formatSectionTotal(total, scope)}
             </div>
-            <div
-              className={cn(
-                'mt-0.5 text-sm font-medium tabular-nums',
-                described.favourable
-                  ? 'text-emerald-600 dark:text-emerald-400'
-                  : 'text-rose-600 dark:text-rose-400',
-              )}
-            >
-              {described.text}
-            </div>
+            {/*
+              The date takes the change line's place while a day is being read, rather than
+              appearing beside it. Two numbers competing for the same glance is how a header stops
+              being read — and the change over the whole window is not what was asked for when
+              somebody is pointing at a Tuesday.
+            */}
+            {reading === null ? (
+              <div
+                className={cn(
+                  'mt-0.5 text-sm font-medium tabular-nums',
+                  described.favourable
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-rose-600 dark:text-rose-400',
+                )}
+              >
+                {described.text}
+              </div>
+            ) : (
+              <div
+                className="mt-0.5 text-sm font-medium tabular-nums text-slate-500 dark:text-slate-400"
+                role="status"
+              >
+                {formatShortDate(reading.date)}
+              </div>
+            )}
           </div>
-          <RangeControl value={range} onChange={setRange} />
+          <RangeControl
+            value={range}
+            onChange={(next) => {
+              setScrubIndex(null)
+              setRange(next)
+            }}
+          />
         </div>
 
         <CategoryChart
@@ -189,6 +242,10 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
           color={color}
           formatValue={formatValue}
           height={190}
+          scrubIndex={scrubIndex}
+          onScrub={setScrubIndex}
+          describePoint={describePoint}
+          scrubLabel={NET_WORTH_SCRUB_COPY.label}
         />
 
         {/*
