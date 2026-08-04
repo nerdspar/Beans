@@ -1,7 +1,7 @@
-import { COLUMN_ROLES, IMPORT_COPY, IMPORT_PRESETS } from '@beans/shared'
+import { ACCOUNT_TYPES, COLUMN_ROLES, IMPORT_COPY, IMPORT_PRESETS } from '@beans/shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
-import { listManagedAccounts } from '../accounts/api.js'
+import { createManualAccount, listManagedAccounts } from '../accounts/api.js'
 import {
   commitImport,
   inspectCsv,
@@ -22,6 +22,14 @@ import { WORKING_SET_KEY } from '../working-set/use-working-set.js'
  * anything that has been committed. Reversal exists for the mistake found later still.
  */
 
+/**
+ * Chosen in the account dropdown to mean "this one no longer exists, make it".
+ *
+ * Not an empty string, which means skip. The two look similar in a dropdown and are opposites:
+ * skipping discards the rows, creating gives them somewhere to land.
+ */
+const CREATE_SENTINEL = '__create__'
+
 type Stage =
   | { kind: 'choose' }
   | { kind: 'map'; content: string; filename: string; inspection: Inspection }
@@ -33,8 +41,16 @@ export function Import(): ReactNode {
   const [presetId, setPresetId] = useState('empower')
   const [accountId, setAccountId] = useState('')
   const [mapping, setMapping] = useState<Array<{ columnIndex: number; role: string }>>([])
-  /** Account name as it appears in the file → Beans account id. Empty string means skip. */
+  /**
+   * Account name as it appears in the file → Beans account id.
+   *
+   * Empty string means skip. The sentinel below means "create it", which is a different thing:
+   * skipping drops the rows, creating gives them somewhere to land.
+   */
   const [accountMap, setAccountMap] = useState<Record<string, string>>({})
+
+  /** Draft closed accounts, keyed by the name in the file, for the CREATE sentinel. */
+  const [drafts, setDrafts] = useState<Record<string, { type: string; closedOn: string }>>({})
   const queryClient = useQueryClient()
 
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: listManagedAccounts })
@@ -69,9 +85,50 @@ export function Import(): ReactNode {
     (name) => (accountMap[name] ?? '') !== '',
   ).length
 
+  /*
+   * A close date is required before anything can be created with it.
+   *
+   * Without one there is no answer to when the account stopped counting, and the series would have
+   * nowhere to end — so this blocks rather than defaulting to today, which would quietly invent a
+   * date and put a cliff in the chart on it.
+   */
+  const draftsIncomplete = (namedAccounts ?? []).some(
+    (name) => accountMap[name] === CREATE_SENTINEL && (drafts[name]?.closedOn ?? '') === '',
+  )
+
+  /*
+   * Created first, then matched.
+   *
+   * The accounts have to exist before staging can route rows into them, so this resolves every
+   * draft into a real account id and folds the results into the map that gets sent.
+   */
+  const createDrafts = async (): Promise<Record<string, string>> => {
+    const resolved: Record<string, string> = { ...accountMap }
+
+    for (const [fileName, draft] of Object.entries(drafts)) {
+      if (accountMap[fileName] !== CREATE_SENTINEL) continue
+
+      const created = await createManualAccount({
+        name: fileName,
+        institutionName: fileName,
+        type: draft.type as (typeof ACCOUNT_TYPES)[number],
+        // Closed accounts end at zero. Anything else is set on the account afterwards.
+        balance: '0.00',
+        effectiveDate: draft.closedOn,
+        closedOn: draft.closedOn,
+      })
+
+      resolved[fileName] = created.accountId
+    }
+
+    return resolved
+  }
+
   const stageRows = useMutation({
-    mutationFn: (input: { content: string; filename: string }) =>
-      stageImport({
+    mutationFn: async (input: { content: string; filename: string }) => {
+      const resolved = namedAccounts === null ? accountMap : await createDrafts()
+
+      return stageImport({
         content: input.content,
         presetId,
         kind: 'transactions',
@@ -81,12 +138,16 @@ export function Import(): ReactNode {
           ? { targetAccountId: accountId }
           : {
               accountMap: namedAccounts
-                .filter((name) => (accountMap[name] ?? '') !== '')
-                .map((name) => ({ value: name, accountId: accountMap[name] as string })),
+                .filter((name) => {
+                  const target = resolved[name] ?? ''
+                  return target !== '' && target !== CREATE_SENTINEL
+                })
+                .map((name) => ({ value: name, accountId: resolved[name] as string })),
             }),
         originalFilename: input.filename,
         mapping,
-      }),
+      })
+    },
     onSuccess: (result) => setStage({ kind: 'preview', importId: result.importId }),
   })
 
@@ -180,26 +241,86 @@ export function Import(): ReactNode {
                 {namedAccounts.map((name) => (
                   <li
                     key={name}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-800"
+                    className="rounded-xl border border-slate-200 p-3 dark:border-slate-800"
                   >
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium" title={name}>
-                      {name}
-                    </span>
-                    <select
-                      value={accountMap[name] ?? ''}
-                      aria-label={name}
-                      onChange={(event) =>
-                        setAccountMap((current) => ({ ...current, [name]: event.target.value }))
-                      }
-                      className={cn(selectClass, 'w-44 shrink-0')}
-                    >
-                      <option value="">{IMPORT_COPY.accountUnmatched}</option>
-                      {openAccounts.map((account) => (
-                        <option key={account.id} value={account.id}>
-                          {account.institutionName ?? ''} {account.name}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium" title={name}>
+                        {name}
+                      </span>
+                      <select
+                        value={accountMap[name] ?? ''}
+                        aria-label={name}
+                        onChange={(event) =>
+                          setAccountMap((current) => ({ ...current, [name]: event.target.value }))
+                        }
+                        className={cn(selectClass, 'w-44 shrink-0')}
+                      >
+                        <option value="">{IMPORT_COPY.accountUnmatched}</option>
+                        {openAccounts.map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {account.institutionName ?? ''} {account.name}
+                          </option>
+                        ))}
+                        {/* Last, because matching an existing account is the common case. */}
+                        <option value={CREATE_SENTINEL}>{IMPORT_COPY.accountCreate}</option>
+                      </select>
+                    </div>
+
+                    {accountMap[name] === CREATE_SENTINEL && (
+                      <div className="mt-3 border-t border-slate-200 pt-3 dark:border-slate-800">
+                        <div className="flex flex-wrap items-end gap-3">
+                          <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                            {IMPORT_COPY.accountCreateType}
+                            <select
+                              value={drafts[name]?.type ?? 'depository'}
+                              onChange={(event) =>
+                                setDrafts((current) => ({
+                                  ...current,
+                                  [name]: {
+                                    closedOn: current[name]?.closedOn ?? '',
+                                    type: event.target.value,
+                                  },
+                                }))
+                              }
+                              className={cn(selectClass, 'mt-1 w-40')}
+                            >
+                              {ACCOUNT_TYPES.map((type) => (
+                                <option key={type} value={type}>
+                                  {type}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                            {IMPORT_COPY.accountCreateClosedOn}
+                            <input
+                              type="date"
+                              value={drafts[name]?.closedOn ?? ''}
+                              onChange={(event) =>
+                                setDrafts((current) => ({
+                                  ...current,
+                                  [name]: {
+                                    type: current[name]?.type ?? 'depository',
+                                    closedOn: event.target.value,
+                                  },
+                                }))
+                              }
+                              className={cn(
+                                'mt-1 block min-h-11 rounded-lg border px-3 text-base',
+                                'border-slate-300 bg-white text-slate-900',
+                                'dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100',
+                                'focus-visible:outline-2 focus-visible:outline-sky-500',
+                              )}
+                            />
+                          </label>
+                        </div>
+
+                        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                          {IMPORT_COPY.accountCreateHelp}
+                        </p>
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -278,6 +399,7 @@ export function Import(): ReactNode {
             type="button"
             disabled={
               (namedAccounts === null ? accountId === '' : matchedCount === 0) ||
+              draftsIncomplete ||
               mapping.length === 0 ||
               stageRows.isPending
             }

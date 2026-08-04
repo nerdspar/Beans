@@ -25,6 +25,7 @@ function account(overrides: Partial<StoredAccount> & { id: string }): StoredAcco
     balanceAsOf: null,
     isManual: false,
     isClosed: false,
+  closedOn: null,
     taxTreatment: 'none',
     coverageStartDate: null,
     connectionStatus: 'healthy',
@@ -128,15 +129,65 @@ describe('deriveWorkingSet', () => {
     })
   })
 
-  it('excludes closed accounts from the rollup', () => {
-    const result = deriveWorkingSet(
-      [account({ id: 'open' }), account({ id: 'shut', isClosed: true })],
-      [...balances('open', [[TODAY, 100n]]), ...balances('shut', [[TODAY, 999_999n]])],
-      { to: TODAY },
-    )
+  /**
+   * Closed accounts stay in the rollup, and the server ends their series at the close date.
+   *
+   * They used to be filtered out here, which was right about today and wrong about every day before
+   * it — an account closed in 2023 still held its money in 2022, so dropping it lowered every
+   * historical point and put a cliff in the chart on the day it was marked closed.
+   */
+  describe('closed accounts', () => {
+    // Held $500 until it closed on the 2nd, and nothing after. This is what the server writes.
+    const closedSeries = balances('shut', [
+      ['2026-08-01', 500n],
+      ['2026-08-02', 500n],
+      ['2026-08-03', 0n],
+    ])
 
-    expect(result.household.at(-1)?.value).toBe(100n)
-    expect(result.byId.has('shut')).toBe(false)
+    const open = balances('open', [
+      ['2026-08-01', 100n],
+      ['2026-08-02', 100n],
+      ['2026-08-03', 100n],
+    ])
+
+    it('keeps the money it held in the days before it closed', () => {
+      const result = deriveWorkingSet(
+        [
+          account({ id: 'open', coverageStartDate: '2026-08-01' }),
+          account({ id: 'shut', isClosed: true, closedOn: '2026-08-02', coverageStartDate: '2026-08-01' }),
+        ],
+        [...open, ...closedSeries],
+        { to: '2026-08-03' },
+      )
+
+      const byDate = new Map(result.household.map((point) => [point.date, point.value]))
+      expect(byDate.get('2026-08-01')).toBe(600n)
+      expect(byDate.get('2026-08-02')).toBe(600n)
+    })
+
+    it('contributes nothing once it is closed', () => {
+      const result = deriveWorkingSet(
+        [
+          account({ id: 'open', coverageStartDate: '2026-08-01' }),
+          account({ id: 'shut', isClosed: true, closedOn: '2026-08-02', coverageStartDate: '2026-08-01' }),
+        ],
+        [...open, ...closedSeries],
+        { to: '2026-08-03' },
+      )
+
+      expect(result.household.at(-1)?.value).toBe(100n)
+    })
+
+    /** The screens need it to label the row and to decide whether to list it at all. */
+    it('is still reachable by id', () => {
+      const result = deriveWorkingSet(
+        [account({ id: 'shut', isClosed: true, closedOn: '2026-08-02' })],
+        closedSeries,
+        { to: '2026-08-03' },
+      )
+
+      expect(result.byId.get('shut')?.isClosed).toBe(true)
+    })
   })
 
   it('carries a stale account forward rather than leaving a hole in net worth', () => {

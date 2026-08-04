@@ -178,9 +178,19 @@ export function deriveWorkingSet(
   const bySection = new Map<NetWorthSection, DerivedAccount[]>()
   const byId = new Map<string, DerivedAccount>()
 
-  // Closed accounts are excluded from the rollup. Their history is real, but a closed account is not
-  // part of what the household currently has, and leaving them in makes net worth wrong.
-  for (const account of accounts.filter((candidate) => !candidate.isClosed)) {
+  /*
+   * Closed accounts are included, deliberately.
+   *
+   * They used to be filtered out here, which was right about today and wrong about every day before
+   * it: an account closed in 2023 still held its money in 2022, and dropping it lowered every
+   * historical point and put a cliff in the chart on the day it was marked closed. History is not
+   * revised by what has happened since.
+   *
+   * Nothing needs to be subtracted to keep *today* right, because the server ends a closed
+   * account's series at its close date and it contributes zero from then on. What the household
+   * currently has is unaffected; what it used to have is finally correct.
+   */
+  for (const account of accounts) {
     const section = sectionForType(account.type as AccountType)
     const { series, observedThrough } = accountSeries(
       account,

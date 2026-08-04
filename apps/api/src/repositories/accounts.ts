@@ -4,6 +4,7 @@ import {
   defaultTaxTreatment,
   toIsoDate,
   type AccountType,
+  type IsoDate,
   type TaxTreatment,
 } from '@beans/shared'
 import { rebuildAccountHistory } from '../balance-history/rebuild.js'
@@ -32,6 +33,7 @@ export type ManagedAccount = {
   balance: string | null
   isManual: boolean
   isClosed: boolean
+  closedOn: IsoDate | null
   signInverted: boolean
   /** What deletion would take with it. Shown before confirming, so the stake is a number. */
   transactionCount: number
@@ -51,11 +53,13 @@ export async function listManagedAccounts(context: HouseholdContext): Promise<Ma
     current_balance: Buffer | null
     is_manual: boolean
     is_closed: boolean
+    closed_on: IsoDate | null
     provider_sign_inverted: boolean
     transaction_count: string
   }>(
     `select a.id, a.connection_id, i.name as institution_name, a.display_name, a.provider_name,
             a.mask, a.type, a.tax_treatment, a.current_balance, a.is_manual, a.is_closed,
+            a.closed_on,
             a.provider_sign_inverted,
             (select count(*) from transactions t where t.account_id = a.id) as transaction_count
        from accounts a
@@ -84,6 +88,7 @@ export async function listManagedAccounts(context: HouseholdContext): Promise<Ma
         : centsToDecimalString(context.cipher.decryptMoney(row.current_balance)),
     isManual: row.is_manual,
     isClosed: row.is_closed,
+    closedOn: row.closed_on,
     signInverted: row.provider_sign_inverted,
     transactionCount: Number(row.transaction_count),
   }))
@@ -94,6 +99,8 @@ export type AccountPatch = {
   type?: AccountType | undefined
   taxTreatment?: TaxTreatment | undefined
   isClosed?: boolean | undefined
+  /** Only consulted when closing. Defaults to today, and is cleared when reopening. */
+  closedOn?: IsoDate | undefined
   signInverted?: boolean | undefined
 }
 
@@ -145,6 +152,14 @@ export async function updateAccount(
             type_is_user_set = case when $3::text is null then type_is_user_set else true end,
             tax_treatment = coalesce($4, tax_treatment),
             is_closed = coalesce($5, is_closed),
+            -- Kept in lockstep with is_closed, never set independently: two columns describing
+            -- one fact is how they end up disagreeing. Closing without naming a date means today,
+            -- and reopening clears it.
+            closed_on = case
+              when $8::boolean is null then closed_on
+              when $8::boolean then coalesce($9::date, closed_on, $10::date)
+              else null
+            end,
             provider_sign_inverted = coalesce($6, provider_sign_inverted),
             current_balance = coalesce($7, current_balance)
       where id = $1`,
@@ -156,14 +171,25 @@ export async function updateAccount(
       patch.isClosed ?? null,
       patch.signInverted ?? null,
       balance,
+      patch.isClosed ?? null,
+      patch.closedOn ?? null,
+      today,
     ],
   )
 
-  if (signChanged) {
+  /*
+   * Closing rewrites history as surely as a sign change does: the series has to stop at the close
+   * date and contribute zero afterwards, and reopening has to undo that. Neither is visible until
+   * the snapshots are rebuilt.
+   */
+  const closureChanged = patch.isClosed !== undefined
+  const rebuilt = signChanged || closureChanged
+
+  if (rebuilt) {
     await rebuildAccountHistory(context, accountId, today)
   }
 
-  return { rebuilt: signChanged }
+  return { rebuilt }
 }
 
 export type ManualAccountInput = {
@@ -174,6 +200,15 @@ export type ManualAccountInput = {
   balanceCents: bigint
   effectiveDate: string
   taxTreatment?: TaxTreatment | undefined
+  /**
+   * Set when the account no longer exists — a closed card, or one the provider no longer lists.
+   *
+   * Such an account is created **not manual**, which reads oddly until you see what `is_manual`
+   * selects: a series built only from entered balances, with transactions ignored entirely. That is
+   * right for a house and wrong for a closed current account, whose imported transactions
+   * reconstruct its history exactly, backwards from the closing balance.
+   */
+  closedOn?: string | undefined
 }
 
 /**
@@ -201,11 +236,16 @@ export async function createManualAccount(
     ],
   )
 
+  const isClosed = input.closedOn !== undefined
+
   const account = await context.client.query<{ id: string }>(
     `insert into accounts (
        household_id, institution_id, type, type_is_user_set, display_name, currency,
-       current_balance, balance_as_of, is_manual, tax_treatment, coverage_start_date, confirmed_at
-     ) values ($1,$2,$3,true,$4,'USD',$5,now(),true,$6,$7,now())
+       current_balance, balance_as_of, is_manual, tax_treatment, coverage_start_date, confirmed_at,
+       is_closed, closed_on
+     ) values ($1,$2,$3,true,$4,'USD',$5,
+               coalesce($8::date::timestamptz, now()), $9, $6, $7, now(),
+               $8::date is not null, $8::date)
      returning id`,
     [
       context.householdId,
@@ -214,16 +254,32 @@ export async function createManualAccount(
       context.cipher.encryptText(input.name.trim()),
       context.cipher.encryptMoney(input.balanceCents),
       input.taxTreatment ?? defaultTaxTreatment(input.type),
-      // Coverage starts the day the value was true, not today. A house valued as of January has
-      // history from January, and drawing it from today would discard what the user just said.
-      input.effectiveDate,
+      /*
+       * Coverage starts the day the value was true, not today. A house valued as of January has
+       * history from January, and drawing it from today would discard what the user just said.
+       *
+       * A closed account starts with none: how far back its history reaches is decided by the
+       * transactions about to be imported into it, and committing an import fills this in from the
+       * earliest one. Guessing the close date here would collapse the whole series to a point.
+       */
+      isClosed ? null : input.effectiveDate,
+      input.closedOn ?? null,
+      !isClosed,
     ],
   )
 
   const accountId = account.rows[0]?.id
   if (accountId === undefined) throw new AccountError('Could not create the account')
 
-  await recordManualBalance(context, accountId, input.effectiveDate, input.balanceCents)
+  /*
+   * Only a manual account gets a manual balance. `manual_balance_updates` feeds the series built
+   * for `is_manual` accounts alone, so writing one for a closed account would record a figure
+   * nothing ever reads while implying it is maintained by hand.
+   */
+  if (!isClosed) {
+    await recordManualBalance(context, accountId, input.effectiveDate, input.balanceCents)
+  }
+
   return { accountId }
 }
 

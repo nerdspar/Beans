@@ -120,6 +120,7 @@ export function AccountEditor({
   const [name, setName] = useState(account.name)
   const [type, setType] = useState<AccountType>(account.type)
   const [isClosed, setIsClosed] = useState(account.isClosed)
+  const [closedOn, setClosedOn] = useState(account.closedOn ?? '')
   const [signInverted, setSignInverted] = useState(account.signInverted)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
@@ -136,6 +137,9 @@ export function AccountEditor({
         displayName: name.trim(),
         type,
         isClosed,
+        // Only meaningful when closing. The server clears it on reopening and defaults it to
+        // today when closing without one, so an empty field is never a missing answer.
+        ...(isClosed && closedOn !== '' ? { closedOn } : {}),
         // Only sent for a synced account: a manual balance is typed with the sign already decided,
         // so there is no provider convention to invert.
         ...(account.isManual ? {} : { signInverted }),
@@ -202,6 +206,31 @@ export function AccountEditor({
           />
           {ACCOUNTS_COPY.markClosed}
         </label>
+
+        {/*
+          The date is what makes closing safe to chart. Without it there are only two behaviours and
+          both are wrong: carry the last balance forward and a dead account sits in net worth
+          forever, or drop the account and every past point loses money the household really had.
+        */}
+        {isClosed && (
+          <label className="mt-3 block text-xs font-medium text-slate-600 dark:text-slate-400">
+            {ACCOUNTS_COPY.closedOnLabel}
+            <input
+              type="date"
+              value={closedOn}
+              onChange={(event) => setClosedOn(event.target.value)}
+              className={cn(
+                'mt-1 block min-h-11 rounded-lg border px-3 text-base',
+                'border-slate-300 bg-white text-slate-900',
+                'dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100',
+                'focus-visible:outline-2 focus-visible:outline-sky-500',
+              )}
+            />
+            <span className="mt-1 block font-normal text-slate-500 dark:text-slate-400">
+              {ACCOUNTS_COPY.closedOnHelp}
+            </span>
+          </label>
+        )}
 
         <p role="alert" className="mt-2 min-h-5 text-xs text-rose-600 dark:text-rose-400">
           {save.error instanceof Error ? ACCOUNTS_COPY.saveFailed : null}

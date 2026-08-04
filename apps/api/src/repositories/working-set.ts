@@ -146,6 +146,7 @@ type AccountRow = {
   balance_as_of: Date | null
   is_manual: boolean
   is_closed: boolean
+  closed_on: string | null
   tax_treatment: string
   coverage_start_date: string | null
   connection_status: WorkingSetAccount['connectionStatus']
@@ -180,6 +181,7 @@ async function readAccounts(
             a.balance_as_of,
             a.is_manual,
             a.is_closed,
+            a.closed_on,
             a.tax_treatment,
             a.coverage_start_date,
             c.status as connection_status,
@@ -212,6 +214,7 @@ async function readAccounts(
     balanceAsOf: row.balance_as_of?.toISOString() ?? null,
     isManual: row.is_manual,
     isClosed: row.is_closed,
+    closedOn: row.closed_on,
     taxTreatment: row.tax_treatment,
     coverageStartDate: row.coverage_start_date,
     connectionStatus: row.connection_status,

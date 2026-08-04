@@ -1,4 +1,5 @@
 import {
+  addDays,
   carryForward,
   carryStale,
   checkReconstruction,
@@ -52,6 +53,7 @@ type AccountRow = {
   balance_as_of: Date | null
   coverage_start_date: IsoDate | null
   import_cutover_date: IsoDate | null
+  closed_on: IsoDate | null
 }
 
 /**
@@ -96,9 +98,17 @@ export async function rebuildAccountHistory(
       ? await buildDerivedSeries(context, account, currentBalance, balanceAsOf, coverageStart)
       : await buildObservedSeries(context, account, currentBalance, balanceAsOf, coverageStart)
 
-  // A broken sync leaves the balance behind today. Carrying it forward keeps household net worth
-  // summable, and the `carried` marker lets the UI say so rather than implying it was observed.
-  const withCarry = carryStale(series, today)
+  /*
+   * A closed account ends; an open one is carried.
+   *
+   * Carrying a closed account forward would leave a dead balance in net worth indefinitely — the
+   * account no longer exists, so whatever it last held is not part of what the household has. The
+   * opposite mistake is worse and less obvious: dropping the account outright would erase money the
+   * household really did have, lowering every historical point. Ending the series at closure does
+   * neither.
+   */
+  const withCarry =
+    account.closed_on === null ? carryStale(series, today) : endAtClosure(series, account.closed_on)
 
   const written = await writeSnapshots(context, accountId, withCarry)
 
@@ -122,6 +132,26 @@ export async function rebuildAccountHistory(
     difference: check.difference,
     coverageStart,
   }
+}
+
+/**
+ * Ends a series at the day an account closed.
+ *
+ * Everything after the close date is dropped and a single zero is written the following day. Zero
+ * is the identity for addition, so there is nothing to carry beyond it: a day with no row for this
+ * account sums exactly the same as a day with a zero, and writing one row per day until the end of
+ * time for an account that no longer exists is storage spent to say nothing.
+ *
+ * The zero is `observed` rather than `carried`. `carried` means the sync is broken and the UI says
+ * so; this is not a stale reading held flat, it is a fact about an account that is gone.
+ */
+function endAtClosure(series: readonly DailyBalance[], closedOn: IsoDate): DailyBalance[] {
+  const upToClosure = series.filter((entry) => entry.date <= closedOn)
+
+  return [
+    ...upToClosure,
+    { date: addDays(closedOn, 1), balanceCents: 0n, source: 'observed' as const },
+  ]
 }
 
 /** Backward reconstruction, plus any imported history before the cutover. */
@@ -206,7 +236,7 @@ async function loadAccount(
 ): Promise<AccountRow | null> {
   const result = await context.client.query<AccountRow>(
     `select id, type, is_manual, current_balance, balance_as_of, coverage_start_date,
-            import_cutover_date
+            import_cutover_date, closed_on
        from accounts where id = $1`,
     [accountId],
   )

@@ -274,9 +274,17 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
               </h2>
 
               <ul>
-                {group.accounts.map((account) => (
-                  <AccountRow key={account.id} account={account} />
-                ))}
+                {/*
+                  Closed accounts are in the section so the chart and the historical totals include
+                  the money they held, but they are not listed: a row reading $0 for an account that
+                  no longer exists is noise on the screen that answers "what do we have now". The
+                  accounts page lists them, behind its own show-closed control.
+                */}
+                {group.accounts
+                  .filter((account) => !account.isClosed)
+                  .map((account) => (
+                    <AccountRow key={account.id} account={account} />
+                  ))}
               </ul>
             </section>
           )

@@ -32,6 +32,8 @@ export type StoredAccount = {
   balanceAsOf: string | null
   isManual: boolean
   isClosed: boolean
+  /** The day it stopped existing. Null while open. */
+  closedOn: string | null
   taxTreatment: string
   coverageStartDate: string | null
   connectionStatus: 'healthy' | 'stale' | 'error' | null
@@ -173,6 +175,7 @@ export async function applyDelta(response: WorkingSetResponse): Promise<void> {
       balanceAsOf: account.balanceAsOf,
       isManual: account.isManual,
       isClosed: account.isClosed,
+      closedOn: account.closedOn ?? null,
       taxTreatment: account.taxTreatment,
       coverageStartDate: account.coverageStartDate,
       connectionStatus: account.connectionStatus,

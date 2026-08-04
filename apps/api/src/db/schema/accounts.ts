@@ -93,6 +93,18 @@ export const accounts = pgTable(
 
     isClosed: boolean('is_closed').notNull().default(false),
 
+    /**
+     * When the account stopped existing. Null while it is open.
+     *
+     * `is_closed` alone could not answer the question the charts actually ask, which is not *is it
+     * closed* but *from when*. Without a date there are only two possible behaviours, and both are
+     * wrong: carry the final balance forward and a dead account sits in net worth forever, or drop
+     * the account entirely and every historical point loses money the household really had at the
+     * time. With a date the account holds its real balances up to it and contributes zero after —
+     * correct in the past and correct today.
+     */
+    closedOn: date('closed_on'),
+
     taxTreatment: taxTreatment('tax_treatment').notNull().default('none'),
 
     /**

@@ -15,6 +15,7 @@ export type ManagedAccount = {
   balance: string | null
   isManual: boolean
   isClosed: boolean
+  closedOn: string | null
   signInverted: boolean
   /** What deletion would take with it. */
   transactionCount: number
@@ -25,6 +26,8 @@ export type AccountPatch = {
   type?: AccountType
   taxTreatment?: string
   isClosed?: boolean
+  /** Only read when closing. Defaults to today on the server, and clears when reopening. */
+  closedOn?: string
   signInverted?: boolean
 }
 
@@ -58,6 +61,8 @@ export type ManualAccountInput = {
   balance: string
   effectiveDate: string
   taxTreatment?: string
+  /** Set when creating an account that no longer exists, so history ends on this date. */
+  closedOn?: string
 }
 
 export function createManualAccount(input: ManualAccountInput): Promise<{ accountId: string }> {

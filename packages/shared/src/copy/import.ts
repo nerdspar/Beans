@@ -27,6 +27,17 @@ export const IMPORT_COPY = {
   accountsHelp:
     'This file covers more than one account. Match each one to yours. Anything left unmatched is skipped, not guessed — it will be listed in the preview.',
   accountUnmatched: 'Skip',
+  /*
+   * Creating an account that no longer exists.
+   *
+   * A closed card or a bank the provider no longer lists cannot be matched to anything, and without
+   * this its history has nowhere to go — which is most of the reason to import an old export at all.
+   */
+  accountCreate: 'Create as closed account',
+  accountCreateType: 'What was it',
+  accountCreateClosedOn: 'Closed on',
+  accountCreateHelp:
+    'Its history ends on this date and it counts as nothing afterwards, so past net worth stays right without a dead account in today’s.',
   accountsMatched: (matched: number, total: number): string =>
     matched === total
       ? `All ${total} matched.`

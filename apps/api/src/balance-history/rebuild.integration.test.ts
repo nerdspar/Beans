@@ -34,13 +34,14 @@ describeIntegration('balance history rebuild', () => {
       coverageStart?: IsoDate | null
       isManual?: boolean
       balanceAsOf?: Date
+      closedOn?: IsoDate
     },
   ): Promise<string> {
     const result = await context.client.query<{ id: string }>(
       `insert into accounts (
          household_id, type, currency, current_balance, balance_as_of,
-         coverage_start_date, is_manual, confirmed_at
-       ) values ($1,$2,'USD',$3,$4,$5,$6,$4) returning id`,
+         coverage_start_date, is_manual, confirmed_at, is_closed, closed_on
+       ) values ($1,$2,'USD',$3,$4,$5,$6,$4,$7::date is not null,$7::date) returning id`,
       [
         context.householdId,
         options.type,
@@ -48,6 +49,7 @@ describeIntegration('balance history rebuild', () => {
         options.balanceAsOf ?? AS_OF,
         options.coverageStart === undefined ? '2026-07-31' : options.coverageStart,
         options.isManual ?? false,
+        options.closedOn ?? null,
       ],
     )
     return result.rows[0]!.id
@@ -445,6 +447,84 @@ describeIntegration('balance history rebuild', () => {
       })
 
       expect(series[0]?.date).toBe('2026-08-02')
+    })
+  })
+
+  /**
+   * A closed account is not gone, it ended.
+   *
+   * Both obvious treatments are wrong. Carrying its last balance forward leaves a dead account in
+   * net worth forever; dropping it erases money the household really did have and lowers every
+   * historical point. The series has to stop at the close date and contribute zero after it.
+   */
+  describe('closed accounts', () => {
+    it('keeps history up to the close date and nothing after', async () => {
+      const series = await withHouseholdContext(deps, USER, async (ctx) => {
+        const accountId = await makeAccount(ctx, {
+          type: 'depository',
+          balanceCents: 50_000n,
+          coverageStart: '2026-07-31',
+          closedOn: '2026-08-01',
+        })
+
+        await rebuildAccountHistory(ctx, accountId, TODAY)
+        return await readSeries(ctx, accountId)
+      })
+
+      // Through the close date, then a single zero the day after — and nothing beyond it.
+      expect(series.map((row) => row.date)).toEqual(['2026-07-31', '2026-08-01', '2026-08-02'])
+      expect(series.at(-1)?.balance).toBe(0n)
+    })
+
+    it('does not carry a closed balance forward to today', async () => {
+      const series = await withHouseholdContext(deps, USER, async (ctx) => {
+        const accountId = await makeAccount(ctx, {
+          type: 'depository',
+          balanceCents: 50_000n,
+          coverageStart: '2026-07-31',
+          closedOn: '2026-08-01',
+        })
+
+        await rebuildAccountHistory(ctx, accountId, TODAY)
+        return await readSeries(ctx, accountId)
+      })
+
+      // The bug this prevents: $500 sitting in net worth indefinitely for an account that is gone.
+      expect(series.some((row) => row.date === TODAY && row.balance !== 0n)).toBe(false)
+    })
+
+    it('still reports the balance it held before it closed', async () => {
+      const series = await withHouseholdContext(deps, USER, async (ctx) => {
+        const accountId = await makeAccount(ctx, {
+          type: 'depository',
+          balanceCents: 50_000n,
+          coverageStart: '2026-07-31',
+          closedOn: '2026-08-01',
+        })
+
+        await rebuildAccountHistory(ctx, accountId, TODAY)
+        return await readSeries(ctx, accountId)
+      })
+
+      // The money was real on the days it was there. That is the whole point of importing it.
+      expect(series.find((row) => row.date === '2026-07-31')?.balance).toBe(50_000n)
+    })
+
+    it('leaves an open account carried forward as before', async () => {
+      const series = await withHouseholdContext(deps, USER, async (ctx) => {
+        const accountId = await makeAccount(ctx, {
+          type: 'depository',
+          balanceCents: 50_000n,
+          coverageStart: '2026-07-31',
+          balanceAsOf: new Date('2026-08-01T12:00:00.000Z'),
+        })
+
+        await rebuildAccountHistory(ctx, accountId, TODAY)
+        return await readSeries(ctx, accountId)
+      })
+
+      expect(series.at(-1)?.date).toBe(TODAY)
+      expect(series.at(-1)?.balance).toBe(50_000n)
     })
   })
 

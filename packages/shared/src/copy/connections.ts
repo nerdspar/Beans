@@ -119,7 +119,15 @@ export const ACCOUNTS_COPY = {
   /** Stated because the consequence is invisible on the chart, which plots liabilities as magnitudes. */
   signInvertedHelp:
     'Changing this negates the balance and rebuilds this account’s history to match.',
-  markClosed: 'Closed — keep the history, leave it out of net worth',
+  /*
+   * Reworded once closing gained a date. It used to promise the history was kept while the account
+   * was left out of net worth, which was not what happened — the account was dropped from the
+   * rollup entirely, so its history disappeared from the chart too and every past total fell.
+   */
+  markClosed: 'Closed — keep the history, stop counting it from the closing date',
+  closedOnLabel: 'Closed on',
+  closedOnHelp:
+    'History keeps everything up to this date, and the account counts as nothing afterwards.',
   save: 'Save changes',
   saving: 'Saving',
   saveFailed: 'Could not save those changes.',

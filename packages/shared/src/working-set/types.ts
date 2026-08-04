@@ -44,6 +44,14 @@ export const workingSetAccountSchema = z.object({
   balanceAsOf: z.string().nullable(),
   isManual: z.boolean(),
   isClosed: z.boolean(),
+  /**
+   * The day the account stopped existing. Null while it is open.
+   *
+   * Carried to the client because the charts need it: a closed account holds its real balances up
+   * to this date and contributes zero after, which is what keeps historical net worth honest while
+   * keeping today's correct.
+   */
+  closedOn: z.string().nullable().default(null),
   taxTreatment: z.string(),
   /**
    * Never draw a line to the left of this (ARCHITECTURE.md §4.3). The chart has to know where the

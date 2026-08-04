@@ -49,6 +49,7 @@ const patchBody = z.object({
   type: accountType.optional(),
   taxTreatment: taxTreatment.optional(),
   isClosed: z.boolean().optional(),
+  closedOn: isoDate.optional(),
   signInverted: z.boolean().optional(),
 })
 
@@ -59,6 +60,8 @@ const createBody = z.object({
   balance: money,
   effectiveDate: isoDate,
   taxTreatment: taxTreatment.optional(),
+  /** Present when the account being created no longer exists. */
+  closedOn: isoDate.optional(),
 })
 
 const balanceBody = z.object({ balance: money, effectiveDate: isoDate })
@@ -136,6 +139,7 @@ export const accountRoutes: FastifyPluginAsync<AccountRoutesOptions> = async (fa
           balanceCents: parseDecimalToCents(body.data.balance),
           effectiveDate: body.data.effectiveDate,
           ...(body.data.taxTreatment === undefined ? {} : { taxTreatment: body.data.taxTreatment }),
+          ...(body.data.closedOn === undefined ? {} : { closedOn: body.data.closedOn }),
         }),
       )
       return reply.status(201).send(result)

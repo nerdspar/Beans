@@ -4,6 +4,7 @@ import {
   parseDecimalToCents,
   hasBlockingProblem,
   parseImportRow,
+  toIsoDate,
   validateMapping,
   type ColumnMapping,
   type DateFormat,
@@ -11,6 +12,7 @@ import {
   type ImportPreset,
   type ParsedRow,
 } from '@beans/shared'
+import { rebuildAccountHistory } from '../balance-history/rebuild.js'
 import type { HouseholdContext } from '../repositories/household-context.js'
 import { columnSamples, type ParsedCsv } from './csv.js'
 
@@ -314,6 +316,7 @@ export async function commitImport(
 
   let committed = 0
   let skipped = 0
+  const touchedAccounts = new Set<string>()
 
   for (const row of rows.rows) {
     if (row.target_account_id === null) {
@@ -354,6 +357,7 @@ export async function commitImport(
       `update import_rows set status = 'imported', result_transaction_id = $1 where id = $2`,
       [inserted.rows[0]?.id ?? null, row.id],
     )
+    touchedAccounts.add(row.target_account_id)
     committed += 1
   }
 
@@ -365,6 +369,8 @@ export async function commitImport(
       where id = $4`,
     [now, committed, reversibleUntil, importId],
   )
+
+  await rebuildTouchedAccounts(context, touchedAccounts, now)
 
   return { committed, skipped }
 }
@@ -398,8 +404,8 @@ export async function reverseImport(
     )
   }
 
-  const deleted = await context.client.query<{ id: string }>(
-    `delete from transactions where import_id = $1 returning id`,
+  const deleted = await context.client.query<{ id: string; account_id: string }>(
+    `delete from transactions where import_id = $1 returning id, account_id`,
     [importId],
   )
 
@@ -421,6 +427,12 @@ export async function reverseImport(
     [importId],
   )
 
+  await rebuildTouchedAccounts(
+    context,
+    new Set(deleted.rows.map((row) => row.account_id)),
+    now,
+  )
+
   return { reversed: deleted.rowCount ?? 0 }
 }
 
@@ -435,4 +447,45 @@ async function loadImportStatus(context: HouseholdContext, importId: string): Pr
     throw new ImportError('Import not found')
   }
   return status
+}
+
+/**
+ * Recomputes the balance series for every account an import touched.
+ *
+ * Committing rows changes what the balances mean, and nothing else was going to notice. Sync
+ * rebuilds the accounts it syncs, but an account that only ever receives imported history — a
+ * closed one, or anything the provider no longer lists — is never synced again, so without this its
+ * series is whatever it was before the import and the history appears not to have arrived.
+ *
+ * Sequential rather than concurrent: these share one PoolClient, and issuing overlapping queries on
+ * a single connection is a pg deprecation rather than parallelism.
+ */
+async function rebuildTouchedAccounts(
+  context: HouseholdContext,
+  accountIds: ReadonlySet<string>,
+  now: Date,
+): Promise<void> {
+  const today = toIsoDate(now)
+
+  for (const accountId of accountIds) {
+    /*
+     * Establish coverage from the imported rows when nothing has yet.
+     *
+     * `coverage_start_date` is normally set during sync, and the rebuild writes nothing at all
+     * without it — so an account that will never sync, like a closed one created during this
+     * import, would silently produce no history no matter how many transactions arrived. Only
+     * filled when null: on a synced account this boundary is the seam's, and moving it would draw
+     * the chart to the left of what the provider can actually vouch for (ARCHITECTURE.md §4.3).
+     */
+    await context.client.query(
+      `update accounts
+          set coverage_start_date = (
+            select min(posted_date) from transactions where account_id = $1 and status = 'active'
+          )
+        where id = $1 and coverage_start_date is null`,
+      [accountId],
+    )
+
+    await rebuildAccountHistory(context, accountId, today)
+  }
 }
