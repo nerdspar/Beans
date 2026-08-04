@@ -761,6 +761,31 @@ mistaken for a complete one.
 ordinary week of groceries as a page of errors. Spending is not a problem, it is what a current
 account is for, and marking the rarer direction is what makes the colour informative.
 
+### 14.1a Categories and rules, as built
+
+The default set is installed when a household is created, and `ensureDefaultCategories` is idempotent
+on slug so it can be re-run — which is what `dev:backfill-categories` does for households that
+predate it. Rules and CSV presets reference **slugs**, never display labels, so renaming a category
+breaks nothing.
+
+Matching is a pure function in `packages/shared`, and three of its decisions are deliberate:
+
+- **First match wins**, by priority then creation order. Not "most specific" — a specificity
+  heuristic reads better until two rules disagree and the user cannot tell which won or why.
+- **A rule with no conditions matches nothing**, not everything. An empty rule is far more likely to
+  be a half-finished edit than a deliberate catch-all, and the catch-all reading recategorizes the
+  entire history in one click.
+- **A malformed regex fails to match rather than throwing.** One bad pattern saved months ago must
+  not stop today's sync categorizing anything at all.
+
+**Rules only touch transactions with no category yet.** A rule must never overwrite an answer a
+person gave; having one silently undo a deliberate choice is what makes people stop trusting
+automatic categorization altogether. Verified end to end: a rule set a transaction to Groceries, it
+was changed by hand to Restaurants, the rules were re-run, and it stayed Restaurants.
+
+Categories are sent whole in the working set, like the confirmed transfer ids — a partial set would
+render categorized transactions as uncategorized.
+
 ### 14.2 Cash flow, as built
 
 `/cash-flow` totals income and spending by calendar month, and its correctness rests entirely on
@@ -778,6 +803,10 @@ and would silently erase interest expense.
 Nothing is excluded on the strength of a proposal — only confirmation. A matcher quietly deciding
 what counts as income would be worse than no matcher. The count of what was excluded is shown, so a
 total that ignores some transactions is never doing it silently.
+
+The category breakdown reports **Uncategorized as its own bucket** rather than dropping it. A
+breakdown that quietly omitted a third of the spending would be worse than one saying a third is
+unsorted: the second is a prompt, the first is a wrong answer.
 
 Spending stays **negative** through every layer and is negated only for display. The screen also uses
 words for a month's result — "$412 more than you earned" rather than a bare negative — because for a

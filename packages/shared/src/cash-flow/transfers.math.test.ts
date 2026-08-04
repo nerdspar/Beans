@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   isExcludedFromCashFlow,
+  spendingByCategory,
   pairKeyFor,
   proposeTransferPairs,
   summarizeCashFlow,
@@ -209,5 +210,41 @@ describe('summarizeCashFlow', () => {
 
   it('returns nothing rather than a zero month when there is nothing to report', () => {
     expect(summarizeCashFlow([])).toMatchObject({ periods: [], incomeCents: 0n, netCents: 0n })
+  })
+})
+
+describe('spendingByCategory', () => {
+  const rows = [
+    { id: 'a', postedDate: '2026-08-01', amountCents: -20_000n, categoryId: 'groceries' },
+    { id: 'b', postedDate: '2026-08-02', amountCents: -5_000n, categoryId: 'groceries' },
+    { id: 'c', postedDate: '2026-08-03', amountCents: -40_000n, categoryId: 'rent' },
+    { id: 'd', postedDate: '2026-08-04', amountCents: -1_000n, categoryId: null },
+    { id: 'income', postedDate: '2026-08-05', amountCents: 500_000n, categoryId: 'salary' },
+  ]
+
+  it('sums spending per category, largest first', () => {
+    expect(spendingByCategory(rows)).toEqual([
+      { categoryId: 'rent', cents: -40_000n },
+      { categoryId: 'groceries', cents: -25_000n },
+      { categoryId: null, cents: -1_000n },
+    ])
+  })
+
+  it('leaves income out — this is a spending breakdown', () => {
+    expect(spendingByCategory(rows).some((total) => total.categoryId === 'salary')).toBe(false)
+  })
+
+  /** Hiding it would make a third of the spending vanish from a chart that claims to be complete. */
+  it('reports uncategorized as its own bucket rather than dropping it', () => {
+    expect(spendingByCategory(rows).find((total) => total.categoryId === null)?.cents).toBe(-1_000n)
+  })
+
+  it('excludes confirmed transfers, like every other total', () => {
+    const withTransfer = [
+      ...rows,
+      { id: 'pay', postedDate: '2026-08-06', amountCents: -50_000n, categoryId: null },
+    ]
+    const totals = spendingByCategory(withTransfer, new Set(['pay']))
+    expect(totals.find((t) => t.categoryId === null)?.cents).toBe(-1_000n)
   })
 })

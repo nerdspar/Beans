@@ -1,9 +1,11 @@
 import {
   CASH_FLOW_COPY,
+  CATEGORY_COPY,
   NET_WORTH_STATE_COPY,
   formatCents,
   resolveWindow,
   sliceToWindow,
+  spendingByCategory,
   summarizeCashFlow,
   toIsoDate,
   type CashFlowPeriod,
@@ -56,7 +58,7 @@ export function CashFlow(): ReactNode {
 
   const today = toIsoDate(new Date())
 
-  const summary = useMemo(() => {
+  const { summary, byCategory } = useMemo(() => {
     const inWindow = sliceToWindow(
       workingSet.transactions.map((transaction) => ({
         ...transaction,
@@ -65,16 +67,31 @@ export function CashFlow(): ReactNode {
       resolveWindow(range, today),
     )
 
-    return summarizeCashFlow(
-      inWindow.map((transaction) => ({
-        id: transaction.id,
-        postedDate: transaction.postedDate,
-        amountCents: transaction.amountCents,
-        status: transaction.status,
-      })),
-      workingSet.confirmedTransferIds,
-    )
-  }, [workingSet.transactions, workingSet.confirmedTransferIds, range, today])
+    const rows = inWindow.map((transaction) => ({
+      id: transaction.id,
+      postedDate: transaction.postedDate,
+      amountCents: transaction.amountCents,
+      status: transaction.status,
+      categoryId: transaction.categoryId,
+      // The category's kind is the second half of the exclusion rule, for money sent somewhere
+      // Beans does not track and so has nothing to pair with.
+      categoryKind:
+        transaction.categoryId === null
+          ? undefined
+          : workingSet.categories.get(transaction.categoryId)?.kind,
+    }))
+
+    return {
+      summary: summarizeCashFlow(rows, workingSet.confirmedTransferIds),
+      byCategory: spendingByCategory(rows, workingSet.confirmedTransferIds),
+    }
+  }, [
+    workingSet.transactions,
+    workingSet.confirmedTransferIds,
+    workingSet.categories,
+    range,
+    today,
+  ])
 
   if (workingSet.isLoading) {
     return <Message title={CASH_FLOW_COPY.loading} />
@@ -115,7 +132,31 @@ export function CashFlow(): ReactNode {
             {CASH_FLOW_COPY.transfersExcluded(summary.excludedCount)}
           </p>
 
-          <ul className="mt-5 space-y-3">
+          {byCategory.length > 0 && (
+            <section className="mt-6">
+              <h2 className="text-sm font-semibold">{CASH_FLOW_COPY.byCategory}</h2>
+              <ul className="mt-2 space-y-2">
+                {byCategory.slice(0, 8).map((total) => (
+                  <li key={total.categoryId ?? 'uncategorized'}>
+                    <CategoryRow
+                      label={
+                        total.categoryId === null
+                          ? CATEGORY_COPY.uncategorized
+                          : (workingSet.categories.get(total.categoryId)?.name ??
+                            CATEGORY_COPY.uncategorized)
+                      }
+                      cents={-total.cents}
+                      largest={-(byCategory[0]?.cents ?? -1n)}
+                      muted={total.categoryId === null}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          <h2 className="mt-6 text-sm font-semibold">{CASH_FLOW_COPY.byMonth}</h2>
+          <ul className="mt-2 space-y-3">
             {[...summary.periods].reverse().map((period) => (
               <li key={period.month}>
                 <MonthRow period={period} scale={largestMonth(summary.periods)} />
@@ -175,6 +216,43 @@ export function CashFlow(): ReactNode {
           </ul>
         )}
       </section>
+    </div>
+  )
+}
+
+/**
+ * One category's share of spending.
+ *
+ * Uncategorized is muted rather than hidden — it is real spending, and showing it is what prompts
+ * somebody to sort it. Dropping it would make the bars add up to less than the total above them.
+ */
+function CategoryRow({
+  label,
+  cents,
+  largest,
+  muted,
+}: {
+  label: string
+  cents: bigint
+  largest: bigint
+  muted: boolean
+}): ReactNode {
+  const width = `${Math.min(100, Number((cents * 100n) / (largest <= 0n ? 1n : largest)))}%`
+
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3 text-sm">
+        <span className={cn('truncate', muted && 'text-slate-500 dark:text-slate-400')}>
+          {label}
+        </span>
+        <span className="shrink-0 tabular-nums">{formatCents(cents)}</span>
+      </div>
+      <div className="mt-1 h-1.5 rounded-full bg-slate-200 dark:bg-slate-800" aria-hidden>
+        <div
+          className={cn('h-full rounded-full', muted ? 'bg-slate-400' : 'bg-sky-500')}
+          style={{ width }}
+        />
+      </div>
     </div>
   )
 }

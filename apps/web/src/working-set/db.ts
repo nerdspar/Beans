@@ -115,6 +115,20 @@ export async function readConfirmedTransferIds(): Promise<string[]> {
   return ((await db.get('meta', 'confirmedTransferIds')) as string[] | undefined) ?? []
 }
 
+export type StoredCategory = {
+  id: string
+  slug: string
+  name: string
+  kind: 'income' | 'expense' | 'transfer'
+  parentId: string | null
+}
+
+/** Replaced wholesale each sync, for the same reason as the transfer ids: a partial set misleads. */
+export async function readCategories(): Promise<StoredCategory[]> {
+  const db = await workingSetDb()
+  return ((await db.get('meta', 'categories')) as StoredCategory[] | undefined) ?? []
+}
+
 export async function readSyncState(): Promise<SyncState> {
   const db = await workingSetDb()
   const [cursor, coverageFrom] = await Promise.all([
@@ -210,6 +224,7 @@ export async function applyDelta(response: WorkingSetResponse): Promise<void> {
   }
 
   await tx.objectStore('meta').put(response.confirmedTransferIds, 'confirmedTransferIds')
+  await tx.objectStore('meta').put(response.categories, 'categories')
   await tx.objectStore('meta').put(response.cursor, 'cursor')
   await tx.objectStore('meta').put(response.coverageFrom, 'coverageFrom')
 
@@ -241,13 +256,15 @@ export async function readAll(): Promise<{
   balances: StoredBalance[]
   transactions: StoredTransaction[]
   confirmedTransferIds: string[]
+  categories: StoredCategory[]
 }> {
   const db = await workingSetDb()
-  const [accounts, balances, transactions, confirmedTransferIds] = await Promise.all([
+  const [accounts, balances, transactions, confirmedTransferIds, categories] = await Promise.all([
     db.getAll('accounts'),
     db.getAll('balances'),
     db.getAll('transactions'),
     readConfirmedTransferIds(),
+    readCategories(),
   ])
-  return { accounts, balances, transactions, confirmedTransferIds }
+  return { accounts, balances, transactions, confirmedTransferIds, categories }
 }

@@ -5,6 +5,7 @@ export {
   snapshotSourceSchema,
   workingSetAccountSchema,
   workingSetBalanceSchema,
+  workingSetCategorySchema,
   workingSetResponseSchema,
   workingSetTransactionSchema,
   CURSOR_OVERLAP_SECONDS,
@@ -13,6 +14,7 @@ export {
   type Deletion,
   type WorkingSetAccount,
   type WorkingSetBalance,
+  type WorkingSetCategory,
   type WorkingSetResponse,
   type WorkingSetTransaction,
 } from './types.js'

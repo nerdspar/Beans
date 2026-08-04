@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
+import { ensureDefaultCategories } from '../repositories/categories.js'
 import { z } from 'zod'
 import type { Auth } from '../auth/auth.js'
 import { getSession } from '../auth/routes.js'
@@ -93,6 +94,14 @@ export const householdRoutes: FastifyPluginAsync<HouseholdRoutesOptions> = async
     }
 
     const { householdId } = await createHousehold(deps, user.id, body.data.name)
+
+    /*
+     * Seeded immediately, in its own context, because `createHousehold` cannot use one — there is no
+     * membership to resolve until it has finished. A household without categories cannot categorize
+     * anything, and there is no later moment that obviously belongs to "first setup".
+     */
+    await withHouseholdContext(deps, user.id, ensureDefaultCategories)
+
     return reply.status(201).send({ householdId })
   })
 

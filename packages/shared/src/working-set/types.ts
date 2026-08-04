@@ -64,6 +64,14 @@ export const workingSetAccountSchema = z.object({
   consecutiveFailures: z.number().int().nonnegative(),
 })
 
+export const workingSetCategorySchema = z.object({
+  id: z.string().uuid(),
+  slug: z.string(),
+  name: z.string(),
+  kind: z.enum(['income', 'expense', 'transfer']),
+  parentId: z.string().uuid().nullable(),
+})
+
 export const workingSetBalanceSchema = z.object({
   accountId: z.string().uuid(),
   asOfDate: isoDate,
@@ -121,12 +129,19 @@ export const workingSetResponseSchema = z.object({
    */
   confirmedTransferIds: z.array(z.string().uuid()),
 
+  /**
+   * Sent whole, like the transfer ids. There are a few dozen at most, and a client with a partial
+   * set would show "Uncategorized" for transactions that are categorized.
+   */
+  categories: z.array(workingSetCategorySchema),
+
   accounts: z.array(workingSetAccountSchema),
   balances: z.array(workingSetBalanceSchema),
   transactions: z.array(workingSetTransactionSchema),
   deletions: z.array(deletionSchema),
 })
 
+export type WorkingSetCategory = z.infer<typeof workingSetCategorySchema>
 export type WorkingSetAccount = z.infer<typeof workingSetAccountSchema>
 export type WorkingSetBalance = z.infer<typeof workingSetBalanceSchema>
 export type WorkingSetTransaction = z.infer<typeof workingSetTransactionSchema>

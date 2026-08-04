@@ -1,7 +1,12 @@
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
 import { SESSION_KEY } from '../auth/use-session.js'
-import { clearWorkingSet, readAll, type StoredTransaction } from './db.js'
+import {
+  clearWorkingSet,
+  readAll,
+  type StoredCategory,
+  type StoredTransaction,
+} from './db.js'
 import { deriveWorkingSet, type DerivedWorkingSet } from './derive.js'
 import { NoHouseholdYetError, NotSignedInError, syncWorkingSet } from './sync.js'
 
@@ -21,6 +26,8 @@ export type WorkingSetState = {
   transactions: StoredTransaction[]
   /** Transaction ids in a confirmed transfer pair (ARCHITECTURE.md §9). */
   confirmedTransferIds: ReadonlySet<string>
+  /** Every category, by id. */
+  categories: ReadonlyMap<string, StoredCategory>
   isLoading: boolean
   /** Signed in but not yet in a household — onboarding, not a failure. */
   needsHousehold: boolean
@@ -38,6 +45,7 @@ export function useWorkingSet(): WorkingSetState {
     balances: unknown[]
     transactions: unknown[]
     confirmedTransferIds: string[]
+    categories: StoredCategory[]
   }> = useQuery({
     queryKey: WORKING_SET_KEY,
     queryFn: readAll,
@@ -94,6 +102,11 @@ export function useWorkingSet(): WorkingSetState {
     [stored.data],
   )
 
+  const categories = useMemo(
+    () => new Map((stored.data?.categories ?? []).map((category) => [category.id, category])),
+    [stored.data],
+  )
+
   const syncError = sync.error instanceof Error ? sync.error : null
 
   /*
@@ -116,6 +129,7 @@ export function useWorkingSet(): WorkingSetState {
     data: derived,
     transactions,
     confirmedTransferIds,
+    categories,
     // Loading only while there is nothing to show. Once the store has content, a sync in flight is
     // a background refresh and must not blank the screen the user is reading.
     isLoading: stored.isLoading || (derived === null && sync.isLoading),

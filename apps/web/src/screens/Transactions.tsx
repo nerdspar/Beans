@@ -1,4 +1,5 @@
 import {
+  CATEGORY_COPY,
   NET_WORTH_STATE_COPY,
   TRANSACTIONS_COPY,
   compareDates,
@@ -8,11 +9,14 @@ import {
   toIsoDate,
 } from '@beans/shared'
 import { Search } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useDeferredValue, useMemo, useState, type ReactNode } from 'react'
+import { CategorySheet } from '../categories/CategorySheet.js'
+import { listCategories } from '../categories/api.js'
 import { cn } from '../lib/cn.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
 import { DEFAULT_RANGE, type RangeSelection } from '../net-worth/range.js'
-import { useWorkingSet } from '../working-set/use-working-set.js'
+import { WORKING_SET_KEY, useWorkingSet } from '../working-set/use-working-set.js'
 
 /**
  * Everything that happened, filtered locally.
@@ -25,6 +29,15 @@ import { useWorkingSet } from '../working-set/use-working-set.js'
 
 export function Transactions(): ReactNode {
   const workingSet = useWorkingSet()
+  const queryClient = useQueryClient()
+
+  /*
+   * Read from the API rather than the working set, because this list also needs `isSystem` and the
+   * full parent/child shape to build a grouped picker. The working set carries the flat subset the
+   * rest of the app needs to *name* a category.
+   */
+  const categories = useQuery({ queryKey: ['categories'], queryFn: listCategories })
+  const [editing, setEditing] = useState<Entry | null>(null)
 
   const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE)
   const [accountId, setAccountId] = useState<string>('')
@@ -162,23 +175,44 @@ export function Transactions(): ReactNode {
                   key={transaction.id}
                   transaction={transaction}
                   accountName={accounts?.get(transaction.accountId)?.name ?? ''}
+                  categoryName={
+                    transaction.categoryId === null
+                      ? null
+                      : (workingSet.categories.get(transaction.categoryId)?.name ?? null)
+                  }
+                  onEdit={() => setEditing(transaction)}
                 />
               ))}
             </ul>
           </section>
         ))
       )}
+
+      {editing !== null && (
+        <CategorySheet
+          transaction={editing}
+          categories={categories.data ?? []}
+          onClose={() => setEditing(null)}
+          onSaved={async () => {
+            setEditing(null)
+            // The category lives on the transaction, so the working set has to be re-read.
+            await queryClient.invalidateQueries({ queryKey: ['working-set', 'sync'] })
+            await queryClient.invalidateQueries({ queryKey: WORKING_SET_KEY })
+          }}
+        />
+      )}
     </div>
   )
 }
 
-type Entry = {
+export type Entry = {
   id: string
   accountId: string
   postedDate: string
   amountCents: bigint
   description: string | null
   payee: string | null
+  categoryId: string | null
   pending: boolean
   status: 'active' | 'void'
 }
@@ -207,9 +241,13 @@ function formatDate(date: string): string {
 function Row({
   transaction,
   accountName,
+  categoryName,
+  onEdit,
 }: {
   transaction: Entry
   accountName: string
+  categoryName: string | null
+  onEdit: () => void
 }): ReactNode {
   const voided = transaction.status === 'void'
 
@@ -230,7 +268,11 @@ function Row({
         voided && 'opacity-60',
       )}
     >
-      <div className="min-w-0">
+      <button
+        type="button"
+        onClick={onEdit}
+        className="min-w-0 flex-1 text-left focus-visible:outline-2 focus-visible:outline-sky-500"
+      >
         <p className={cn('truncate text-sm font-medium', voided && 'line-through')}>
           {transaction.payee ?? transaction.description ?? '—'}
         </p>
@@ -239,7 +281,18 @@ function Row({
           {transaction.pending && ` · ${TRANSACTIONS_COPY.pending}`}
           {voided && ` · ${TRANSACTIONS_COPY.voided}`}
         </p>
-      </div>
+        {/* Uncategorized is stated rather than left blank: blank reads as "nothing to say here". */}
+        <p
+          className={cn(
+            'mt-0.5 truncate text-xs',
+            categoryName === null
+              ? 'text-slate-400 dark:text-slate-500'
+              : 'text-sky-700 dark:text-sky-400',
+          )}
+        >
+          {categoryName ?? CATEGORY_COPY.uncategorized}
+        </p>
+      </button>
 
       <span
         className={cn(

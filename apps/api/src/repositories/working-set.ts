@@ -9,6 +9,7 @@ import {
   type WorkingSetResponse,
   type WorkingSetTransaction,
 } from '@beans/shared'
+import { listCategories } from './categories.js'
 import { confirmedPairMembers } from './transfers.js'
 import type { HouseholdContext } from './household-context.js'
 
@@ -78,6 +79,7 @@ export async function readWorkingSet(
       fullResyncRequired: true,
       coverageFrom,
       confirmedTransferIds: [],
+      categories: [],
       accounts: [],
       balances: [],
       transactions: [],
@@ -98,12 +100,21 @@ export async function readWorkingSet(
   // Always sent in full, never filtered by cursor: a client holding half of a pair would exclude one
   // side of a card payment and count the other as income.
   const confirmedTransferIds = await confirmedPairMembers(context)
+  // Also sent in full: a partial set would render categorized transactions as uncategorized.
+  const categories = (await listCategories(context)).map((category) => ({
+    id: category.id,
+    slug: category.slug,
+    name: category.name,
+    kind: category.kind,
+    parentId: category.parentId,
+  }))
 
   return {
     cursor: nextCursor,
     fullResyncRequired: false,
     coverageFrom,
     confirmedTransferIds,
+    categories,
     accounts,
     balances,
     transactions,

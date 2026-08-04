@@ -33,3 +33,33 @@ export const TRANSACTIONS_COPY = {
 
   uncategorized: 'Uncategorized',
 } as const
+
+/**
+ * Copy for categorizing.
+ *
+ * The rule prompt says what a rule will and will not do, because the surprising part is what it
+ * leaves alone: rules only touch transactions with no category yet, so one can never undo a
+ * decision somebody made by hand.
+ */
+export const CATEGORY_COPY = {
+  assign: 'Category',
+  uncategorized: 'Uncategorized',
+  clear: 'Clear category',
+
+  ruleFrom: 'Always categorize like this',
+  rulePrompt: (payee: string, category: string): string =>
+    `Categorize anything matching “${payee}” as ${category}.`,
+  ruleScope: 'Applies to transactions that have no category yet. Nothing you set by hand changes.',
+  ruleCreate: 'Create rule',
+  ruleCreating: 'Creating',
+  ruleCreated: (count: number): string =>
+    count === 0
+      ? 'Rule saved. Nothing else matched it.'
+      : `Rule saved, and ${count} transaction${count === 1 ? '' : 's'} categorized.`,
+
+  rulesHeading: 'Rules',
+  rulesEmpty: 'No rules yet. Categorize something and Beans will offer to remember it.',
+  ruleDelete: 'Delete',
+  /** Deleting a rule leaves what it already did in place, which is worth saying. */
+  ruleDeleteNote: 'Deleting a rule leaves transactions it already categorized as they are.',
+} as const

@@ -10,6 +10,7 @@ import type { KeyProvider } from './crypto/key-provider.js'
 import { loggerOptions } from './logging.js'
 import type { Mailer } from './mail/mailer.js'
 import { accountRoutes } from './routes/accounts.js'
+import { categoryRoutes } from './routes/categories.js'
 import { connectionRoutes } from './routes/connections.js'
 import { householdRoutes } from './routes/households.js'
 import { preferenceRoutes } from './routes/preferences.js'
@@ -66,6 +67,7 @@ export async function buildServer({
   await fastify.register(householdRoutes, { auth, config, mailer, deps: contextDeps })
   await fastify.register(connectionRoutes, { auth, deps: contextDeps })
   await fastify.register(accountRoutes, { auth, deps: contextDeps })
+  await fastify.register(categoryRoutes, { auth, deps: contextDeps })
   await fastify.register(preferenceRoutes, { auth, pool })
   await fastify.register(workingSetRoutes, { auth, context: contextDeps })
   await fastify.register(transferRoutes, { auth, deps: contextDeps })

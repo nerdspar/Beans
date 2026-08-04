@@ -21,6 +21,9 @@ export const CASH_FLOW_COPY = {
   emptyDetail:
     'Cash flow is built from transactions. Connect an institution, or widen the date range if you have only just synced.',
 
+  byCategory: 'Where it went',
+  byMonth: 'By month',
+
   transfersHeading: 'Money you moved',
   /** Stated because a number that silently ignored some transactions would be unaccountable. */
   transfersExcluded: (count: number): string =>

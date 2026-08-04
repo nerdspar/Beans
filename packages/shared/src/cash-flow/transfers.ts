@@ -109,7 +109,14 @@ export type CashFlowTransaction = {
   amountCents: bigint
   /** The kind of the transaction's category, when it has one. */
   categoryKind?: 'income' | 'expense' | 'transfer' | undefined
+  categoryId?: string | null | undefined
   status?: 'active' | 'void' | undefined
+}
+
+export type CategoryTotal = {
+  /** Null for everything not categorized yet, which is reported rather than hidden. */
+  categoryId: string | null
+  cents: bigint
 }
 
 /**
@@ -196,4 +203,31 @@ export function summarizeCashFlow(
   const spendingCents = periods.reduce((sum, period) => sum + period.spendingCents, 0n)
 
   return { periods, incomeCents, spendingCents, netCents: incomeCents + spendingCents, excludedCount }
+}
+
+/**
+ * Spending by category, largest first.
+ *
+ * Uncategorized is a bucket like any other rather than being dropped. A breakdown that quietly
+ * omitted a third of the spending would be worse than one that says a third is unsorted — the second
+ * is a prompt to categorize, the first is a wrong answer.
+ */
+export function spendingByCategory(
+  transactions: readonly CashFlowTransaction[],
+  confirmedPairMembers: ReadonlySet<string> = new Set(),
+): CategoryTotal[] {
+  const totals = new Map<string | null, bigint>()
+
+  for (const transaction of transactions) {
+    if (isExcludedFromCashFlow(transaction, confirmedPairMembers)) continue
+    if (transaction.amountCents >= 0n) continue
+
+    const key = transaction.categoryId ?? null
+    totals.set(key, (totals.get(key) ?? 0n) + transaction.amountCents)
+  }
+
+  return [...totals.entries()]
+    .map(([categoryId, cents]) => ({ categoryId, cents }))
+    // Most negative first: the largest spend is the one worth seeing.
+    .sort((left, right) => (left.cents < right.cents ? -1 : left.cents > right.cents ? 1 : 0))
 }
