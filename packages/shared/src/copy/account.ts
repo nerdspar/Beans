@@ -92,6 +92,14 @@ export function carriedNotice(lastRealDate: string): string {
  * balance can. Without this the truncation is silent, and a chart that quietly starts later than the
  * range asked for is indistinguishable from one that has nothing to show.
  */
-export function coverageNotice(startDate: string): string {
-  return `History starts ${startDate} — that is as far back as every account reaches.`
+/**
+ * Says what is missing from the earlier part of a total, rather than what was hidden to avoid it.
+ *
+ * The previous wording — "History starts X — that is as far back as every account reaches" — was
+ * true of a series that had been truncated to X. It is not truncated now: the chart runs as far back
+ * as anything reaches, and the part before X is a real total of the accounts that existed then. That
+ * needs saying, because a total stepping up on the day an account appears otherwise reads as a gain.
+ */
+export function coverageNotice(completeFrom: string): string {
+  return `Before ${completeFrom}, this leaves out accounts whose history does not reach that far back.`
 }

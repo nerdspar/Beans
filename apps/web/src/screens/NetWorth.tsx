@@ -152,6 +152,17 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
   const change = latest - (series[0]?.value ?? 0n)
   const described = describeChange(change, scope)
 
+  /*
+   * Where the partial region ends within the *sliced* window, not the full series.
+   *
+   * Only at household scope: a section's own boundary is usually one account, and the account
+   * screen explains that better than a band across a chart of six.
+   */
+  const completeFromIndex =
+    activeGroup !== undefined || workingSet.completeFrom === null
+      ? null
+      : series.findIndex((point) => point.date >= (workingSet.completeFrom ?? ''))
+
   const describePoint = useCallback(
     (index: number): string => {
       const point = series[Math.min(Math.max(index, 0), series.length - 1)]
@@ -246,6 +257,7 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
           onScrub={setScrubIndex}
           describePoint={describePoint}
           scrubLabel={NET_WORTH_SCRUB_COPY.label}
+          completeFromIndex={completeFromIndex}
         />
 
         {/*
@@ -255,7 +267,7 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
         */}
         {activeGroup === undefined && workingSet.coverageIsLimited && series.length > 0 && (
           <p className="pt-1 text-[11px] text-slate-500 dark:text-slate-400">
-            {coverageNotice(formatShortDate(series[0]?.date))}
+            {coverageNotice(formatShortDate(workingSet.completeFrom ?? undefined))}
           </p>
         )}
 

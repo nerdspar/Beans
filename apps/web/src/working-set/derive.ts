@@ -38,12 +38,17 @@ export type DerivedSection = {
 export type DerivedWorkingSet = {
   sections: DerivedSection[]
   household: SeriesPoint[]
-  /**
-   * The first date household net worth is actually knowable — the **latest** date among its
-   * accounts' coverage, not the earliest.
-   */
+  /** The earliest date any account reaches, which is where the chart starts. */
   coverageStart: IsoDate | null
-  /** True when that boundary is hiding history some accounts do have. Worth telling the user. */
+  /**
+   * The first date every account contributes to. Null when they all reach equally far back.
+   *
+   * Before it, the total is real but incomplete — it leaves out accounts whose history does not
+   * reach that far. The chart marks that region and the screen says so, because a total stepping up
+   * on the day an account appears would otherwise read as a gain that never happened.
+   */
+  completeFrom: IsoDate | null
+  /** True when part of the range is incomplete. Worth telling the user. */
   coverageIsLimited: boolean
   /** Every account, for the detail route, without re-walking the sections. */
   byId: Map<string, DerivedAccount>
@@ -120,34 +125,55 @@ function accountSeries(
  *
  * So the sum starts at the latest first-date among its parts. Less history, all of it real.
  */
+/**
+ * Sums parts that do not share a start date.
+ *
+ * The series runs from the **earliest** date any part reaches, and each part contributes from its
+ * own start. Before every part has data the total is genuinely incomplete, and `completeFrom` says
+ * where that stops being true so the screen and the chart can mark the difference.
+ *
+ * This used to start at the *latest* first-date and discard everything before it — less history,
+ * all of it real (§15.2). That reasoning holds on a first connection, where there is no history to
+ * lose, and fails completely afterwards: every account added later re-truncates the whole chart, so
+ * the household series could never be longer than its newest account. Adding a house wiped out a
+ * year of net worth.
+ *
+ * The thing truncation was protecting against is real — a total stepping up by the value of an
+ * account on the day it appears reads as a gain that never happened. That is answered by saying so,
+ * which is what `completeFrom` is for, rather than by hiding a year of history to avoid it.
+ */
 function sumSeries(parts: ReadonlyArray<{ series: SeriesPoint[] }>): {
   series: SeriesPoint[]
   coverageStart: IsoDate | null
+  /** The first date every part contributes to. Null when they already all agree. */
+  completeFrom: IsoDate | null
   isLimited: boolean
 } {
   const withData = parts.filter((part) => part.series.length > 0)
   if (withData.length === 0) {
-    return { series: [], coverageStart: null, isLimited: false }
+    return { series: [], coverageStart: null, completeFrom: null, isLimited: false }
   }
 
   const firstDates = withData.map((part) => part.series[0]?.date ?? '')
-  const start = firstDates.reduce((latest, date) => (date > latest ? date : latest))
+  const complete = firstDates.reduce((latest, date) => (date > latest ? date : latest))
   const earliest = firstDates.reduce((first, date) => (date < first ? date : first))
 
   const byDate = new Map<string, bigint>()
   for (const part of withData) {
     for (const point of part.series) {
-      if (point.date < start) continue
       byDate.set(point.date, (byDate.get(point.date) ?? 0n) + point.value)
     }
   }
+
+  const isLimited = complete > earliest
 
   return {
     series: [...byDate.entries()]
       .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(([date, value]) => ({ date, value })),
-    coverageStart: start,
-    isLimited: start > earliest,
+    coverageStart: earliest,
+    completeFrom: isLimited ? complete : null,
+    isLimited,
   }
 }
 
@@ -239,8 +265,9 @@ export function deriveWorkingSet(
     sections,
     household: household.series,
     coverageStart: household.coverageStart,
-    // Reported from the accounts rather than the sections: a section whose own series was already
-    // trimmed would otherwise hide that the trimming happened.
+    completeFrom: household.completeFrom,
+    // Reported from the accounts rather than the sections: a section whose parts disagree would
+    // otherwise hide that any part of its own total is incomplete.
     coverageIsLimited:
       household.isLimited || sections.some((group) => sumSeries(group.accounts).isLimited),
     byId,

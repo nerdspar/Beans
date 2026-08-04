@@ -9,6 +9,7 @@ import {
   type ContextDependencies,
   type HouseholdContext,
 } from '../repositories/household-context.js'
+import { createManualAccount, recordManualBalance } from '../repositories/accounts.js'
 import { resetAll, resetHouseholdsFor } from '../test-support/reset-database.js'
 import { ensureCoverageStart, rebuildAccountHistory, rebuildHouseholdHistory } from './rebuild.js'
 
@@ -332,6 +333,65 @@ describeIntegration('balance history rebuild', () => {
         { date: '2026-08-02', balance: 115_000_000n, source: 'observed' },
         { date: '2026-08-03', balance: 115_780_000n, source: 'observed' },
       ])
+    })
+
+    /**
+     * Backdating a valuation has to move the coverage boundary, or the entry is invisible.
+     *
+     * The series is built from `coverage_start_date` forward, and the update that moved it sat
+     * behind the "only if this is the newest entry" guard that protects the headline balance. So
+     * recording what a house was worth last year wrote its row and changed nothing on the chart —
+     * the only way to give a manual asset earlier history silently did nothing.
+     */
+    it('extends coverage backwards when an earlier valuation is recorded', async () => {
+      const series = await withHouseholdContext(deps, USER, async (ctx) => {
+        // Entered today, the way the form defaults: one point, and no history behind it.
+        const { accountId } = await createManualAccount(ctx, {
+          name: 'The house',
+          institutionName: 'Manual',
+          type: 'other_asset',
+          balanceCents: 115_780_000n,
+          effectiveDate: TODAY,
+        })
+
+        // Then what it was worth two days ago.
+        await recordManualBalance(ctx, accountId, '2026-08-01', 115_000_000n, TODAY)
+
+        return readSeries(ctx, accountId)
+      })
+
+      /*
+       * Asserted by date rather than as a whole list. `createManualAccount` stamps `balance_as_of`
+       * with SQL `now()`, so the series runs to the real clock and its length is not a fixture —
+       * the fix is about where it starts, which is.
+       */
+      expect(series[0]).toEqual({ date: '2026-08-01', balance: 115_000_000n, source: 'observed' })
+      // Held flat until the later valuation, rather than interpolated toward it.
+      expect(series.find((row) => row.date === '2026-08-02')?.balance).toBe(115_000_000n)
+      expect(series.find((row) => row.date === TODAY)?.balance).toBe(115_780_000n)
+    })
+
+    /** The guard the fix had to preserve: an old valuation is not what the house is worth now. */
+    it('does not let a backdated valuation become the current balance', async () => {
+      const current = await withHouseholdContext(deps, USER, async (ctx) => {
+        const { accountId } = await createManualAccount(ctx, {
+          name: 'The house',
+          institutionName: 'Manual',
+          type: 'other_asset',
+          balanceCents: 115_780_000n,
+          effectiveDate: TODAY,
+        })
+
+        await recordManualBalance(ctx, accountId, '2026-08-01', 115_000_000n, TODAY)
+
+        const row = await ctx.client.query<{ current_balance: Buffer }>(
+          'select current_balance from accounts where id = $1',
+          [accountId],
+        )
+        return ctx.cipher.decryptMoney(row.rows[0]!.current_balance)
+      })
+
+      expect(current).toBe(115_780_000n)
     })
   })
 

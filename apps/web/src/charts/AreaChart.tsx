@@ -59,6 +59,15 @@ export type AreaChartProps = {
   describePoint?: ((index: number) => string) | undefined
   /** Labels the scrubber for assistive technology. */
   scrubLabel?: string
+
+  /**
+   * Index from which the series is a complete total. Null when the whole of it is.
+   *
+   * Everything to the left is real but partial — it sums the accounts that had history then, not
+   * all of them. Marked rather than hidden: dropping it would make the chart only as long as the
+   * newest account, and leaving it unmarked would let the step where the rest joins read as a gain.
+   */
+  completeFromIndex?: number | null
 }
 
 const GRID_LINES = 5
@@ -190,6 +199,7 @@ export function AreaChart({
   onScrub,
   describePoint,
   scrubLabel,
+  completeFromIndex = null,
 }: AreaChartProps): ReactNode {
   const plotRef = useRef<HTMLDivElement>(null)
 
@@ -370,6 +380,16 @@ export function AreaChart({
   }
 
   const marker = scrubIndex === null ? null : geometry.at(scrubIndex)
+
+  /*
+   * Where the partial region ends, as a fraction of the width. Zero-width regions are dropped: a
+   * boundary on the first point means nothing is partial, and a hairline band at the very edge
+   * would be visual noise claiming otherwise.
+   */
+  const partialWidth =
+    completeFromIndex === null || completeFromIndex <= 0 || series.length < 2
+      ? 0
+      : Math.min(completeFromIndex / (series.length - 1), 1)
   const scrubbedDate = scrubIndex === null ? undefined : series[scrubIndex]?.date
 
   return (
@@ -383,6 +403,23 @@ export function AreaChart({
         // should read instead.
         aria-hidden
       >
+        {/*
+          The partial region, washed out behind the series.
+          
+          Behind rather than over the line: the data there is real, and dimming the line itself
+          would say it is not. What is uncertain is the *completeness* of the total, which is a
+          property of the span — so the span is what gets marked.
+        */}
+        {partialWidth > 0 && (
+          <rect
+            x={0}
+            y={0}
+            width={partialWidth * geometry.width}
+            height={geometry.plotHeight}
+            className="fill-slate-400/10 dark:fill-slate-500/10"
+          />
+        )}
+
         {geometry.ticks.map((tick) => (
           <line
             key={tick.y}
@@ -416,6 +453,19 @@ export function AreaChart({
           vectorEffect="non-scaling-stroke"
           style={{ transition: 'stroke 140ms ease-out' }}
         />
+
+        {partialWidth > 0 && (
+          <line
+            x1={partialWidth * geometry.width}
+            x2={partialWidth * geometry.width}
+            y1={0}
+            y2={geometry.plotHeight}
+            className="stroke-slate-400 dark:stroke-slate-600"
+            strokeWidth={1}
+            strokeDasharray="3 3"
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
 
         {/*
           The reading line. Drawn in SVG because `non-scaling-stroke` keeps it one pixel wide

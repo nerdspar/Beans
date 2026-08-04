@@ -911,9 +911,27 @@ factually invented (§4).
 Summing across that boundary yields a total silently missing whichever accounts do not reach that far
 back. On a first connection it renders as net worth sitting near zero for a year and then leaping by
 the value of the brokerage on the day it was added — observed, not hypothesized, the first time this
-flow ran end to end. So **a summed series starts at the latest first-date among its parts**, and the
-screen says why: "History starts 8/3/2026 — that is as far back as every account reaches." Less
-history, all of it real.
+flow ran end to end.
+
+The original answer was to start a summed series at the **latest** first-date among its parts and
+discard everything before it: less history, all of it real. **That was wrong, and it was replaced.**
+
+It is free on a first connection, where there is no history to lose, and ruinous afterwards. Every
+account added later re-truncates the entire chart, so the household series can never be longer than
+its newest account — a year of net worth disappears the day a house is added, and it can never
+accumulate again because the next addition does the same thing. Reported from real use, not
+theorized.
+
+So **a summed series starts at the earliest first-date among its parts**, each part contributing from
+its own start, and it carries `completeFrom` — the first date every part reaches. Before that date
+the total is real but partial. The chart washes that region out behind the line and marks the
+boundary with a dashed rule; the screen says "Before 8/3/2026, this leaves out accounts whose history
+does not reach that far back."
+
+The step where the remaining accounts join is still there and is still not a gain. The difference is
+that it is now labelled rather than avoided — the fill, the rule and the sentence all point at it.
+Hiding a year of history to prevent one misreadable step traded a small, explicable error for a large
+one, and the small one is the only kind that can be explained.
 
 A related rendering rule: **one data point is drawn as a flat line across the full width**, not as a
 point at the midpoint. The latter makes the area fan out from the baseline and back, which reads as a

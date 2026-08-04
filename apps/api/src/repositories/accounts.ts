@@ -305,13 +305,27 @@ export async function recordManualBalance(
   )
 
   /*
+   * Coverage always extends, whether or not this is the newest entry.
+   *
+   * This used to be folded into the update below, behind its "only if newest" guard — so a
+   * backdated valuation wrote its row and then moved nothing. The series is built from
+   * `coverage_start_date` forward, so the entry was invisible: the only way to give a manual asset
+   * earlier history silently did nothing. `least` ignores nulls, so a first entry sets it.
+   */
+  await context.client.query(
+    `update accounts
+        set coverage_start_date = least(coverage_start_date, $2::date)
+      where id = $1`,
+    [accountId, effectiveDate],
+  )
+
+  /*
    * The account's headline balance follows only when this entry is the most recent one. Backdating
    * a correction for last March must not overwrite what the account is worth today.
    */
   await context.client.query(
     `update accounts
-        set current_balance = $2, balance_as_of = now(),
-            coverage_start_date = least(coverage_start_date, $3::date)
+        set current_balance = $2, balance_as_of = now()
       where id = $1
         and not exists (
           select 1 from manual_balance_updates m

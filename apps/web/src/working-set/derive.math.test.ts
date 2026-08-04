@@ -92,30 +92,51 @@ describe('deriveWorkingSet', () => {
       ...balances('brokerage', [[TODAY, 5_000_000n]]),
     ]
 
-    it('starts net worth where every account has data, not where the first one does', () => {
+    /**
+     * The series used to start at the *latest* first-date, discarding everything before it. That
+     * costs nothing on a first connection and everything afterwards: each account added later
+     * re-truncated the whole chart, so the household series could never be longer than its newest
+     * account. Adding one asset wiped out a year of net worth.
+     */
+    it('keeps history back to the earliest account, not the newest one', () => {
       const result = deriveWorkingSet(accounts, snapshots, { to: TODAY })
 
-      expect(result.household.map((point) => point.date)).toEqual([TODAY])
-      expect(result.coverageStart).toBe(TODAY)
+      expect(result.household.map((point) => point.date)).toEqual([
+        '2026-08-01',
+        '2026-08-02',
+        TODAY,
+      ])
+      expect(result.coverageStart).toBe('2026-08-01')
+    })
+
+    it('sums the accounts that existed on each day', () => {
+      const byDate = new Map(
+        deriveWorkingSet(accounts, snapshots, { to: TODAY }).household.map((point) => [
+          point.date,
+          point.value,
+        ]),
+      )
+
+      // Cash alone before the brokerage reaches back, both once it does.
+      expect(byDate.get('2026-08-01')).toBe(100_000n)
+      expect(byDate.get(TODAY)).toBe(5_100_000n)
     })
 
     /**
-     * The failure this prevents. Starting on 8/1 would report net worth as $1,000 for two days and
-     * then $51,000 — a $50,000 gain that never happened, on the day an account was connected.
+     * What the old truncation was protecting against, now answered by saying so instead.
+     *
+     * The total steps from $1,000 to $51,000 on the day the brokerage appears, and that step is not
+     * a gain. Reporting the boundary is what lets the screen and the chart mark the earlier region
+     * as incomplete rather than letting it be read as history.
      */
-    it('never reports a total that is missing an account', () => {
+    it('reports where the total becomes complete, so the step can be explained', () => {
       const result = deriveWorkingSet(accounts, snapshots, { to: TODAY })
 
-      for (const point of result.household) {
-        expect(point.value).toBe(5_100_000n)
-      }
+      expect(result.completeFrom).toBe(TODAY)
+      expect(result.coverageIsLimited).toBe(true)
     })
 
-    it('says when the boundary is hiding history that exists', () => {
-      expect(deriveWorkingSet(accounts, snapshots, { to: TODAY }).coverageIsLimited).toBe(true)
-    })
-
-    it('does not claim a limit when every account agrees', () => {
+    it('claims no boundary when every account reaches equally far back', () => {
       const aligned = [
         account({ id: 'a', coverageStartDate: '2026-08-01' }),
         account({ id: 'b', coverageStartDate: '2026-08-01' }),
@@ -125,7 +146,10 @@ describe('deriveWorkingSet', () => {
         ...balances('b', [['2026-08-01', 2n], [TODAY, 2n]]),
       ]
 
-      expect(deriveWorkingSet(aligned, both, { to: TODAY }).coverageIsLimited).toBe(false)
+      const result = deriveWorkingSet(aligned, both, { to: TODAY })
+      expect(result.coverageIsLimited).toBe(false)
+      // Nothing to mark, so the chart draws no band and the screen shows no notice.
+      expect(result.completeFrom).toBeNull()
     })
   })
 

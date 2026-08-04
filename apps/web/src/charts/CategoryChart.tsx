@@ -40,6 +40,7 @@ export type CategoryChartProps = {
   onScrub?: ((index: number | null) => void) | undefined
   describePoint?: ((index: number) => string) | undefined
   scrubLabel?: string
+  completeFromIndex?: number | null
 }
 
 /**
@@ -67,6 +68,7 @@ export function CategoryChart({
   onScrub,
   describePoint,
   scrubLabel,
+  completeFromIndex = null,
 }: CategoryChartProps): ReactNode {
   const [current, setCurrent] = useState<Layer>({ key: categoryKey, series, color })
   const [outgoing, setOutgoing] = useState<Layer | null>(null)
@@ -136,6 +138,7 @@ export function CategoryChart({
           scrubIndex={scrubIndex}
           onScrub={onScrub}
           describePoint={describePoint}
+          completeFromIndex={completeFromIndex}
           {...(scrubLabel === undefined ? {} : { scrubLabel })}
         />
       </div>
