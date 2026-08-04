@@ -125,6 +125,14 @@ export const ACCOUNTS_COPY = {
    * rollup entirely, so its history disappeared from the chart too and every past total fell.
    */
   markClosed: 'Closed — keep the history, stop counting it from the closing date',
+  /*
+   * Tax treatment decides which bucket an investment lands in on the portfolio screen — how much
+   * is already taxed, how much is deferred, how much comes out tax-free. Nothing could set it until
+   * now, which left every account on the type's default and the split showing a single bucket.
+   */
+  taxTreatmentHelp:
+    'Splits the portfolio into taxable, deferred and tax-free. Providers do not report this, so it has to be set here.',
+
   closedOnLabel: 'Closed on',
   closedOnHelp:
     'History keeps everything up to this date, and the account counts as nothing afterwards.',

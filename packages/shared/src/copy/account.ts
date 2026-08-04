@@ -15,13 +15,11 @@ export const ACCOUNT_COPY = {
   /** Field labels. */
   accountType: 'Type',
   institution: 'Institution',
-  accountNumber: 'Account number',
   taxTreatment: 'Tax treatment',
   lastUpdated: 'Last updated',
   connection: 'Connection',
 
   /** Values that are an absence rather than a number. */
-  noAccountNumber: 'Not provided',
   manualAccount: 'Manual entry',
   manualAccountDetail: 'You keep this balance up to date yourself. Beans never changes it.',
 

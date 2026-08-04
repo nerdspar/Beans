@@ -4,10 +4,9 @@ import {
   NET_WORTH_STATE_COPY,
   carriedNotice,
   compareDates,
-  defaultTaxTreatment,
   formatCents,
   isLiabilitySection,
-  type AccountType,
+  TAX_TREATMENT_LABELS,
   type NetWorthSection,
   type TaxTreatment,
 } from '@beans/shared'
@@ -322,14 +321,23 @@ function AccountView({
           value={account.institutionName ?? ACCOUNT_COPY.manualAccount}
         />
         <Field label={ACCOUNT_COPY.accountType} value={SECTION_LABELS[section]} />
-        <Field
-          label={ACCOUNT_COPY.accountNumber}
-          value={account.mask === null ? ACCOUNT_COPY.noAccountNumber : `Ending in ${account.mask}`}
-        />
-        <Field
-          label={ACCOUNT_COPY.taxTreatment}
-          value={TAX_LABELS[defaultTaxTreatment(account.type as AccountType)]}
-        />
+        {/*
+          No account number row. Nothing populates `mask` — SimpleFIN v1 has no such field, and
+          neither manual creation nor the editor sets one — so it read "Not provided" on every
+          account forever, which implies it might one day be provided. Institutions that publish the
+          last four put them in the name, where they are already visible.
+        */}
+        {/*
+          The stored treatment, not the type's default. Showing `defaultTaxTreatment(type)` meant an
+          account set to Roth still displayed as Taxable here while the portfolio counted it as
+          Roth — the screen contradicting the split it feeds.
+        */}
+        {account.type === 'investment' && (
+          <Field
+            label={ACCOUNT_COPY.taxTreatment}
+            value={TAX_TREATMENT_LABELS[account.taxTreatment as TaxTreatment]}
+          />
+        )}
         <Field label={ACCOUNT_COPY.lastUpdated} value={formatLastUpdated(account)} />
       </dl>
 
@@ -430,15 +438,6 @@ function ActionButton({
       {label}
     </button>
   )
-}
-
-const TAX_LABELS: Record<TaxTreatment, string> = {
-  taxable: 'Taxable',
-  traditional: 'Traditional',
-  roth: 'Roth',
-  hsa: 'HSA',
-  education: 'Education',
-  none: 'Not applicable',
 }
 
 function ConnectionBanner({

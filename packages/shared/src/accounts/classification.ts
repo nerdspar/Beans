@@ -115,3 +115,18 @@ export function defaultTaxTreatment(type: AccountType): TaxTreatment {
       return 'none'
   }
 }
+
+/**
+ * What each treatment is called, in the terms an account holder uses.
+ *
+ * Kept beside the enum rather than in a screen, because two of them name it now and a third label
+ * for the same value is how "Traditional" and "Pre-tax" end up in the same app.
+ */
+export const TAX_TREATMENT_LABELS: Record<TaxTreatment, string> = {
+  taxable: 'Taxable',
+  traditional: 'Traditional (pre-tax)',
+  roth: 'Roth (tax-free)',
+  hsa: 'HSA',
+  education: 'Education (529)',
+  none: 'Not applicable',
+}

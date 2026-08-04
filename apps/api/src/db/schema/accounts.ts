@@ -64,6 +64,14 @@ export const accounts = pgTable(
     /** What SimpleFIN calls it. Sync updates this freely. */
     providerName: bytea('provider_name'),
 
+    /**
+     * Last few digits of the account number. **Nothing populates this today.**
+     *
+     * SimpleFIN v1 has no such field, and neither manual creation nor the account editor asks for
+     * one — so it is null on every real account, and the detail screen no longer offers a row that
+     * would read "Not provided" forever. Kept because institutions that do publish the last four
+     * would land here, and because the account picker already searches it.
+     */
     mask: bytea('mask'),
 
     /** v1 assumes USD throughout and refuses to aggregate across currencies. */

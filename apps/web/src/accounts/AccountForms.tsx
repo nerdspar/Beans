@@ -2,6 +2,8 @@ import {
   ACCOUNTS_COPY,
   ACCOUNT_TYPE_LABELS,
   ACCOUNT_TYPES,
+  TAX_TREATMENTS,
+  TAX_TREATMENT_LABELS,
   isLiability,
   toIsoDate,
   type AccountType,
@@ -119,6 +121,7 @@ export function AccountEditor({
 }): ReactNode {
   const [name, setName] = useState(account.name)
   const [type, setType] = useState<AccountType>(account.type)
+  const [taxTreatment, setTaxTreatment] = useState(account.taxTreatment)
   const [isClosed, setIsClosed] = useState(account.isClosed)
   const [closedOn, setClosedOn] = useState(account.closedOn ?? '')
   const [signInverted, setSignInverted] = useState(account.signInverted)
@@ -136,6 +139,7 @@ export function AccountEditor({
       updateAccount(account.id, {
         displayName: name.trim(),
         type,
+        taxTreatment,
         isClosed,
         // Only meaningful when closing. The server clears it on reopening and defaults it to
         // today when closing without one, so an empty field is never a missing answer.
@@ -179,6 +183,30 @@ export function AccountEditor({
             ))}
           </select>
         </label>
+
+        {/*
+          Only for investments. A checking account has no tax treatment worth choosing, and offering
+          one on every account would make the portfolio split look like it applied to all of them.
+        */}
+        {type === 'investment' && (
+          <label className={labelClass}>
+            {ACCOUNTS_COPY.taxTreatment}
+            <select
+              value={taxTreatment}
+              onChange={(event) => setTaxTreatment(event.target.value)}
+              className={fieldClass}
+            >
+              {TAX_TREATMENTS.map((option) => (
+                <option key={option} value={option}>
+                  {TAX_TREATMENT_LABELS[option]}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block font-normal text-slate-500 dark:text-slate-400">
+              {ACCOUNTS_COPY.taxTreatmentHelp}
+            </span>
+          </label>
+        )}
 
         {!account.isManual && (
           <label className="mt-4 flex items-start gap-2 text-xs font-medium">

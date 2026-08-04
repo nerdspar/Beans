@@ -1,5 +1,6 @@
 export {
   ACCOUNT_TYPES,
+  TAX_TREATMENT_LABELS,
   NET_WORTH_SECTIONS,
   TAX_TREATMENTS,
   defaultTaxTreatment,
