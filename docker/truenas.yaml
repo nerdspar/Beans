@@ -24,11 +24,26 @@
 #   2. /mnt/NAS/Data/beans/initdb/01-init.sh must already be on disk. It runs exactly once, on an
 #      empty data directory, and creates the non-superuser application role.
 #
-#   3. The master key must exist and be readable by uid 568:
+#   3. The master key must exist, be valid JSON, and be readable by uid 568.
+#
+#      **It is a JSON document, not a bare base64 string** — the shape carries a version so the key
+#      can be rotated without downtime (ARCHITECTURE.md §5), and the loader rejects anything else at
+#      boot. `{"currentVersion":1,"keys":{"1":"<32 bytes, base64>"}}`
+#
 #        mkdir -p /mnt/NAS/Data/beans/secrets
-#        head -c 32 /dev/urandom | base64 > /mnt/NAS/Data/beans/secrets/master.key
+#        printf '{"currentVersion":1,"keys":{"1":"%s"}}\n' "$(head -c 32 /dev/urandom | base64)" \
+#          > /mnt/NAS/Data/beans/secrets/master.key
 #        chown -R 568:568 /mnt/NAS/Data/beans/secrets
 #        chmod 600 /mnt/NAS/Data/beans/secrets/master.key
+#
+#      Verify it before starting anything — `pnpm --filter @beans/api dev:check-key <path>` runs the
+#      same loader the server uses at boot.
+#
+#      **Create the file before the first start.** Docker bind-mounts a path that does not exist by
+#      creating an empty *directory* at it, and the container then fails with "Cannot read master key
+#      file" — which reads like a permissions problem and is not one. If that has already happened:
+#        rm -rf /mnt/NAS/Data/beans/secrets/master.key   # it is a directory, not a file
+#      then write the file and recreate the app.
 #
 #      **Back this up somewhere other than the database.** It wraps every household's data key, so a
 #      database backup without it is unreadable ciphertext — and the two stored together defeat the

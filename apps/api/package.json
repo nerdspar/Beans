@@ -13,7 +13,8 @@
     "db:migrate": "tsx --env-file-if-exists=../../.env src/db/migrate.ts",
     "db:migrate:test": "tsx --env-file-if-exists=../../.env src/db/migrate.ts --test",
     "dev:seed": "tsx --env-file-if-exists=../../.env src/dev/seed.ts",
-    "dev:consolidate": "tsx --env-file-if-exists=../../.env src/dev/consolidate.ts"
+    "dev:consolidate": "tsx --env-file-if-exists=../../.env src/dev/consolidate.ts",
+    "dev:check-key": "tsx src/dev/check-key.ts"
   },
   "dependencies": {
     "@beans/shared": "workspace:*",
