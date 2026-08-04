@@ -209,7 +209,7 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
             {reading === null ? (
               <div
                 className={cn(
-                  'mt-0.5 text-sm font-medium tabular-nums',
+                  'mt-0.5 h-5 truncate text-sm font-medium tabular-nums',
                   described.favourable
                     ? 'text-emerald-600 dark:text-emerald-400'
                     : 'text-rose-600 dark:text-rose-400',
@@ -219,7 +219,7 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
               </div>
             ) : (
               <div
-                className="mt-0.5 text-sm font-medium tabular-nums text-slate-500 dark:text-slate-400"
+                className="mt-0.5 h-5 truncate text-sm font-medium tabular-nums text-slate-500 dark:text-slate-400"
                 role="status"
               >
                 {formatShortDate(reading.date)}

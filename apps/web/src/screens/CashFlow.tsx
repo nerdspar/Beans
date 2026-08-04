@@ -395,23 +395,28 @@ export function CashFlow(): ReactNode {
           </div>
 
           {/*
-            What is being read, or the transfers note. The note is a caveat on the range's totals,
-            so it has nothing to say while a single month is being pointed at.
+            The reading gets a reserved line, always present and usually empty.
+
+            It first *replaced* the transfers note, which moved the chart down the moment a pointer
+            touched it — and a chart that shifts under the cursor is one you cannot point at twice.
+            Swapping would not have fixed it either: the note wraps to two lines on a phone and the
+            reading never does, so the block would still change height.
           */}
-          {monthReading !== null ? (
-            <p role="status" className="mt-2 text-xs font-medium tabular-nums">
-              {formatMonth(monthReading.month)}
-            </p>
-          ) : dailyReading !== null ? (
-            <p role="status" className="mt-2 text-xs font-medium tabular-nums">
-              {formatShortDate(dailyReading.date)} · {formatCents(dailyReading.cumulativeCents)}
-            </p>
-          ) : (
-            /* Said out loud: a total that quietly ignored transactions would be unaccountable. */
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              {CASH_FLOW_COPY.transfersExcluded(summary.excludedCount)}
-            </p>
-          )}
+          <p
+            role="status"
+            className="mt-2 min-h-4 truncate text-xs font-medium tabular-nums"
+          >
+            {monthReading !== null
+              ? formatMonth(monthReading.month)
+              : dailyReading !== null
+                ? `${formatShortDate(dailyReading.date)} · ${formatCents(dailyReading.cumulativeCents)}`
+                : ''}
+          </p>
+
+          {/* Said out loud: a total that quietly ignored transactions would be unaccountable. */}
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {CASH_FLOW_COPY.transfersExcluded(summary.excludedCount)}
+          </p>
 
           {/*
             One month gets the running total; more than one gets bars.
@@ -1010,11 +1015,10 @@ function Breakdown({
           <Total label={label} cents={reading?.cents ?? totalCents} />
         )}
 
-        {reading !== null && (
-          <p role="status" className="mt-1 text-xs font-medium tabular-nums">
-            {reading.label}
-          </p>
-        )}
+        {/* Reserved, for the same reason as the combined tab: the chart must not move under a pointer. */}
+        <p role="status" className="mt-1 min-h-4 truncate text-xs font-medium tabular-nums">
+          {reading?.label ?? ''}
+        </p>
       </div>
 
       {/*
