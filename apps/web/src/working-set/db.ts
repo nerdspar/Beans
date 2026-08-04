@@ -227,8 +227,13 @@ export async function clearWorkingSet(): Promise<void> {
 export async function readAll(): Promise<{
   accounts: StoredAccount[]
   balances: StoredBalance[]
+  transactions: StoredTransaction[]
 }> {
   const db = await workingSetDb()
-  const [accounts, balances] = await Promise.all([db.getAll('accounts'), db.getAll('balances')])
-  return { accounts, balances }
+  const [accounts, balances, transactions] = await Promise.all([
+    db.getAll('accounts'),
+    db.getAll('balances'),
+    db.getAll('transactions'),
+  ])
+  return { accounts, balances, transactions }
 }

@@ -13,22 +13,34 @@ import { Plus, RefreshCw } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { AccountEditor, ManualAccountForm, ManualBalanceForm } from '../accounts/AccountForms.js'
 import { listManagedAccounts, type ManagedAccount } from '../accounts/api.js'
+import { ConfirmAccounts } from '../connections/ConfirmAccounts.js'
+import { TokenForm } from '../connections/TokenForm.js'
 import {
+  claimSetupToken,
+  confirmAccounts,
   listConnections,
+  reconnectConnection,
+  rediscover,
   syncConnection,
+  type AccountConfirmation,
   type ConnectionSummary,
+  type Discovery,
 } from '../connections/api.js'
 import { cn } from '../lib/cn.js'
 import { WORKING_SET_KEY } from '../working-set/use-working-set.js'
 import { Link } from 'wouter'
 
 /**
- * Every account, grouped by where it comes from.
+ * Every account, and everything you can do to one.
  *
- * Replaces a separate connections page that listed one connection and was otherwise empty. **A
- * connection is not a thing anybody thinks about** — it is how some accounts arrive. Grouping by it
- * puts sync health beside the accounts it affects, which is where it is actionable, and gives manual
- * accounts an obvious home as just another group.
+ * There is no separate connections screen. There was, and it listed a single connection and hosted
+ * three flows this page linked out to — claiming a connection, re-confirming the provider's answers,
+ * and replacing a credential. A page that exists only to be bounced to is worse than the flows
+ * living where the accounts are, so they are stages here.
+ *
+ * **A connection is not a thing anybody thinks about.** It is how some accounts arrive. Its health
+ * sits at the top, once; the accounts below are grouped by institution, which is the distinction a
+ * person actually makes.
  */
 
 type Sheet =
@@ -37,9 +49,23 @@ type Sheet =
   | { kind: 'add-manual' }
   | { kind: 'update-balance'; account: ManagedAccount }
 
+/**
+ * The connection flows, which take over the whole screen rather than opening a sheet.
+ *
+ * Confirmation is a decision about every account behind a connection and needs the room; the token
+ * forms are short but lead into it, so they read as steps of one thing.
+ */
+type Stage =
+  | { kind: 'list' }
+  | { kind: 'claim' }
+  | { kind: 'confirm'; discovery: Discovery; isReview: boolean }
+  | { kind: 'reconnect'; connectionId: string }
+
 export function Accounts(): ReactNode {
   const [sheet, setSheet] = useState<Sheet>({ kind: 'none' })
+  const [stage, setStage] = useState<Stage>({ kind: 'list' })
   const [showClosed, setShowClosed] = useState(false)
+  const [done, setDone] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: listManagedAccounts })
@@ -47,11 +73,79 @@ export function Accounts(): ReactNode {
 
   const refresh = async (): Promise<void> => {
     setSheet({ kind: 'none' })
+    setStage({ kind: 'list' })
     await queryClient.invalidateQueries({ queryKey: ['accounts'] })
     await queryClient.invalidateQueries({ queryKey: ['connections'] })
     // Balances and history may both have moved, so the working set is re-read rather than patched.
     await queryClient.invalidateQueries({ queryKey: WORKING_SET_KEY })
     await queryClient.invalidateQueries({ queryKey: ['working-set'] })
+  }
+
+  const claim = useMutation({
+    mutationFn: claimSetupToken,
+    onSuccess: (discovery) => setStage({ kind: 'confirm', discovery, isReview: false }),
+  })
+
+  /*
+   * Re-opens confirmation for a connection that already exists — the way back from a sign or a type
+   * answered wrongly at setup. Discovery returns each linked account's stored configuration, so this
+   * defaults to what is saved rather than re-proposing a guess over it.
+   */
+  const review = useMutation({
+    mutationFn: async (id: string) => ({ connectionId: id, ...(await rediscover(id)) }),
+    onSuccess: (discovery) => setStage({ kind: 'confirm', discovery, isReview: true }),
+  })
+
+  const confirm = useMutation({
+    mutationFn: ({ id, entries }: { id: string; entries: AccountConfirmation[] }) =>
+      confirmAccounts(id, entries),
+    onSuccess: async (result) => {
+      setDone(CONNECTION_COPY.accountsConnected(result.created, result.updated))
+      await refresh()
+    },
+  })
+
+  const reconnect = useMutation({
+    mutationFn: ({ id, token }: { id: string; token: string }) => reconnectConnection(id, token),
+    onSuccess: refresh,
+  })
+
+  if (stage.kind === 'confirm') {
+    return (
+      <ConfirmAccounts
+        accounts={stage.discovery.accounts}
+        errors={stage.discovery.errors}
+        isPending={confirm.isPending}
+        error={confirm.error instanceof Error ? confirm.error.message : null}
+        {...(stage.isReview ? { blurb: CONNECTION_COPY.reviewBlurb } : {})}
+        onConfirm={(entries) => confirm.mutate({ id: stage.discovery.connectionId, entries })}
+      />
+    )
+  }
+
+  if (stage.kind === 'claim' || stage.kind === 'reconnect') {
+    const reconnecting = stage.kind === 'reconnect'
+    const pending = reconnecting ? reconnect : claim
+
+    return (
+      <TokenForm
+        title={reconnecting ? CONNECTION_COPY.reconnectTitle : CONNECTION_COPY.connectTitle}
+        blurb={reconnecting ? CONNECTION_COPY.reconnectBlurb : CONNECTION_COPY.setupTokenHelp}
+        action={reconnecting ? CONNECTION_COPY.reconnectAction : CONNECTION_COPY.claim}
+        pendingLabel={CONNECTION_COPY.claiming}
+        isPending={pending.isPending}
+        error={pending.error instanceof Error ? pending.error.message : null}
+        onCancel={() => {
+          pending.reset()
+          setStage({ kind: 'list' })
+        }}
+        onSubmit={(token) =>
+          stage.kind === 'reconnect'
+            ? reconnect.mutate({ id: stage.connectionId, token })
+            : claim.mutate(token)
+        }
+      />
+    )
   }
 
   const all = accounts.data ?? []
@@ -80,6 +174,15 @@ export function Accounts(): ReactNode {
     <div className="mx-auto max-w-2xl px-5 pb-16 pt-6">
       <h1 className="text-2xl font-semibold">{ACCOUNTS_COPY.title}</h1>
 
+      {done !== null && (
+        <p
+          role="status"
+          className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+        >
+          {done}
+        </p>
+      )}
+
       {accounts.data !== undefined && all.length === 0 && (
         <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
           {ACCOUNTS_COPY.emptyDetail}
@@ -103,23 +206,31 @@ export function Accounts(): ReactNode {
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               {ACCOUNTS_COPY.notConnectedDetail}
             </p>
-            <Link
-              href="/connections"
+            {/* The prominent one: with nothing connected, this is the only thing worth doing. */}
+            <button
+              type="button"
+              onClick={() => setStage({ kind: 'claim' })}
               className={cn(
-                'mt-3 flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-semibold',
+                'mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold',
                 'bg-sky-600 text-white hover:bg-sky-500',
                 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500',
               )}
             >
               <Plus className="size-4" aria-hidden />
               {CONNECTION_COPY.connect}
-            </Link>
+            </button>
           </>
         ) : (
           <ul className="mt-2 space-y-2">
             {(connections.data ?? []).map((connection) => (
               <li key={connection.id}>
-                <ConnectionCard connection={connection} onSynced={refresh} />
+                <ConnectionCard
+                  connection={connection}
+                  onSynced={refresh}
+                  onReview={() => review.mutate(connection.id)}
+                  isReviewing={review.isPending}
+                  onReconnect={() => setStage({ kind: 'reconnect', connectionId: connection.id })}
+                />
               </li>
             ))}
           </ul>
@@ -127,9 +238,13 @@ export function Accounts(): ReactNode {
 
         {connections.data !== undefined && connections.data.length > 0 && (
           <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-            <Link href="/connections" className="font-medium text-sky-600 dark:text-sky-400">
+            <button
+              type="button"
+              onClick={() => setStage({ kind: 'claim' })}
+              className="font-medium text-sky-600 hover:underline dark:text-sky-400"
+            >
               {ACCOUNTS_COPY.addAnotherConnection}
-            </Link>{' '}
+            </button>{' '}
             {ACCOUNTS_COPY.addAnotherHelp}
           </p>
         )}
@@ -227,9 +342,15 @@ export function Accounts(): ReactNode {
 function ConnectionCard({
   connection,
   onSynced,
+  onReview,
+  isReviewing,
+  onReconnect,
 }: {
   connection: ConnectionSummary
   onSynced: () => Promise<void>
+  onReview: () => void
+  isReviewing: boolean
+  onReconnect: () => void
 }): ReactNode {
   const sync = useMutation({ mutationFn: () => syncConnection(connection.id), onSuccess: onSynced })
 
@@ -288,21 +409,24 @@ function ConnectionCard({
           {sync.isPending ? CONNECTION_COPY.syncing : CONNECTION_COPY.syncNow}
         </button>
 
-        {/* Both live on the connections screen: one re-asks the provider's questions, the other
-            replaces the credential. Neither is about an individual account. */}
-        <Link
-          href="/connections"
+        {/* Both act on the connection, never on one account: one re-asks the provider's questions,
+            the other replaces the credential. */}
+        <button
+          type="button"
+          onClick={onReview}
+          disabled={isReviewing}
           className={cn(
             'inline-flex min-h-9 items-center rounded-lg border px-3 text-xs font-medium',
             'border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800',
-            'focus-visible:outline-2 focus-visible:outline-sky-500',
+            'focus-visible:outline-2 focus-visible:outline-sky-500 disabled:opacity-50',
           )}
         >
           {CONNECTION_COPY.review}
-        </Link>
+        </button>
 
-        <Link
-          href="/connections"
+        <button
+          type="button"
+          onClick={onReconnect}
           className={cn(
             'inline-flex min-h-9 items-center rounded-lg border px-3 text-xs font-medium',
             'border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800',
@@ -310,7 +434,7 @@ function ConnectionCard({
           )}
         >
           {CONNECTION_COPY.reconnect}
-        </Link>
+        </button>
       </div>
     </div>
   )

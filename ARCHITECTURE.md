@@ -746,6 +746,21 @@ The suggestion is therefore per-institution and not a blanket flip: a liability 
 inversion **only when the provider sent it positive**. Always inverting would break every institution
 that already reports the sign we use.
 
+### 14.1 Transactions
+
+`/transactions` filters entirely in the browser: search, account and date range are a pass over an
+array already in IndexedDB, and changing any of them issues **no request**. That is the point of §7
+rather than an optimisation — descriptions and amounts are ciphertext in Postgres and cannot be
+searched there at all, so the work has to happen wherever the plaintext is.
+
+Amounts are searchable alongside text, because a half-remembered charge is the one thing somebody
+can be certain of. The count reads "15 of 125" whenever a filter is active, so a short list is never
+mistaken for a complete one.
+
+**Money in is green; money out is plain.** Colouring every outgoing amount red would render an
+ordinary week of groceries as a page of errors. Spending is not a problem, it is what a current
+account is for, and marking the rarer direction is what makes the colour informative.
+
 ### 15.1a Managing accounts
 
 `/accounts` lists every account grouped by the connection it came from, with manual accounts as
@@ -762,8 +777,10 @@ institution is the distinction a person actually makes. A second connection exis
 household member with their own Bridge account, so adding one is a quiet link rather than a
 competing primary action.
 
-`/connections` remains, reached from here, for the two things that are about the credential rather
-than an account: reconnecting, and re-confirming the provider's answers.
+**There is no separate connections screen.** There was, and it listed one connection and hosted
+three flows that the accounts page linked out to — claiming a connection, re-confirming the
+provider's answers, and replacing a credential. A page whose only purpose is to be bounced to is
+worse than those flows living where the accounts are, so they are stages of this screen.
 
 **Deleting offers closing first.** Closing keeps the transactions and the history and merely stops
 the account counting, which is right for an account that was real; deletion is for one added by

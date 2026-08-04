@@ -3,7 +3,6 @@ import {
   Banknote,
   ChartLine,
   CreditCard,
-  Landmark,
   PiggyBank,
   Settings,
   Upload,
@@ -28,7 +27,6 @@ export type DestinationKey =
   | 'portfolio'
   | 'accounts'
   | 'household'
-  | 'connections'
   | 'import'
   | 'categories'
   | 'settings'
@@ -117,16 +115,6 @@ export const DESTINATIONS: readonly Destination[] = [
     short: 'Household',
     icon: Users,
     tabbable: false,
-  },
-  {
-    key: 'connections',
-    path: '/connections',
-    label: 'Connections',
-    short: 'Banks',
-    icon: Landmark,
-    // Tabbable: sync health is worth glancing at often when a connection is flaky, and it gives
-    // the tab chooser a fifth option so there is a real choice to make.
-    tabbable: true,
   },
   {
     key: 'import',

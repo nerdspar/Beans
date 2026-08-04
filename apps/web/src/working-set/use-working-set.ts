@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
 import { SESSION_KEY } from '../auth/use-session.js'
-import { clearWorkingSet, readAll } from './db.js'
+import { clearWorkingSet, readAll, type StoredTransaction } from './db.js'
 import { deriveWorkingSet, type DerivedWorkingSet } from './derive.js'
 import { NoHouseholdYetError, NotSignedInError, syncWorkingSet } from './sync.js'
 
@@ -17,6 +17,8 @@ export const WORKING_SET_KEY = ['working-set'] as const
 
 export type WorkingSetState = {
   data: DerivedWorkingSet | null
+  /** Every cached transaction, unsorted. The screens that want them do their own filtering. */
+  transactions: StoredTransaction[]
   isLoading: boolean
   /** Signed in but not yet in a household — onboarding, not a failure. */
   needsHousehold: boolean
@@ -29,7 +31,11 @@ export type WorkingSetState = {
 export function useWorkingSet(): WorkingSetState {
   const queryClient = useQueryClient()
 
-  const stored: UseQueryResult<{ accounts: unknown[]; balances: unknown[] }> = useQuery({
+  const stored: UseQueryResult<{
+    accounts: unknown[]
+    balances: unknown[]
+    transactions: unknown[]
+  }> = useQuery({
     queryKey: WORKING_SET_KEY,
     queryFn: readAll,
     // The store is local. Nothing goes stale behind our back — the sync effect invalidates when it
@@ -69,6 +75,16 @@ export function useWorkingSet(): WorkingSetState {
     )
   }, [stored.data])
 
+  /*
+   * Kept out of `deriveWorkingSet`, which builds the balance series. Transactions do not participate
+   * in that and there can be a great many of them — folding them in would re-derive every account's
+   * series whenever one posted.
+   */
+  const transactions = useMemo(
+    () => (stored.data?.transactions ?? []) as StoredTransaction[],
+    [stored.data],
+  )
+
   const syncError = sync.error instanceof Error ? sync.error : null
 
   /*
@@ -89,6 +105,7 @@ export function useWorkingSet(): WorkingSetState {
 
   return {
     data: derived,
+    transactions,
     // Loading only while there is nothing to show. Once the store has content, a sync in flight is
     // a background refresh and must not blank the screen the user is reading.
     isLoading: stored.isLoading || (derived === null && sync.isLoading),

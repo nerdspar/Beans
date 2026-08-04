@@ -130,12 +130,12 @@ function AccountView({
           copy={banner}
           severity={assessment.severity === 'attention' ? 'attention' : 'caution'}
           /*
-           * Every action on this banner goes to the connections screen. Reconnecting needs a fresh
-           * setup token, and syncing needs the connection rather than the account — this screen has
-           * an account id and no way to turn one into the other, because the working set carries
+           * Every action on this banner goes to the accounts screen. Reconnecting needs a fresh
+           * setup token, and syncing acts on the connection rather than the account — this screen
+           * has an account id and no way to turn one into the other, because the working set carries
            * connection *health* per account but not the connection's identity.
            */
-          href="/connections"
+          href="/accounts"
         />
       )}
 

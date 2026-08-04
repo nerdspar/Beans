@@ -86,6 +86,7 @@ async function seedAccount(
   context: HouseholdContext,
   connectionId: string,
   spec: SeedAccount,
+  index: number,
 ): Promise<void> {
   const institution = await context.client.query<{ id: string }>(
     `insert into institutions (household_id, simplefin_org_domain, name)
@@ -147,6 +148,78 @@ async function seedAccount(
       ],
     )
   }
+
+  await seedTransactions(context, accountId, spec, index + 1)
+}
+
+/**
+ * Plausible transactions for an account.
+ *
+ * The seed wrote none until now, which meant the transactions screen had nothing to be built
+ * against. Amounts are **signed to add directly to net worth** — spending negative, income positive
+ * — because that is the convention everywhere else, and a fixture that got it backwards would make
+ * the screen look right while teaching the wrong thing.
+ */
+
+/** Deterministic pseudo-randomness, so re-seeding produces the same household. */
+function wobble(seed: number, index: number): number {
+  const value = Math.sin(seed * 12.9898 + index * 78.233) * 43758.5453
+  return value - Math.floor(value) - 0.5
+}
+
+const PAYEES = [
+  'Whole Foods Market',
+  'Shell',
+  'Amazon',
+  'Netflix',
+  'Starbucks',
+  "Trader Joe's",
+  'Home Depot',
+  'Delta Air Lines',
+  'Comcast',
+  'CVS Pharmacy',
+]
+
+async function seedTransactions(
+  context: HouseholdContext,
+  accountId: string,
+  spec: SeedAccount,
+  seed: number,
+): Promise<void> {
+  // Only accounts a person actually spends from. A mortgage has postings, but inventing them would
+  // put payments in the list that no institution reported.
+  if (spec.type !== 'depository' && spec.type !== 'credit') return
+
+  const stopAt = spec.syncedDaysAgo ?? 0
+
+  for (let index = 0; index < 60; index += 1) {
+    const daysAgo = stopAt + Math.floor(Math.abs(wobble(seed, index)) * 2 * 180)
+    const payee = PAYEES[Math.abs(Math.round(wobble(seed, index + 500) * 1000)) % PAYEES.length]
+
+    // Every twelfth entry is income, so the list is not a wall of identical outgoings.
+    const isIncome = index % 12 === 0
+    const magnitude = isIncome
+      ? 180_000 + Math.round(Math.abs(wobble(seed, index + 90)) * 400_000)
+      : 250 + Math.round(Math.abs(wobble(seed, index + 40)) * 18_000)
+
+    await context.client.query(
+      `insert into transactions
+         (household_id, account_id, simplefin_id, posted_date, amount, description, payee, pending)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
+       on conflict (account_id, simplefin_id) where simplefin_id is not null do nothing`,
+      [
+        context.householdId,
+        accountId,
+        `seed-${accountId}-${index}`,
+        isoDate(daysAgo),
+        context.cipher.encryptMoney(BigInt(isIncome ? magnitude : -magnitude)),
+        context.cipher.encryptText(isIncome ? 'Direct deposit' : `Purchase at ${payee}`),
+        context.cipher.encryptText(isIncome ? 'Payroll' : (payee ?? 'Unknown')),
+        // A couple of recent ones still pending, which is the state the UI has to render.
+        daysAgo < 3 && index % 7 === 0,
+      ],
+    )
+  }
 }
 
 function range(from: number, to: number): number[] {
@@ -196,12 +269,14 @@ async function main(): Promise<void> {
     }
 
     const connectionId = await seedConnection(context)
-    for (const spec of ACCOUNTS) {
-      await seedAccount(context, connectionId, spec)
+    for (const [index, spec] of ACCOUNTS.entries()) {
+      await seedAccount(context, connectionId, spec, index)
     }
   })
 
-  console.log(`Seeded ${ACCOUNTS.length} accounts with ${HISTORY_DAYS} days of history.`)
+  console.log(
+    `Seeded ${ACCOUNTS.length} accounts with ${HISTORY_DAYS} days of history, and transactions.`,
+  )
   await pool.end()
 }
 

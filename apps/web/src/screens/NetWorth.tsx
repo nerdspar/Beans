@@ -70,7 +70,7 @@ export function NetWorth(): ReactNode {
          * when there is nothing here; when a load failed it is the wrong advice, and offering it
          * would send someone to add accounts they may well already have.
          */
-        {...(failed ? {} : { action: { href: '/connections', label: NET_WORTH_STATE_COPY.emptyAction } })}
+        {...(failed ? {} : { action: { href: '/accounts', label: NET_WORTH_STATE_COPY.emptyAction } })}
       />
     )
   }
