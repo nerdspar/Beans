@@ -1,4 +1,4 @@
-import { daysBetween, type IsoDate } from '../balance-history/dates.js'
+import { addDays, daysBetween, eachDay, type IsoDate } from '../balance-history/dates.js'
 
 /**
  * Finding the movements that are not income or spending.
@@ -283,4 +283,65 @@ function categoryTotals(
 export function uncategorizedTotal(totals: readonly CategoryTotal[]): bigint {
   const found = totals.find((total) => total.categoryId === null)?.cents ?? 0n
   return found < 0n ? -found : found
+}
+
+export type DailyFlowPoint = {
+  date: IsoDate
+  /** Running total from the start of the window through this day, inclusive. */
+  cumulativeCents: bigint
+}
+
+/**
+ * A running total, one point per day across a window.
+ *
+ * The question this answers is not "what did I spend" — the header already says that — but "when
+ * did it happen, and am I ahead or behind where I was last time". Neither is legible from a monthly
+ * total, and both are obvious from the shape of a line that only moves on days something posted.
+ *
+ * **Every day gets a point, including days with nothing.** A line that skipped empty days would
+ * compress a quiet fortnight into the same width as a busy one, so the slope would stop meaning
+ * rate — which is the only thing a cumulative line is read for.
+ *
+ * Days are walked from `from` even when the first transaction is later, so two windows of the same
+ * length are comparable by index: point 7 is the seventh day of each, not the seventh day that
+ * happened to have activity.
+ */
+export function cumulativeDailyFlow(
+  transactions: readonly CashFlowTransaction[],
+  from: IsoDate,
+  to: IsoDate,
+  direction: 'net' | 'in' | 'out',
+  confirmedPairMembers: ReadonlySet<string> = new Set(),
+): DailyFlowPoint[] {
+  const perDay = new Map<string, bigint>()
+
+  for (const transaction of transactions) {
+    if (isExcludedFromCashFlow(transaction, confirmedPairMembers)) continue
+    if (transaction.postedDate < from || transaction.postedDate > to) continue
+
+    if (direction === 'in' && transaction.amountCents <= 0n) continue
+    if (direction === 'out' && transaction.amountCents >= 0n) continue
+
+    perDay.set(
+      transaction.postedDate,
+      (perDay.get(transaction.postedDate) ?? 0n) + transaction.amountCents,
+    )
+  }
+
+  let running = 0n
+  return eachDay(from, to).map((date) => {
+    running += perDay.get(date) ?? 0n
+    return { date, cumulativeCents: running }
+  })
+}
+
+/**
+ * The window of equal length immediately before this one.
+ *
+ * Equal length rather than "the previous calendar month", so the comparison holds for any range the
+ * user picked. Comparing 31 days against 28 would make February look thrifty every year.
+ */
+export function precedingWindow(from: IsoDate, to: IsoDate): { from: IsoDate; to: IsoDate } {
+  const span = daysBetween(from, to)
+  return { from: addDays(from, -(span + 1)), to: addDays(to, -(span + 1)) }
 }

@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { AreaChart } from '../charts/AreaChart.js'
 import { CategoryChart } from '../charts/CategoryChart.js'
+import { CumulativeFlow } from '../charts/CumulativeFlow.js'
 import { MonthlyBars } from '../charts/MonthlyBars.js'
 import { SearchableSelect } from '../lib/SearchableSelect.js'
 
@@ -63,14 +64,32 @@ const MONTHS = Array.from({ length: 12 }, (_, index) => {
   }
 })
 
+/** A month in progress: 31 days of window, 18 of them elapsed. */
+const THIS_MONTH = Array.from({ length: 31 }, (_, index) => {
+  const step = index < 2 ? 0 : index < 12 ? -12_000 : index < 13 ? 180_000 : -9_000
+  return { date: `2026-08-${String(index + 1).padStart(2, '0')}`, step }
+}).reduce<Array<{ date: string; cumulativeCents: bigint }>>((points, day) => {
+  const previous = points.at(-1)?.cumulativeCents ?? 0n
+  points.push({ date: day.date, cumulativeCents: previous + BigInt(day.step) })
+  return points
+}, [])
+
+/** The month before, which ends lower — the case the comparison line exists to show. */
+const LAST_MONTH = THIS_MONTH.map((point, index) => ({
+  date: point.date,
+  cumulativeCents: point.cumulativeCents - BigInt(index * 9_000),
+}))
+
 export function DevPreview(): ReactNode {
   const [narrow, setNarrow] = useState('')
   const [wide, setWide] = useState('')
   const [scrub, setScrub] = useState<number | null>(null)
   const [categoryScrub, setCategoryScrub] = useState<number | null>(null)
+  const [flowScrub, setFlowScrub] = useState<number | null>(null)
 
   const scrubbed = scrub === null ? undefined : SERIES[scrub]
   const category = categoryScrub === null ? undefined : SERIES[categoryScrub]
+  const flowPoint = flowScrub === null ? undefined : THIS_MONTH[flowScrub]
 
   return (
     <div className="mx-auto max-w-2xl space-y-10 p-6">
@@ -104,6 +123,24 @@ export function DevPreview(): ReactNode {
             options={[{ value: '', label: 'Skip' }, ...ACCOUNTS]}
           />
         </div>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold">CumulativeFlow — month to date vs the month before</h2>
+        <p className="text-xs tabular-nums text-slate-500">
+          {flowPoint === undefined ? 'Not reading' : `${flowPoint.date} · ${money(flowPoint.cumulativeCents)}`}
+        </p>
+        <CumulativeFlow
+          series={THIS_MONTH}
+          comparison={LAST_MONTH}
+          color="#38bdf8"
+          formatValue={money}
+          scrubIndex={flowScrub}
+          onScrub={setFlowScrub}
+          describePoint={(index) => THIS_MONTH[index]?.date ?? ''}
+          scrubLabel="Running total"
+          elapsedCount={18}
+        />
       </section>
 
       <section className="space-y-2">

@@ -210,6 +210,28 @@ export function MonthlyBars({
         />
       </svg>
 
+      {/*
+        A dot per month on the net line.
+        
+        DOM elements rather than SVG circles: the viewBox is stretched with
+        `preserveAspectRatio="none"`, so anything round drawn inside it comes out an ellipse. The
+        line alone is hard to place against the bars — the dots are what say which month a point
+        belongs to.
+      */}
+      {mode === 'net' &&
+        geometry.bars.map((bar) => (
+          <div
+            key={`dot-${bar.month}`}
+            className="pointer-events-none absolute size-2 rounded-full border border-white bg-slate-500 dark:border-slate-950 dark:bg-slate-300"
+            style={{
+              left: `${(bar.centre / geometry.width) * 100}%`,
+              top: bar.netY,
+              transform: 'translate(-50%, -50%)',
+            }}
+            aria-hidden
+          />
+        ))}
+
       {/* Positioned over the plot rather than drawn in SVG, so it is not stretched by the viewBox. */}
       <span
         className={cn(

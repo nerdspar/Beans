@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  cumulativeDailyFlow,
   incomeByCategory,
+  precedingWindow,
   isExcludedFromCashFlow,
   spendingByCategory,
   uncategorizedTotal,
@@ -315,5 +317,115 @@ describe('uncategorizedTotal', () => {
 
   it('is zero when there is nothing at all', () => {
     expect(uncategorizedTotal([])).toBe(0n)
+  })
+})
+
+/**
+ * The running total across a window.
+ *
+ * Read for shape rather than for a figure — the header already gives the total. What the line says
+ * is *when* the money moved, and whether this period is ahead of or behind the last one at the same
+ * point in it.
+ */
+describe('cumulativeDailyFlow', () => {
+  const august = [
+    { id: 'pay', postedDate: '2026-08-02', amountCents: 300_000n },
+    { id: 'rent', postedDate: '2026-08-03', amountCents: -180_000n },
+    { id: 'shop', postedDate: '2026-08-05', amountCents: -2_000n },
+  ]
+
+  it('accumulates day by day', () => {
+    const points = cumulativeDailyFlow(august, '2026-08-01', '2026-08-05', 'net')
+
+    expect(points.map((point) => point.cumulativeCents)).toEqual([
+      0n,
+      300_000n,
+      120_000n,
+      120_000n,
+      118_000n,
+    ])
+  })
+
+  /**
+   * A line that skipped empty days would compress a quiet fortnight into the same width as a busy
+   * one, so its slope would stop meaning rate — the only thing a cumulative line is read for.
+   */
+  it('gives every day a point, including days when nothing happened', () => {
+    const points = cumulativeDailyFlow(august, '2026-08-01', '2026-08-07', 'net')
+
+    expect(points).toHaveLength(7)
+    expect(points.map((point) => point.date)).toContain('2026-08-04')
+    // The 4th holds the 3rd's total rather than dropping to zero or vanishing.
+    expect(points.find((point) => point.date === '2026-08-04')?.cumulativeCents).toBe(120_000n)
+  })
+
+  it('starts at the window, not at the first transaction', () => {
+    // Point 1 is the first day of the window, so two windows compare by index.
+    const points = cumulativeDailyFlow(august, '2026-07-30', '2026-08-03', 'net')
+    expect(points[0]).toEqual({ date: '2026-07-30', cumulativeCents: 0n })
+  })
+
+  it('follows one direction when asked', () => {
+    const income = cumulativeDailyFlow(august, '2026-08-01', '2026-08-05', 'in')
+    const spending = cumulativeDailyFlow(august, '2026-08-01', '2026-08-05', 'out')
+
+    expect(income.at(-1)?.cumulativeCents).toBe(300_000n)
+    expect(spending.at(-1)?.cumulativeCents).toBe(-182_000n)
+  })
+
+  it('excludes confirmed transfers, like every other total', () => {
+    const withTransfer = [
+      ...august,
+      { id: 'out', postedDate: '2026-08-04', amountCents: -50_000n },
+    ]
+    const points = cumulativeDailyFlow(
+      withTransfer,
+      '2026-08-01',
+      '2026-08-05',
+      'net',
+      new Set(['out']),
+    )
+
+    expect(points.at(-1)?.cumulativeCents).toBe(118_000n)
+  })
+
+  it('ignores anything outside the window', () => {
+    const points = cumulativeDailyFlow(august, '2026-08-04', '2026-08-05', 'net')
+    expect(points[0]?.cumulativeCents).toBe(0n)
+    expect(points.at(-1)?.cumulativeCents).toBe(-2_000n)
+  })
+
+  it('ends flat when the window runs past the last transaction', () => {
+    const points = cumulativeDailyFlow(august, '2026-08-01', '2026-08-09', 'net')
+    expect(points.at(-1)?.cumulativeCents).toBe(118_000n)
+  })
+})
+
+describe('precedingWindow', () => {
+  /** Equal length, not the previous calendar month — 31 days against 28 flatters February. */
+  it('returns the window of equal length immediately before', () => {
+    expect(precedingWindow('2026-08-01', '2026-08-31')).toEqual({
+      from: '2026-07-01',
+      to: '2026-07-31',
+    })
+  })
+
+  it('leaves no gap and no overlap with the window it precedes', () => {
+    const previous = precedingWindow('2026-08-01', '2026-08-31')
+    // The day after the previous window ends is the day this one starts.
+    expect(previous.to).toBe('2026-07-31')
+  })
+
+  it('keeps a short window short', () => {
+    expect(precedingWindow('2026-08-10', '2026-08-12')).toEqual({
+      from: '2026-08-07',
+      to: '2026-08-09',
+    })
+  })
+
+  /** February against January is the case a calendar-month rule gets wrong. */
+  it('compares equal spans across months of different lengths', () => {
+    const previous = precedingWindow('2026-02-01', '2026-02-28')
+    expect(previous).toEqual({ from: '2026-01-04', to: '2026-01-31' })
   })
 })

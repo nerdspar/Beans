@@ -6,7 +6,10 @@ import {
   parseDecimalToCents,
   resolveWindow,
   sliceToWindow,
+  compareDates,
+  cumulativeDailyFlow,
   incomeByCategory,
+  precedingWindow,
   spendingByCategory,
   uncategorizedTotal,
   summarizeCashFlow,
@@ -15,9 +18,12 @@ import {
 } from '@beans/shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, Search } from 'lucide-react'
-import { useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'wouter'
+import { CumulativeFlow } from '../charts/CumulativeFlow.js'
 import { MonthlyBars } from '../charts/MonthlyBars.js'
+import { SECTION_COLORS } from '../net-worth/colors.js'
+import { formatShortDate } from '../net-worth/display.js'
 import { cn } from '../lib/cn.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
 import { DEFAULT_RANGE, type RangeSelection } from '../net-worth/range.js'
@@ -52,6 +58,18 @@ export function CashFlow(): ReactNode {
   const [showProposals, setShowProposals] = useState(false)
   /** Which question is being asked. Not a rendering toggle — see CASH_FLOW_COPY.tabCashFlow. */
   const [tab, setTab] = useState<'cash-flow' | 'income' | 'expenses'>('cash-flow')
+  /** The day being read off the running total. Drives the header and scrolls the list. */
+  const [scrubIndex, setScrubIndex] = useState<number | null>(null)
+  const listRef = useRef<HTMLUListElement>(null)
+  /*
+   * Which side is driving.
+   *
+   * Scrubbing scrolls the list and scrolling the list moves the scrubber, so without a claim on who
+   * is in charge each one re-triggers the other and the pair oscillates. Whoever the user is
+   * touching wins until they stop.
+   */
+  const driver = useRef<'none' | 'chart' | 'list'>('none')
+
 
   const proposals = useQuery({ queryKey: ['transfers', 'proposed'], queryFn: listProposedTransfers })
 
@@ -77,6 +95,10 @@ export function CashFlow(): ReactNode {
     byIncomeCategory,
     uncategorizedSpending,
     uncategorizedIncome,
+    window,
+    daily,
+    dailyBefore,
+    entries,
   } = useMemo(() => {
     const inWindow = sliceToWindow(
       workingSet.transactions.map((transaction) => ({
@@ -103,12 +125,53 @@ export function CashFlow(): ReactNode {
     const spending = spendingByCategory(rows, workingSet.confirmedTransferIds)
     const income = incomeByCategory(rows, workingSet.confirmedTransferIds)
 
+    /*
+     * The daily running total, and the same span immediately before it.
+     *
+     * Built from every transaction rather than the sliced set, because the preceding window is by
+     * definition outside the current slice — slicing first would compare against nothing.
+     */
+    const window = resolveWindow(range, today)
+    const allRows = workingSet.transactions.map((transaction) => ({
+      id: transaction.id,
+      postedDate: transaction.postedDate,
+      amountCents: transaction.amountCents,
+      status: transaction.status,
+      categoryId: transaction.categoryId,
+      categoryKind:
+        transaction.categoryId === null
+          ? undefined
+          : workingSet.categories.get(transaction.categoryId)?.kind,
+    }))
+
+    const previous = precedingWindow(window.start, window.end)
+
     return {
       summary: summarizeCashFlow(rows, workingSet.confirmedTransferIds),
       byCategory: spending,
       byIncomeCategory: income,
       uncategorizedSpending: uncategorizedTotal(spending),
       uncategorizedIncome: uncategorizedTotal(income),
+      window,
+      daily: cumulativeDailyFlow(
+        allRows,
+        window.start,
+        window.end,
+        'net',
+        workingSet.confirmedTransferIds,
+      ),
+      dailyBefore: cumulativeDailyFlow(
+        allRows,
+        previous.from,
+        previous.to,
+        'net',
+        workingSet.confirmedTransferIds,
+      ),
+      /** Newest first, for the list the scrubber drives. */
+      entries: [...inWindow].sort(
+        (left, right) =>
+          compareDates(right.postedDate, left.postedDate) || left.id.localeCompare(right.id),
+      ),
     }
   }, [
     workingSet.transactions,
@@ -117,6 +180,57 @@ export function CashFlow(): ReactNode {
     range,
     today,
   ])
+
+  /** How much of the window has actually happened — the rest has not, and is not drawn. */
+  const elapsedDays = useMemo(() => {
+    const index = daily.findIndex((point) => point.date > today)
+    return index === -1 ? daily.length : index
+  }, [daily, today])
+
+  const onScrub = useCallback(
+    (index: number | null): void => {
+      driver.current = index === null ? 'none' : 'chart'
+      setScrubIndex(index)
+
+      const date = index === null ? null : daily[index]?.date
+      if (date === undefined || date === null) return
+
+      /*
+       * The first row on or before the scrubbed day. Exact-date lookup would find nothing on the
+       * many days with no transactions, and the list would sit still while the line moved.
+       */
+      const target = listRef.current?.querySelector<HTMLElement>(`[data-on-or-before="${date}"]`)
+      target?.scrollIntoView({ block: 'nearest' })
+    },
+    [daily],
+  )
+
+  /*
+   * The other direction: the topmost visible row decides where the line sits.
+   *
+   * Ignored while the chart is driving, or scrolling triggered by a scrub would move the scrubber,
+   * which would scroll again. The chart releases its claim when the gesture ends.
+   */
+  const onListScroll = useCallback((): void => {
+    if (driver.current === 'chart') return
+
+    const list = listRef.current
+    if (list === null) return
+
+    const top = list.getBoundingClientRect().top
+    const row = [...list.querySelectorAll<HTMLElement>('[data-on-or-before]')].find(
+      (candidate) => candidate.getBoundingClientRect().bottom >= top,
+    )
+
+    const date = row?.dataset['onOrBefore']
+    if (date === undefined) return
+
+    const index = daily.findIndex((point) => point.date === date)
+    if (index === -1) return
+
+    driver.current = 'list'
+    setScrubIndex(index)
+  }, [daily])
 
   if (workingSet.isLoading) {
     return <Message title={CASH_FLOW_COPY.loading} />
@@ -216,9 +330,36 @@ export function CashFlow(): ReactNode {
           </p>
 
           {/*
-            Only past one month. A single bar has nothing to compare itself to and no average worth
-            drawing — the month rows below say it better.
+            One month gets the running total; more than one gets bars.
+
+            Not a preference. A cumulative line across a year would be dominated by the trend and
+            say nothing about any month in it, and a bar per day for thirty days is unreadable. The
+            question changes with the span, so the chart does.
           */}
+          {summary.periods.length <= 1 && daily.length > 1 && (
+            <section className="mt-6">
+              <CumulativeFlow
+                series={daily}
+                comparison={dailyBefore}
+                color={SECTION_COLORS.household}
+                formatValue={formatCents}
+                scrubIndex={scrubIndex}
+                onScrub={onScrub}
+                describePoint={(index) => {
+                  const point = daily[Math.min(Math.max(index, 0), daily.length - 1)]
+                  return point === undefined
+                    ? ''
+                    : `${formatShortDate(point.date)}: ${formatCents(point.cumulativeCents)}`
+                }}
+                scrubLabel={CASH_FLOW_COPY.runningTotal}
+                elapsedCount={elapsedDays}
+              />
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {CASH_FLOW_COPY.comparedWith}
+              </p>
+            </section>
+          )}
+
           {summary.periods.length > 1 && (
             <MonthlyBars
               className="mt-6"
@@ -230,14 +371,70 @@ export function CashFlow(): ReactNode {
           )}
 
           {/* Kept below the chart: this is its table fallback as much as it is detail. */}
-          <h2 className="mt-6 text-sm font-semibold">{CASH_FLOW_COPY.byMonth}</h2>
-          <ul className="mt-2 space-y-3">
-            {[...summary.periods].reverse().map((period) => (
-              <li key={period.month}>
-                <MonthRow period={period} scale={largestMonth(summary.periods)} />
-              </li>
-            ))}
-          </ul>
+          {summary.periods.length > 1 && (
+            <>
+              <h2 className="mt-6 text-sm font-semibold">{CASH_FLOW_COPY.byMonth}</h2>
+              <ul className="mt-2 space-y-3">
+                {[...summary.periods].reverse().map((period) => (
+                  <li key={period.month}>
+                    <MonthRow period={period} scale={largestMonth(summary.periods)} />
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          {/*
+            The list the chart indexes into.
+            
+            A cumulative line says when the money moved; this says what it was. Scrubbing scrolls
+            here, and scrolling here moves the line — the two are one view of the same days, and
+            reading either alone means holding the other in your head.
+          */}
+          {summary.periods.length <= 1 && (
+            <section className="mt-6">
+              <h2 className="text-sm font-semibold">{CASH_FLOW_COPY.activityHeading}</h2>
+
+              {entries.length === 0 ? (
+                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                  {CASH_FLOW_COPY.activityEmpty}
+                </p>
+              ) : (
+                <ul
+                  ref={listRef}
+                  onScroll={onListScroll}
+                  className="mt-2 max-h-96 divide-y divide-slate-200 overflow-y-auto dark:divide-slate-800"
+                >
+                  {entries.map((entry) => (
+                    <li
+                      key={entry.id}
+                      data-on-or-before={entry.postedDate}
+                      className="flex items-baseline justify-between gap-3 py-2.5"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm">
+                          {entry.payee ?? entry.description ?? '—'}
+                        </p>
+                        <p className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                          {formatShortDate(entry.postedDate)}
+                          {entry.categoryId !== null &&
+                            ` · ${workingSet.categories.get(entry.categoryId)?.name ?? ''}`}
+                        </p>
+                      </div>
+                      <span
+                        className={cn(
+                          'shrink-0 text-sm tabular-nums',
+                          entry.amountCents > 0n && 'text-emerald-600 dark:text-emerald-400',
+                        )}
+                      >
+                        {formatCents(entry.amountCents)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
         </>
       ) : (
         <Breakdown

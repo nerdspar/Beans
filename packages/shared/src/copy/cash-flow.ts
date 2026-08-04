@@ -40,6 +40,15 @@ export const CASH_FLOW_COPY = {
   byCategoryIncome: 'Where it came from',
   byMonth: 'By month',
 
+  /*
+   * The single-month view. "Compared with" rather than "vs" because the dotted line is doing real
+   * work — without naming it, a second line on a chart is decoration nobody can interpret.
+   */
+  comparedWith: 'Dotted: the period before, day by day.',
+  runningTotal: 'Running total',
+  activityHeading: 'What happened',
+  activityEmpty: 'Nothing posted in this period.',
+
   /**
    * Reasons the totals below may be wrong, each with its size.
    *
