@@ -34,8 +34,12 @@ export const ACCOUNT_COPY = {
   activityUnavailable: 'Nothing has posted to this account yet.',
   /** The list is deliberately short — this is a summary, and Activity is the full record. */
   activityAll: 'See all activity',
-  /* A manual account has no provider to correct it, so the only way it changes is by being edited. */
-  manualEdit: 'Edit account',
+  /*
+   * Renaming matters more than it looks. Providers publish names their own customers do not
+   * recognize — Wealthfront sends investment accounts as "Joint (7E56)" — and a rename is
+   * permanent, because sync never overwrites a name the user has set.
+   */
+  manualEdit: 'Rename or edit',
   manualRecord: 'Record value',
 
   notFound: 'No such account',

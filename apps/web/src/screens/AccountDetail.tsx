@@ -102,14 +102,9 @@ function AccountView({
 
   /*
    * The editors take the managed shape, which carries fields the working set does not — the sign
-   * convention flag, the tax treatment, whether the type was user-set. Fetched only when this
-   * account is manual, since that is the only case with a button to open one.
+   * convention flag, the tax treatment, whether the type was user-set.
    */
-  const managed = useQuery({
-    queryKey: ['accounts'],
-    queryFn: listManagedAccounts,
-    enabled: account.isManual,
-  })
+  const managed = useQuery({ queryKey: ['accounts'], queryFn: listManagedAccounts })
 
   const managedAccount: ManagedAccount | undefined = managed.data?.find(
     (candidate) => candidate.id === account.id,
@@ -202,27 +197,36 @@ function AccountView({
             {ACCOUNT_COPY.manualAccountDetail}
           </Note>
 
-          {/*
-            Both actions here rather than only on the accounts list. A manual account has no
-            provider to correct it, so editing is the only way it ever changes — and this is the
-            screen somebody is looking at when they notice it is wrong.
-          */}
-          <div className="flex gap-2 px-5 pt-3">
-            <ActionButton
-              icon={<Plus className="size-4" aria-hidden />}
-              label={ACCOUNT_COPY.manualRecord}
-              disabled={managedAccount === undefined}
-              onClick={() => setSheet('value')}
-            />
-            <ActionButton
-              icon={<Pencil className="size-4" aria-hidden />}
-              label={ACCOUNT_COPY.manualEdit}
-              disabled={managedAccount === undefined}
-              onClick={() => setSheet('edit')}
-            />
-          </div>
         </>
       )}
+
+      {/*
+        Renaming belongs here, not only on the accounts list.
+        
+        Provider names are frequently unusable — Wealthfront publishes investment accounts through
+        SimpleFIN as "Joint (7E56)", where the parenthetical is a fragment of their internal id and
+        matches nothing the account holder has ever seen. Sync never overwrites `display_name`, so a
+        rename is permanent, and this is the screen somebody is on when they notice.
+
+        Recording a value is manual-only: a synced account gets its balance from the provider, and
+        typing one over the top would be overwritten by the next sync.
+      */}
+      <div className="flex gap-2 px-5 pt-3">
+        <ActionButton
+          icon={<Pencil className="size-4" aria-hidden />}
+          label={ACCOUNT_COPY.manualEdit}
+          disabled={managedAccount === undefined}
+          onClick={() => setSheet('edit')}
+        />
+        {account.isManual && (
+          <ActionButton
+            icon={<Plus className="size-4" aria-hidden />}
+            label={ACCOUNT_COPY.manualRecord}
+            disabled={managedAccount === undefined}
+            onClick={() => setSheet('value')}
+          />
+        )}
+      </div>
 
       <div className="flex items-baseline justify-between gap-3 px-5 pt-4">
         <div>
