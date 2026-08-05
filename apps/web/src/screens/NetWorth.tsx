@@ -23,6 +23,7 @@ import {
 import { useWorkingSet } from '../working-set/use-working-set.js'
 import { useHistoryBackfill } from '../working-set/use-history-backfill.js'
 import type { DerivedAccount, DerivedWorkingSet } from '../working-set/derive.js'
+import { Loader2 } from 'lucide-react'
 import { RangeControl } from '../net-worth/RangeControl.js'
 import {
   DEFAULT_RANGE,
@@ -133,13 +134,6 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
       bySection: new Map(sections.map((group) => [group.section, take(group.series)])),
     }
   }, [window, household, sections])
-
-  const backfillNotice =
-    backfill.error !== null
-      ? NET_WORTH_STATE_COPY.loadingHistoryFailed
-      : backfill.isLoading
-        ? NET_WORTH_STATE_COPY.loadingHistory
-        : null
 
   const activeGroup = sections.find((group) => group.section === activeKey)
   const scope = activeKey ?? 'household'
@@ -263,38 +257,52 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
         </div>
 
         {/*
-          Under the chart, where the empty stretch is.
+          Over the chart, not under it.
           
-          An unexplained gap reads as "this history does not exist" rather than "it has not arrived
-          yet", and those want opposite reactions from the reader.
+          The gap being explained *is* the chart, so a line of text beneath it asks the reader to
+          look away from the thing they are puzzling over. Centred on the plot, it lands where the
+          eye already is.
+          
+          No `backdrop-blur`: on iOS it re-samples every frame and lags a scroll (see MobileShell).
+          A translucent flat fill costs nothing and does not drift.
         */}
-        {backfillNotice !== null && (
-          <p
-            aria-live="polite"
-            className={cn(
-              'mt-2 text-xs',
-              backfill.error !== null
-                ? 'text-rose-600 dark:text-rose-400'
-                : 'text-slate-500 dark:text-slate-400',
-            )}
-          >
-            {backfillNotice}
+        <div className="relative mt-3">
+          <CategoryChart
+            categoryKey={scope}
+            series={chartSeries}
+            color={color}
+            formatValue={formatValue}
+            height={190}
+            scrubIndex={scrubIndex}
+            onScrub={setScrubIndex}
+            describePoint={describePoint}
+            scrubLabel={NET_WORTH_SCRUB_COPY.label}
+            completeFromIndex={completeFromIndex}
+          />
+
+          {backfill.isLoading && (
+            <div
+              // Not interactive, so the chart underneath stays scrubbable while history arrives.
+              className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-50/70 dark:bg-slate-950/70"
+            >
+              <Loader2
+                className="size-7 animate-spin text-slate-400 dark:text-slate-500"
+                aria-hidden
+              />
+              {/* The spinner says nothing to a screen reader; this is the whole announcement. */}
+              <span aria-live="polite" className="sr-only">
+                {NET_WORTH_STATE_COPY.loadingHistory}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* An error is not a spinner — it needs words, and it needs to persist. */}
+        {backfill.error !== null && (
+          <p role="alert" className="mt-2 text-xs text-rose-600 dark:text-rose-400">
+            {NET_WORTH_STATE_COPY.loadingHistoryFailed}
           </p>
         )}
-
-        <CategoryChart
-          className="mt-3"
-          categoryKey={scope}
-          series={chartSeries}
-          color={color}
-          formatValue={formatValue}
-          height={190}
-          scrubIndex={scrubIndex}
-          onScrub={setScrubIndex}
-          describePoint={describePoint}
-          scrubLabel={NET_WORTH_SCRUB_COPY.label}
-          completeFromIndex={completeFromIndex}
-        />
 
         {/*
           Only at household scope, where the boundary is the sum of several accounts' coverage. A
