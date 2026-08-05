@@ -6,7 +6,6 @@ import {
   formatCents,
   resolveWindow,
   sliceToWindow,
-  toIsoDate,
 } from '@beans/shared'
 import { Search, X } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -18,6 +17,7 @@ import { SearchableSelect } from '../lib/SearchableSelect.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
 import { DEFAULT_RANGE, type RangeSelection } from '../net-worth/range.js'
 import { WORKING_SET_KEY, useWorkingSet } from '../working-set/use-working-set.js'
+import { localToday } from '../lib/today.js'
 
 /**
  * Everything that happened, filtered locally.
@@ -69,7 +69,7 @@ export function Transactions(): ReactNode {
   const deferredQuery = useDeferredValue(query)
 
   const accounts = workingSet.data?.byId
-  const today = toIsoDate(new Date())
+  const today = localToday()
 
   const { visible, total } = useMemo(() => {
     const window = resolveWindow(range, today)

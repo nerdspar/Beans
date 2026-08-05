@@ -1,4 +1,4 @@
-import { toIsoDate, type IsoDate, type PresetRangeKey, type RangeSelection } from '@beans/shared'
+import { type IsoDate, type PresetRangeKey, type RangeSelection } from '@beans/shared'
 
 /**
  * The presentation half of the range model.
@@ -17,6 +17,7 @@ export {
   type PresetRangeKey,
   type RangeSelection,
 } from '@beans/shared'
+import { localToday } from '../lib/today.js'
 
 export const PRESETS: ReadonlyArray<{ key: PresetRangeKey; label: string }> = [
   { key: 'this-month', label: 'This month' },
@@ -36,7 +37,7 @@ export const DEFAULT_RANGE: RangeSelection = { kind: 'preset', key: '90-days' }
  * keeps the window logic testable and free of the runner's timezone.
  */
 export function todayIso(): IsoDate {
-  return toIsoDate(new Date())
+  return localToday()
 }
 
 const SHORT_DATE = new Intl.DateTimeFormat(undefined, {

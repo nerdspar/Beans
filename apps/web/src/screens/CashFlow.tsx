@@ -15,7 +15,6 @@ import {
   spendingByCategory,
   uncategorizedTotal,
   summarizeCashFlow,
-  toIsoDate,
   type CashFlowPeriod,
 } from '@beans/shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -39,6 +38,7 @@ import {
 } from '../transfers/api.js'
 import { WORKING_SET_KEY } from '../working-set/use-working-set.js'
 import { useWorkingSet } from '../working-set/use-working-set.js'
+import { localToday } from '../lib/today.js'
 
 /**
  * What came in, what went out, and what is neither.
@@ -121,7 +121,7 @@ export function CashFlow(): ReactNode {
     onSuccess: refresh,
   })
 
-  const today = toIsoDate(new Date())
+  const today = localToday()
 
   const {
     summary,

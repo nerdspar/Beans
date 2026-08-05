@@ -6,7 +6,6 @@ import {
   formatCents,
   resolveWindow,
   sliceToWindow,
-  toIsoDate,
 } from '@beans/shared'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'wouter'
@@ -17,6 +16,7 @@ import { formatAxisValue, formatShortDate } from '../net-worth/display.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
 import { DEFAULT_RANGE, type RangeSelection } from '../net-worth/range.js'
 import { useWorkingSet } from '../working-set/use-working-set.js'
+import { localToday } from '../lib/today.js'
 
 /**
  * Investments, at account level.
@@ -32,7 +32,7 @@ const CHART_HEIGHT = 180
 export function Portfolio(): ReactNode {
   const workingSet = useWorkingSet()
   const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE)
-  const today = toIsoDate(new Date())
+  const today = localToday()
 
   const investments = useMemo(
     () =>

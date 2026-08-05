@@ -7,9 +7,9 @@ import {
   toIsoDate,
   type ConnectionBannerCopy,
   type HealthAssessment,
-  type IsoDate,
   type SyncMoment,
 } from '@beans/shared'
+import { localIsoDate } from '../lib/today.js'
 
 /**
  * The account shape these helpers need, structurally.
@@ -42,20 +42,6 @@ const LOCAL_DATE = new Intl.DateTimeFormat(undefined, {
   day: 'numeric',
   year: 'numeric',
 })
-
-/**
- * The reader's calendar date, which is not always UTC's.
- *
- * `toIsoDate` gives the UTC date an instant falls on, which is right for a stored date and wrong for
- * "what day is it here": after 8pm Eastern they differ, and a sync from this afternoon would be
- * described as yesterday's.
- */
-function localIsoDate(instant: Date): IsoDate {
-  const year = instant.getFullYear()
-  const month = String(instant.getMonth() + 1).padStart(2, '0')
-  const day = String(instant.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
 
 /** Whole days between a sync and now, both on the reader's calendar. */
 export function localDaysSince(iso: string | null, now: Date): number | null {

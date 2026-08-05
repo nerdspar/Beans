@@ -4,13 +4,13 @@ import {
   carryStale,
   maxDate,
   sectionForType,
-  toIsoDate,
   type AccountType,
   type IsoDate,
   type NetWorthSection,
 } from '@beans/shared'
 import type { SeriesPoint } from '../charts/AreaChart.js'
 import type { StoredAccount, StoredBalance } from './db.js'
+import { localToday } from '../lib/today.js'
 
 /**
  * Turning the working set into what the screens draw.
@@ -182,7 +182,7 @@ export function deriveWorkingSet(
   balances: readonly StoredBalance[],
   options: { to?: IsoDate; showIncompleteHistory?: boolean } = {},
 ): DerivedWorkingSet {
-  const to = options.to ?? toIsoDate(new Date())
+  const to = options.to ?? localToday()
   const showIncomplete = options.showIncompleteHistory ?? true
 
   const byAccount = new Map<string, StoredBalance[]>()

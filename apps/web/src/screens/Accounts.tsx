@@ -6,7 +6,6 @@ import {
   describeAge,
   formatCents,
   parseDecimalToCents,
-  toIsoDate,
 } from '@beans/shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, RefreshCw } from 'lucide-react'
@@ -30,6 +29,7 @@ import {
 import { cn } from '../lib/cn.js'
 import { WORKING_SET_KEY } from '../working-set/use-working-set.js'
 import { Link } from 'wouter'
+import { localToday } from '../lib/today.js'
 
 /**
  * Every account, and everything you can do to one.
@@ -361,7 +361,7 @@ function ConnectionCard({
       lastSuccessAt: connection.lastSuccessAt,
       consecutiveFailures: connection.status === 'error' ? 3 : 0,
     },
-    toIsoDate(new Date()),
+    localToday(),
   )
 
   return (

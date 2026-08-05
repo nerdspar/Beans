@@ -5,7 +5,6 @@ import {
   TAX_TREATMENTS,
   TAX_TREATMENT_LABELS,
   isLiability,
-  toIsoDate,
   type AccountType,
 } from '@beans/shared'
 import * as Dialog from '@radix-ui/react-dialog'
@@ -19,6 +18,7 @@ import {
   updateAccount,
   type ManagedAccount,
 } from './api.js'
+import { localToday } from '../lib/today.js'
 
 /**
  * The account editing sheets.
@@ -376,7 +376,7 @@ export function ManualAccountForm({
   const [institutionName, setInstitutionName] = useState('')
   const [type, setType] = useState<AccountType>('other_asset')
   const [balance, setBalance] = useState('')
-  const [effectiveDate, setEffectiveDate] = useState(toIsoDate(new Date()))
+  const [effectiveDate, setEffectiveDate] = useState(localToday())
 
   const create = useMutation({
     mutationFn: () =>
@@ -459,7 +459,7 @@ export function ManualAccountForm({
           <input
             type="date"
             value={effectiveDate}
-            max={toIsoDate(new Date())}
+            max={localToday()}
             onChange={(event) => setEffectiveDate(event.target.value)}
             className={fieldClass}
           />
@@ -496,7 +496,7 @@ export function ManualBalanceForm({
   const [balance, setBalance] = useState(
     account.balance === null ? '' : account.balance.replace(/^-/, ''),
   )
-  const [effectiveDate, setEffectiveDate] = useState(toIsoDate(new Date()))
+  const [effectiveDate, setEffectiveDate] = useState(localToday())
 
   const record = useMutation({
     mutationFn: () =>
@@ -534,7 +534,7 @@ export function ManualBalanceForm({
           <input
             type="date"
             value={effectiveDate}
-            max={toIsoDate(new Date())}
+            max={localToday()}
             onChange={(event) => setEffectiveDate(event.target.value)}
             className={fieldClass}
           />
