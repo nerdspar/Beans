@@ -51,16 +51,39 @@ export const CONNECTION_COPY = {
   confirming: 'Syncing',
   confirmFailed: 'Could not confirm these accounts. Nothing was changed.',
 
-  review: 'Review accounts',
+  /**
+   * Named for both jobs, because it does two and only one was discoverable.
+   *
+   * It re-asks the type and sign questions — the original purpose — and it is also **the way newly
+   * linked accounts get in**. Nothing said so, which left the second job reachable only by already
+   * knowing about it.
+   */
+  review: 'Find new accounts',
   reviewTitle: 'Check these balances',
   /**
-   * The way back from a sign that was answered wrong.
+   * Both jobs, in the order they matter.
    *
-   * Re-confirming updates the account and then re-runs the sync, which rebuilds every balance
-   * snapshot from the corrected figure — so the history heals rather than keeping the old shape.
+   * Anything linked at SimpleFIN since setup arrives here — that is the only route in, and it went
+   * unmentioned. Re-confirming an account already added updates it and re-runs the sync, which
+   * rebuilds every balance snapshot from the corrected figure, so history heals rather than keeping
+   * the old shape.
    */
   reviewBlurb:
-    'Answers here replace the ones given when this connection was set up, and the balance history is rebuilt to match.',
+    'Anything linked at SimpleFIN since setup appears here, marked as new. Answers for accounts already added replace the ones given before, and their balance history is rebuilt to match.',
+
+  /** Marks the rows that were not here last time, so a long list does not hide the point. */
+  newAccount: 'New',
+
+  /**
+   * The one thing that genuinely cannot be done in Beans.
+   *
+   * SimpleFIN is a read-only protocol: `/info`, `/create`, `/claim`, `/accounts`, and nothing that
+   * links or unlinks an institution. `/create` is the protocol's own answer to this — a page the
+   * application sends the user to — so it is linked rather than described.
+   */
+  manageAtBridge: 'Add or remove a bank',
+  manageAtBridgeHelp:
+    'Linking a bank needs its own login, so it happens at SimpleFIN. Everything after that — names, types, closing, removing — is here. Come back and use “Find new accounts” to pull in anything you add.',
 
   syncNow: 'Sync now',
   syncing: 'Syncing',

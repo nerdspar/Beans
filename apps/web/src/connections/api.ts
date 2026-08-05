@@ -38,6 +38,13 @@ export type ConnectionSummary = {
   status: 'healthy' | 'stale' | 'error'
   lastSuccessAt: string | null
   accountCount: number
+  /**
+   * The SimpleFIN server's own page for linking an institution — the protocol's `GET /create`.
+   *
+   * Null only when the stored access URL would not parse. Never carries credentials: the server
+   * rebuilds it from the origin rather than editing the string.
+   */
+  createUrl: string | null
   errors: string[]
 }
 

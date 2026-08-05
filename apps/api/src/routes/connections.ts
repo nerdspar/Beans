@@ -15,7 +15,7 @@ import {
   withHouseholdContext,
   type ContextDependencies,
 } from '../repositories/household-context.js'
-import { SimplefinError } from '../simplefin/client.js'
+import { SimplefinError, createPageUrl } from '../simplefin/client.js'
 import { runSync } from '../sync/sync-service.js'
 
 /**
@@ -261,8 +261,9 @@ export const connectionRoutes: FastifyPluginAsync<ConnectionRoutesOptions> = asy
           last_success_at: Date | null
           last_error: Buffer | null
           account_count: string
+          access_url: Buffer
         }>(
-          `select c.id, c.status, c.last_success_at, c.last_error,
+          `select c.id, c.status, c.last_success_at, c.last_error, c.access_url,
                   (select count(*) from accounts a where a.connection_id = c.id) as account_count
              from connections c
             order by c.created_at`,
@@ -273,6 +274,15 @@ export const connectionRoutes: FastifyPluginAsync<ConnectionRoutesOptions> = asy
           status: row.status,
           lastSuccessAt: row.last_success_at,
           accountCount: Number(row.account_count),
+          /*
+           * The server's own page for linking an institution, derived from the access URL.
+           *
+           * **The access URL itself never leaves the server**, and `createPageUrl` rebuilds the
+           * address from `origin` with the basic-auth userinfo dropped rather than editing the
+           * string — so a parse failure yields null rather than something partially scrubbed.
+           * Derived rather than hardcoded because a household may be on its own SimpleFIN server.
+           */
+          createUrl: createPageUrl(context.cipher.decryptText(row.access_url)),
           errors:
             row.last_error === null ? [] : context.cipher.decryptJson<string[]>(row.last_error),
         }))

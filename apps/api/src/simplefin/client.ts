@@ -245,3 +245,37 @@ export function splitIntoWindows(
 
   return windows
 }
+
+/**
+ * The server's own `GET /create` page — where a user goes to link an institution.
+ *
+ * `/create` is one of the protocol's four endpoints and the only one meant for a person rather than
+ * a program: the application "directs a user to this URL to initiate a bank-app connection", and the
+ * server authenticates them and walks them through producing a setup token. It is not an API, and
+ * there is no protocol call that adds, removes or edits a linked institution.
+ *
+ * Derived from the stored access URL rather than hardcoded, because a household may be on a
+ * different SimpleFIN server than the public Bridge.
+ *
+ * **The access URL carries HTTP basic-auth credentials, and this returns a string to the client.**
+ * The userinfo is cleared explicitly rather than by string surgery, and the whole thing is rebuilt
+ * from `origin` so nothing from the original can survive by accident. If this ever returns null it
+ * is because the URL did not parse — never a partially-scrubbed value.
+ */
+export function createPageUrl(accessUrl: string): string | null {
+  let parsed: URL
+
+  try {
+    parsed = new URL(accessUrl)
+  } catch {
+    return null
+  }
+
+  /*
+   * The access URL points at the protocol root — `https://user:pass@host/simplefin`. `/create` is a
+   * sibling of `/accounts` beneath it, so the trailing segment is kept and `/create` appended.
+   */
+  const base = parsed.pathname.replace(/\/+$/, '')
+
+  return `${parsed.origin}${base}/create`
+}

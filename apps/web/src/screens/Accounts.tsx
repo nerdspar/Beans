@@ -8,7 +8,7 @@ import {
   parseDecimalToCents,
 } from '@beans/shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, RefreshCw } from 'lucide-react'
+import { ExternalLink, Plus, RefreshCw } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { AccountEditor, ManualAccountForm, ManualBalanceForm } from '../accounts/AccountForms.js'
 import { listManagedAccounts, type ManagedAccount } from '../accounts/api.js'
@@ -436,7 +436,38 @@ function ConnectionCard({
         >
           {CONNECTION_COPY.reconnect}
         </button>
+
+        {/*
+          Out to the SimpleFIN server's own `/create` page.
+          
+          Linking a bank is the one thing that genuinely cannot happen in Beans: the protocol is
+          read-only — `/info`, `/create`, `/claim`, `/accounts` — with nothing that links or unlinks
+          an institution. `/create` is the protocol's own answer, a page an application sends the
+          user to, so it is linked rather than explained away.
+          
+          `noreferrer` alongside `noopener`: the destination has no business knowing which screen of
+          a private finance app sent somebody there.
+        */}
+        {connection.createUrl !== null && (
+          <a
+            href={connection.createUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(
+              'inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium',
+              'border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800',
+              'focus-visible:outline-2 focus-visible:outline-sky-500',
+            )}
+          >
+            {CONNECTION_COPY.manageAtBridge}
+            <ExternalLink className="size-3.5" aria-hidden />
+          </a>
+        )}
       </div>
+
+      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+        {CONNECTION_COPY.manageAtBridgeHelp}
+      </p>
     </div>
   )
 }

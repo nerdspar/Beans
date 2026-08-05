@@ -451,6 +451,24 @@ under one person's login and defeat the encryption entirely.
   than being deleted.
 - Responses include a structured `errlist`. **Surface those to the user rather than swallowing them.**
 
+**The protocol is read-only, and that is a boundary rather than a gap.** It defines exactly four
+endpoints — `GET /info`, `GET /create`, `POST /claim/:token`, `GET /accounts` — and **none of them
+adds, removes or edits a linked institution**. That management lives in the SimpleFIN server's own
+account and cannot be proxied: linking a bank means that bank's login, MFA and consent screens.
+
+`GET /create` is not an API. The spec describes it as a page "an application directs a user to" —
+the server authenticates them and walks them through producing a setup token. So Beans links to it
+rather than reimplementing it, deriving the address from the stored access URL so a household on its
+own SimpleFIN server gets its own. **That derivation strips the basic-auth userinfo by rebuilding
+from `origin`, never by editing the string**, and returns null rather than anything partially
+scrubbed — the access URL is a credential and this value reaches the browser.
+
+Automating the server's web UI with a user's Bridge password was considered and rejected: it would
+replace a revocable read-only credential with the one that can add or remove every connection, and
+it breaks on any markup change or MFA prompt. Everything *after* linking — naming, typing, sign,
+tax treatment, closing, deleting — is in Beans already, and newly linked accounts arrive through
+re-discovery without a new token.
+
 **Sync health is a first-class feature.** Per-connection and per-account status of `healthy` | `stale`
 | `error` with last successful sync time. Silent sync failure is the worst possible bug in this app,
 because the numbers quietly go stale and everything still looks fine.

@@ -87,6 +87,24 @@ export function ConfirmAccounts({
 
   const includedCount = drafts.filter((draft) => draft.include).length
 
+  /*
+   * New accounts first, and only marked when there is something to contrast them with.
+   *
+   * On first setup every account is new, so a badge on all of them says nothing. Revisiting a
+   * connection after linking a bank is the case that matters: two new accounts can sit anywhere in
+   * a list of forty, and the whole reason for opening the screen is invisible.
+   *
+   * A stable sort, so accounts keep the provider's order within each group rather than reshuffling
+   * between visits.
+   */
+  const hasExisting = accounts.some((account) => account.alreadyLinked)
+
+  const ordered = hasExisting
+    ? [...accounts].sort(
+        (left, right) => Number(left.alreadyLinked) - Number(right.alreadyLinked),
+      )
+    : accounts
+
   return (
     <div className="mx-auto max-w-2xl px-5 pb-16 pt-6">
       <h1 className="text-2xl font-semibold">{CONNECTION_COPY.confirmTitle}</h1>
@@ -111,7 +129,7 @@ export function ConfirmAccounts({
       )}
 
       <ul className="mt-5 space-y-3">
-        {accounts.map((account) => {
+        {ordered.map((account) => {
           const draft = drafts.find((candidate) => candidate.key === account.simplefinAccountId)
           if (draft === undefined) return null
 
@@ -120,6 +138,7 @@ export function ConfirmAccounts({
               <AccountCard
                 account={account}
                 draft={draft}
+                isNew={hasExisting && !account.alreadyLinked}
                 onChange={(patch) => update(account.simplefinAccountId, patch)}
               />
             </li>
@@ -152,10 +171,13 @@ export function ConfirmAccounts({
 function AccountCard({
   account,
   draft,
+  isNew,
   onChange,
 }: {
   account: DiscoveredAccount
   draft: Draft
+  /** Only ever true alongside accounts that are not, so the mark carries a contrast. */
+  isNew: boolean
   onChange: (patch: Partial<Draft>) => void
 }): ReactNode {
   /*
@@ -179,14 +201,22 @@ function AccountCard({
     <div
       className={cn(
         'rounded-xl border p-4',
-        draft.include
-          ? 'border-slate-200 dark:border-slate-800'
-          : 'border-dashed border-slate-300 opacity-60 dark:border-slate-700',
+        // A new account is outlined rather than merely badged: sorting alone is easy to scroll past.
+        isNew
+          ? 'border-sky-400 dark:border-sky-600'
+          : draft.include
+            ? 'border-slate-200 dark:border-slate-800'
+            : 'border-dashed border-slate-300 opacity-60 dark:border-slate-700',
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">
+          <p className="flex items-center gap-2 truncate text-sm font-semibold">
+            {isNew && (
+              <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-[11px] font-medium text-sky-800 dark:bg-sky-950 dark:text-sky-300">
+                {CONNECTION_COPY.newAccount}
+              </span>
+            )}
             {account.institutionName ?? account.providerName}
           </p>
           <p className="truncate text-xs text-slate-500 dark:text-slate-400">
