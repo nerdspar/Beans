@@ -1,15 +1,19 @@
 import { CATEGORY_COPY } from '@beans/shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { RefreshCw, Trash2 } from 'lucide-react'
-import { type ReactNode } from 'react'
+import { Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import {
   applyRules,
+  createRule,
   deleteRule,
   listCategories,
   listRules,
-  type Category,
+  updateRule,
   type Rule,
+  type RuleInput,
 } from '../categories/api.js'
+import { CategoryTree } from '../categories/CategoryTree.js'
+import { RuleBuilder } from '../categories/RuleBuilder.js'
 import { cn } from '../lib/cn.js'
 import { WORKING_SET_KEY } from '../working-set/use-working-set.js'
 
@@ -21,8 +25,11 @@ import { WORKING_SET_KEY } from '../working-set/use-working-set.js'
  * undo — worse than having none, because the effects are real and the cause is invisible.
  */
 
+type Editing = { kind: 'none' } | { kind: 'new' } | { kind: 'edit'; rule: Rule }
+
 export function Categories(): ReactNode {
   const queryClient = useQueryClient()
+  const [editing, setEditing] = useState<Editing>({ kind: 'none' })
 
   const categories = useQuery({ queryKey: ['categories'], queryFn: listCategories })
   const rules = useQuery({ queryKey: ['rules'], queryFn: listRules })
@@ -37,11 +44,43 @@ export function Categories(): ReactNode {
   const remove = useMutation({ mutationFn: deleteRule, onSuccess: refresh })
   const apply = useMutation({ mutationFn: applyRules, onSuccess: refresh })
 
+  /*
+   * Saving a rule applies it immediately, to uncategorized transactions only — a rule never
+   * overwrites an answer somebody gave by hand.
+   */
+  const save = useMutation({
+    mutationFn: (input: RuleInput) =>
+      editing.kind === 'edit' ? updateRule(editing.rule.id, input) : createRule(input),
+    onSuccess: async () => {
+      setEditing({ kind: 'none' })
+      await refresh()
+    },
+  })
+
+  const refreshCategories = async (): Promise<void> => {
+    await queryClient.invalidateQueries({ queryKey: ['categories'] })
+    // Removing a category moves transactions, so the cached working set is stale.
+    await queryClient.invalidateQueries({ queryKey: WORKING_SET_KEY })
+  }
+
   return (
     <div>
 
       <div className="mt-2 flex items-baseline justify-between gap-3">
         <p className="text-xs text-slate-500 dark:text-slate-400">{CATEGORY_COPY.ruleScope}</p>
+        <div className="flex shrink-0 gap-2">
+        <button
+          type="button"
+          onClick={() => setEditing(editing.kind === 'new' ? { kind: 'none' } : { kind: 'new' })}
+          className={cn(
+            'inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium',
+            'border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800',
+            'focus-visible:outline-2 focus-visible:outline-sky-500',
+          )}
+        >
+          <Plus className="size-3.5" aria-hidden />
+          {CATEGORY_COPY.ruleAdd}
+        </button>
         <button
           type="button"
           onClick={() => apply.mutate()}
@@ -55,7 +94,21 @@ export function Categories(): ReactNode {
           <RefreshCw className={cn('size-3.5', apply.isPending && 'animate-spin')} aria-hidden />
           {CATEGORY_COPY.ruleApply}
         </button>
+        </div>
       </div>
+
+      {editing.kind !== 'none' && (
+        <div className="mt-3">
+          <RuleBuilder
+            categories={categories.data ?? []}
+            {...(editing.kind === 'edit' ? { rule: editing.rule } : {})}
+            isPending={save.isPending}
+            error={save.error instanceof Error ? save.error.message : null}
+            onSubmit={(input) => save.mutate(input)}
+            onCancel={() => setEditing({ kind: 'none' })}
+          />
+        </div>
+      )}
 
       {/* Reported, because "nothing happened" and "nothing matched" look identical otherwise. */}
       {apply.data !== undefined && (
@@ -86,6 +139,7 @@ export function Categories(): ReactNode {
                   rule={rule}
                   order={index + 1}
                   isPending={remove.isPending}
+                  onEdit={() => setEditing({ kind: 'edit', rule })}
                   onDelete={() => remove.mutate(rule.id)}
                 />
               </li>
@@ -99,59 +153,24 @@ export function Categories(): ReactNode {
       )}
 
       <h2 className="mt-8 text-sm font-semibold">{CATEGORY_COPY.categoriesHeading}</h2>
-      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-        {CATEGORY_COPY.categoriesNote}
-      </p>
-
-      <ul className="mt-3 space-y-4">
-        {groupByParent(categories.data ?? []).map(({ parent, children }) => (
-          <li key={parent.id}>
-            <p className="text-sm font-medium">
-              {parent.name}
-              <span className="ml-2 text-xs font-normal text-slate-500 dark:text-slate-400">
-                {CATEGORY_COPY.kindLabel[parent.kind]}
-              </span>
-            </p>
-            {children.length > 0 && (
-              <ul className="mt-1 flex flex-wrap gap-1.5">
-                {children.map((child) => (
-                  <li
-                    key={child.id}
-                    className="rounded-full bg-slate-100 px-2.5 py-1 text-xs dark:bg-slate-800"
-                  >
-                    {child.name}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </li>
-        ))}
-      </ul>
+      <div className="mt-2">
+        <CategoryTree categories={categories.data ?? []} onChanged={refreshCategories} />
+      </div>
     </div>
   )
-}
-
-/** Two levels, so this is the whole tree rather than the first step of a recursion. */
-function groupByParent(
-  categories: readonly Category[],
-): Array<{ parent: Category; children: Category[] }> {
-  return categories
-    .filter((category) => category.parentId === null)
-    .map((parent) => ({
-      parent,
-      children: categories.filter((category) => category.parentId === parent.id),
-    }))
 }
 
 function RuleRow({
   rule,
   order,
   isPending,
+  onEdit,
   onDelete,
 }: {
   rule: Rule
   order: number
   isPending: boolean
+  onEdit: () => void
   onDelete: () => void
 }): ReactNode {
   return (
@@ -163,7 +182,7 @@ function RuleRow({
             one is third rather than first is the difference between two categories.
           */}
           <span className="mr-2 text-xs text-slate-400 tabular-nums">{order}</span>
-          <span className="font-medium">{rule.matchDescription ?? '—'}</span>
+          <span className="font-medium">{describeKeywords(rule)}</span>
           <span className="text-slate-500 dark:text-slate-400"> → {rule.categoryName}</span>
         </p>
         {rule.matchType === 'regex' && (
@@ -173,11 +192,25 @@ function RuleRow({
         )}
       </div>
 
+      <span className="flex shrink-0 gap-1">
+      <button
+        type="button"
+        onClick={onEdit}
+        aria-label={`${CATEGORY_COPY.ruleEditAction}: ${describeKeywords(rule)}`}
+        className={cn(
+          'rounded-lg border p-2',
+          'border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800',
+          'focus-visible:outline-2 focus-visible:outline-sky-500',
+        )}
+      >
+        <Pencil className="size-4" aria-hidden />
+      </button>
+
       <button
         type="button"
         onClick={onDelete}
         disabled={isPending}
-        aria-label={`${CATEGORY_COPY.ruleDelete}: ${rule.matchDescription ?? ''}`}
+        aria-label={`${CATEGORY_COPY.ruleDelete}: ${describeKeywords(rule)}`}
         className={cn(
           'shrink-0 rounded-lg border p-2',
           'border-slate-300 hover:bg-rose-50 dark:border-slate-700 dark:hover:bg-rose-950/40',
@@ -186,6 +219,18 @@ function RuleRow({
       >
         <Trash2 className="size-4 text-rose-600 dark:text-rose-400" aria-hidden />
       </button>
+      </span>
     </div>
   )
+}
+
+/**
+ * A rule's terms, as one readable line.
+ *
+ * The joiner is the rule's own mode spelled out, because "and" versus "or" is the whole difference
+ * between a rule that fires on everything from a merchant and one that almost never fires.
+ */
+function describeKeywords(rule: Rule): string {
+  if (rule.keywords.length === 0) return '—'
+  return rule.keywords.join(rule.keywordMode === 'all' ? ' and ' : ' or ')
 }

@@ -77,9 +77,71 @@ export const CATEGORY_COPY = {
   /** Named because the order decides outcomes: the first matching rule wins. */
   ruleRegex: 'Matched as a regular expression.',
 
+  // ── Building a rule ────────────────────────────────────────────────────────
+  ruleNew: 'New rule',
+  ruleEdit: 'Edit rule',
+  ruleAdd: 'Add a rule',
+  ruleKeywordsLabel: 'Keywords',
+  ruleKeywordPlaceholder: 'Type a word and press Enter',
+  ruleKeywordRemove: (keyword: string): string => `Remove ${keyword}`,
+  ruleModeLabel: 'Match when',
+  ruleMode: { any: 'Any keyword', all: 'Every keyword' },
+  /**
+   * Spelled out rather than labelled AND/OR.
+   *
+   * This choice changes what a rule does more than any other field, and the failure is silent:
+   * "every" on a merchant's several spellings never fires, "any" on two narrowing words fires on
+   * far too much. Neither looks wrong until transactions are already categorized.
+   */
+  ruleModeHelp: {
+    any: 'One merchant, spelled several ways',
+    all: 'Narrow a broad word with a second',
+  },
+  ruleCategoryLabel: 'Category',
+  rulePickCategory: 'Choose a category',
+  ruleRegexToggle: 'Treat each keyword as a regular expression',
+  ruleSave: 'Save rule',
+  ruleSaving: 'Saving',
+  ruleCancel: 'Cancel',
+  ruleEditAction: 'Edit',
+
   categoriesHeading: 'Categories',
   categoriesNote:
-    'The set every household starts with. Renaming and adding your own is not built yet — rules reference a category’s stable slug, so a rename will not break them when it is.',
+    'Rules reference a category’s stable slug rather than its label, so renaming one never breaks them.',
+
+  // ── Editing categories ─────────────────────────────────────────────────────
+  categoryAdd: 'Add category',
+  categoryAddChild: 'Add subcategory',
+  categoryName: 'Name',
+  categoryKind: 'Kind',
+  categoryParent: 'Inside',
+  categoryTopLevel: 'Top level',
+  categorySave: 'Save',
+  categorySaving: 'Saving',
+  categoryCancel: 'Cancel',
+  categoryRename: 'Rename',
+  categoryDelete: 'Delete',
+  /** A built-in cannot go: rules and import presets reference the defaults by slug. */
+  categorySystem: 'Built in',
+  categorySystemNote: 'Built-in categories can be renamed but not removed.',
+
+  /**
+   * Deleting asks where things go, rather than telling you afterwards.
+   *
+   * "Deleted" quietly meaning "and uncategorized four hundred transactions" is the kind of thing
+   * somebody finds a month later in a cash flow chart, by which point they cannot tell what changed.
+   */
+  categoryDeleteTitle: (name: string): string => `Remove “${name}”?`,
+  categoryDeletePrompt: 'Move anything using it to:',
+  categoryDeleteUncategorized: 'Leave it uncategorized',
+  categoryDeleted: (transactions: number, rules: number): string => {
+    const parts: string[] = []
+    if (transactions > 0) {
+      parts.push(`${transactions} transaction${transactions === 1 ? '' : 's'} moved`)
+    }
+    if (rules > 0) parts.push(`${rules} rule${rules === 1 ? '' : 's'} moved`)
+    return parts.length === 0 ? 'Category removed.' : `Category removed, ${parts.join(' and ')}.`
+  },
   kindLabel: {
     income: 'Income',
     expense: 'Spending',

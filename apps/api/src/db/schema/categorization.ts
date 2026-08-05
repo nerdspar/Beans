@@ -21,7 +21,7 @@ import {
   primaryId,
   updatedAt,
 } from './columns.js'
-import { ruleMatchType, transferStatus } from './enums.js'
+import { keywordMode, ruleMatchType, transferStatus } from './enums.js'
 import { households } from './tenancy.js'
 
 /**
@@ -46,7 +46,19 @@ export const categoryRules = pgTable(
     priority: integer('priority').notNull().default(0),
     enabled: boolean('enabled').notNull().default(true),
 
+    /**
+     * The original single-term field, kept for rules written before keywords existed.
+     *
+     * Not migrated into `match_keywords` by SQL, because it is **encrypted** — the database cannot
+     * read it to transform it (ARCHITECTURE.md §3.1). The repository folds it into the keyword list
+     * on read instead, and nothing writes it any more.
+     */
     matchDescription: bytea('match_description'),
+
+    /** Encrypted JSON array of terms. Combined per `keyword_mode`. */
+    matchKeywords: bytea('match_keywords'),
+    keywordMode: keywordMode('keyword_mode').notNull().default('any'),
+
     matchType: ruleMatchType('match_type').notNull().default('contains'),
 
     /** Signed integer cents, encrypted like any other amount. */

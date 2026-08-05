@@ -75,6 +75,15 @@ export const categoryKind = pgEnum('category_kind', ['income', 'expense', 'trans
 export const ruleMatchType = pgEnum('rule_match_type', ['contains', 'regex'])
 
 /**
+ * How a rule combines its keywords.
+ *
+ * `any` is the default because it is what somebody means by "these are the words for this
+ * merchant" — an institution writes the same shop three different ways and any of them should
+ * match. `all` is for narrowing: AMAZON *and* PRIME, when AMAZON alone is too broad.
+ */
+export const keywordMode = pgEnum('keyword_mode', ['any', 'all'])
+
+/**
  * `rejected` is a stored state, not an absence. A dismissed pair must stay dismissed, or the
  * matcher re-proposes it after every sync and the user learns to ignore the prompt.
  */

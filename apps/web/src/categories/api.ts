@@ -1,10 +1,14 @@
+import type { KeywordMode } from '@beans/shared'
+
 /** Categories and rules. Mirrors `apps/api/src/routes/categories.ts`. */
+
+export type CategoryKind = 'income' | 'expense' | 'transfer'
 
 export type Category = {
   id: string
   slug: string
   name: string
-  kind: 'income' | 'expense' | 'transfer'
+  kind: CategoryKind
   parentId: string | null
   isSystem: boolean
 }
@@ -13,12 +17,22 @@ export type Rule = {
   id: string
   priority: number
   enabled: boolean
-  matchDescription: string | null
+  /** The terms this rule looks for. Legacy single-term rules arrive as a one-element list. */
+  keywords: string[]
+  keywordMode: KeywordMode
   matchType: 'contains' | 'regex'
   matchAccountId: string | null
   categoryId: string
   categoryName: string
   createdAt: string
+}
+
+export type RuleInput = {
+  keywords: string[]
+  keywordMode: KeywordMode
+  matchType: 'contains' | 'regex'
+  categoryId: string
+  matchAccountId?: string | null
 }
 
 async function send<T>(path: string, init?: RequestInit): Promise<T> {
@@ -46,15 +60,60 @@ export function listRules(): Promise<Rule[]> {
   return send<{ rules: Rule[] }>('/api/rules').then((b) => b.rules ?? [])
 }
 
-export function createRule(input: {
-  matchDescription: string
-  matchType: 'contains' | 'regex'
-  categoryId: string
-}): Promise<{ ruleId: string; categorized: number }> {
+export function createRule(input: RuleInput): Promise<{ ruleId: string; categorized: number }> {
   return send('/api/rules', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(input),
+  })
+}
+
+/** Editing keeps the rule's id, so its place in the order survives. */
+export function updateRule(id: string, input: RuleInput): Promise<{ categorized: number }> {
+  return send(`/api/rules/${id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+}
+
+export function createCategory(input: {
+  name: string
+  kind: CategoryKind
+  parentId: string | null
+}): Promise<{ categoryId: string }> {
+  return send('/api/categories', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+}
+
+export function updateCategory(
+  id: string,
+  patch: { name?: string; parentId?: string | null },
+): Promise<void> {
+  return send(`/api/categories/${id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+}
+
+/**
+ * Removes a category and reports what moved.
+ *
+ * `reassignTo: null` leaves its transactions uncategorized — which is a real choice, so the counts
+ * come back and the screen states them rather than saying "deleted".
+ */
+export function deleteCategory(
+  id: string,
+  reassignTo: string | null,
+): Promise<{ transactionsMoved: number; rulesMoved: number }> {
+  return send(`/api/categories/${id}`, {
+    method: 'DELETE',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ reassignTo }),
   })
 }
 

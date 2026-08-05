@@ -11,5 +11,6 @@ export {
   ruleMatches,
   type CategoryRule,
   type MatchableTransaction,
+  type KeywordMode,
   type RuleMatchType,
 } from './rules.js'

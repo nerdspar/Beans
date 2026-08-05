@@ -46,7 +46,12 @@ export function CategorySheet({
       await assignCategory(transaction.id, chosen)
 
       if (alsoRule && chosen !== null && matchText !== '') {
-        await createRule({ matchDescription: matchText, matchType: 'contains', categoryId: chosen })
+        await createRule({
+          keywords: [matchText],
+          keywordMode: 'any',
+          matchType: 'contains',
+          categoryId: chosen,
+        })
       }
     },
     onSuccess: onSaved,
