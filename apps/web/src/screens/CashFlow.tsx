@@ -21,6 +21,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, Search } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'wouter'
+import { useHere, withReturn } from '../lib/back.js'
 import { CumulativeFlow } from '../charts/CumulativeFlow.js'
 import { MonthlyBars } from '../charts/MonthlyBars.js'
 import { nextSelection, type ChartSelection } from '../charts/selection.js'
@@ -122,6 +123,8 @@ export function CashFlow(): ReactNode {
   })
 
   const today = localToday()
+  /* This screen as it stands — tab, range and any held selection — so back returns to it. */
+  const here = useHere(CASH_FLOW_COPY.title)
 
   const {
     summary,
@@ -744,10 +747,12 @@ export function CashFlow(): ReactNode {
 
                       <ul className="divide-y divide-slate-200 dark:divide-slate-800">
                         {rows.map((entry) => (
-                          <li
-                            key={entry.id}
-                            className="flex items-baseline justify-between gap-3 py-2.5"
-                          >
+                          <li key={entry.id}>
+                            {/* The same page every other transaction list opens. */}
+                            <Link
+                              href={withReturn(`/transactions/${entry.id}`, here)}
+                              className="flex items-baseline justify-between gap-3 py-2.5 focus-visible:outline-2 focus-visible:outline-sky-500"
+                            >
                             <div className="min-w-0">
                               <p className="truncate text-sm">
                                 {entry.payee ?? entry.description ?? '—'}
@@ -767,6 +772,7 @@ export function CashFlow(): ReactNode {
                             >
                               {formatCents(entry.amountCents)}
                             </span>
+                            </Link>
                           </li>
                         ))}
                       </ul>

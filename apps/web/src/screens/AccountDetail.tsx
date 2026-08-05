@@ -22,7 +22,7 @@ import { AccountEditor, ManualBalanceForm } from '../accounts/AccountForms.js'
 import { listManagedAccounts, type ManagedAccount } from '../accounts/api.js'
 import { accountHealth, formatLastUpdated } from '../accounts/display.js'
 import { Holdings } from '../accounts/Holdings.js'
-import { useBackTarget, useHere } from '../lib/back.js'
+import { useBackTarget, useHere, withReturn } from '../lib/back.js'
 import { CategoryChart } from '../charts/CategoryChart.js'
 import { cn } from '../lib/cn.js'
 import { SECTION_COLORS, SECTION_LABELS } from '../net-worth/colors.js'
@@ -466,7 +466,20 @@ function AccountView({
       ) : (
         <ul className="divide-y divide-slate-200 px-5 dark:divide-slate-800">
           {recent.map((transaction) => (
-            <li key={transaction.id} className="flex items-baseline justify-between gap-3 py-2.5">
+            <li key={transaction.id}>
+              {/*
+                The same transaction page the activity screen opens.
+                
+                These rows truncate exactly like that list does, and the string that identifies an
+                ambiguous charge is the institution's raw description — so the row that raises the
+                question has to be the one that answers it. Two lists showing the same rows where
+                only one of them opens is the kind of inconsistency nobody reports and everybody
+                notices.
+              */}
+              <Link
+                href={withReturn(`/transactions/${transaction.id}`, here)}
+                className="flex items-baseline justify-between gap-3 py-2.5 focus-visible:outline-2 focus-visible:outline-sky-500"
+              >
               <div className="min-w-0">
                 <p className="truncate text-sm">
                   {transaction.payee ?? transaction.description ?? '—'}
@@ -488,6 +501,7 @@ function AccountView({
               >
                 {formatCents(transaction.amountCents)}
               </span>
+              </Link>
             </li>
           ))}
         </ul>
