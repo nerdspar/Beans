@@ -273,3 +273,78 @@ describe('deriveWorkingSet', () => {
     expect(result.coverageStart).toBeNull()
   })
 })
+
+/**
+ * Snapshots reaching further back than the declared coverage.
+ *
+ * A household that turns on trust for its imported history gets a rebuild that writes snapshots
+ * earlier than `coverage_start_date` on purpose — the column keeps meaning "what the provider
+ * vouches for" so the setting stays reversible (ARCHITECTURE.md §4.2a).
+ *
+ * Clipping to the declared date discarded exactly those days, *after* the server had written them
+ * and sent them over the wire. The symptom was the setting appearing to do nothing at all for every
+ * synced account, while working for accounts whose declared coverage happened to be old already.
+ */
+describe('snapshots older than the declared coverage', () => {
+  it('draws them rather than discarding them', () => {
+    const derived = deriveWorkingSet(
+      [account({ id: 'cash', type: 'depository', coverageStartDate: '2025-08-03' })],
+      balances('cash', [
+        ['2019-01-02', 100_000n],
+        ['2025-08-03', 120_000n],
+      ]),
+      { showIncompleteHistory: true },
+    )
+
+    expect(derived.byId.get('cash')?.series[0]?.date).toBe('2019-01-02')
+  })
+
+  /**
+   * Widening the boundary cannot invent history, only stop discarding it.
+   *
+   * A declared coverage earlier than every snapshot does not stretch the series backwards —
+   * `carryForward` starts at the first observation rather than inventing a balance for the gap
+   * before it. So the change here can only ever *keep* days that exist.
+   */
+  it('does not invent days before the first snapshot, however early coverage is declared', () => {
+    const derived = deriveWorkingSet(
+      [account({ id: 'cash', type: 'depository', coverageStartDate: '2019-01-01' })],
+      balances('cash', [['2019-06-01', 100_000n]]),
+      { showIncompleteHistory: true },
+    )
+
+    expect(derived.byId.get('cash')?.series[0]?.date).toBe('2019-06-01')
+  })
+
+  /**
+   * The guard that made the old clip worth having: a series must not begin before there is anything
+   * to draw. Held to by the snapshots themselves, which exist only where a rebuild wrote one.
+   */
+  it('never begins before the oldest snapshot it holds', () => {
+    const derived = deriveWorkingSet(
+      [account({ id: 'cash', type: 'depository', coverageStartDate: null })],
+      balances('cash', [['2024-05-05', 100_000n]]),
+      { showIncompleteHistory: true },
+    )
+
+    expect(derived.byId.get('cash')?.series[0]?.date).toBe('2024-05-05')
+  })
+
+  /** One account reaching back must not drag the others' starts with it. */
+  it('leaves an account with recent coverage where it is', () => {
+    const derived = deriveWorkingSet(
+      [
+        account({ id: 'old', type: 'depository', coverageStartDate: '2025-08-03' }),
+        account({ id: 'new', type: 'credit', coverageStartDate: '2026-01-01' }),
+      ],
+      [
+        ...balances('old', [['2019-01-02', 100_000n]]),
+        ...balances('new', [['2026-01-01', -5_000n]]),
+      ],
+      { showIncompleteHistory: true },
+    )
+
+    expect(derived.byId.get('old')?.series[0]?.date).toBe('2019-01-02')
+    expect(derived.byId.get('new')?.series[0]?.date).toBe('2026-01-01')
+  })
+})

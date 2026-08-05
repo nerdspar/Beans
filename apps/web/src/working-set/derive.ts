@@ -3,6 +3,7 @@ import {
   carryForward,
   carryStale,
   maxDate,
+  minDate,
   sectionForType,
   type AccountType,
   type IsoDate,
@@ -62,9 +63,18 @@ export type DerivedWorkingSet = {
  * plotting sparse points would draw a straight line across the gap that reads as a real trend.
  * Carry-forward states the truth instead: the balance was what it last was.
  *
- * **Never starts before `coverageStartDate`** (ARCHITECTURE.md §4.3). Drawing to the left of it
- * presents an absence of history as a flat balance, which is a claim about the account rather than
- * about what is known.
+ * **Never starts before there is a snapshot** (ARCHITECTURE.md §4.3). Drawing to the left of the
+ * data presents an absence of history as a flat balance, which is a claim about the account rather
+ * than about what is known.
+ *
+ * The boundary is the earlier of the declared coverage and the oldest snapshot actually held, not
+ * the declared coverage alone. `coverage_start_date` means "what the provider vouches for", and a
+ * household that has turned on trust for its imported history has snapshots reaching further back
+ * than that on purpose (§4.2a) — clipping to the declared date threw those away *after* the server
+ * had written and sent them, so the setting appeared to do nothing for every synced account.
+ *
+ * Safe because a snapshot exists only where the rebuild wrote one, and the rebuild is what enforces
+ * §4.3 in the first place. Nothing here can invent a day; it can only decline to discard one.
  */
 function accountSeries(
   account: StoredAccount,
@@ -76,7 +86,15 @@ function accountSeries(
     return { series: [], observedThrough: null }
   }
 
-  const start = account.coverageStartDate === null ? from : maxDate(from, account.coverageStartDate)
+  const oldestHeld = snapshots.reduce<IsoDate>(
+    (earliest, snapshot) => (snapshot.asOfDate < earliest ? snapshot.asOfDate : earliest),
+    snapshots[0]?.asOfDate ?? from,
+  )
+
+  const declared =
+    account.coverageStartDate === null ? oldestHeld : minDate(account.coverageStartDate, oldestHeld)
+
+  const start = maxDate(from, declared)
 
   const observations = snapshots.map((snapshot) => ({
     date: snapshot.asOfDate,

@@ -167,6 +167,14 @@ and the chart did not move. The rebuild now deletes `derived` snapshots earlier 
 just wrote — scoped to that source, because imported and observed rows are precisely what the
 upsert-only rule protects.
 
+**The client clips to the data, not to the declared date.** `deriveWorkingSet` used to start each
+account's series at `max(window, coverage_start_date)`, which discarded exactly the days this
+setting exists to produce — after the server had written them and sent them over the wire. The
+symptom was the setting appearing to do nothing at all for every synced account, while working
+perfectly for accounts whose declared coverage happened to be old already. The boundary is now the
+earlier of the declared date and the oldest snapshot actually held, which is safe because a snapshot
+exists only where the rebuild wrote one, and the rebuild is what enforces §4.3 in the first place.
+
 Offered both at import time and in settings. Neither alone is enough: at import you are holding the
 file and know what is in it, but you cannot yet see what it draws; in settings you can see the
 result, but only after the moment you were best placed to judge the source.
