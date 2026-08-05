@@ -25,10 +25,20 @@ export type SyncOutcome = {
   transactions: number
 }
 
-async function request(cursor: string | null): Promise<WorkingSetResponse> {
+async function request(cursor: string | null, from?: string): Promise<WorkingSetResponse> {
   const url = new URL('/api/working-set', window.location.origin)
   if (cursor !== null) {
     url.searchParams.set('cursor', cursor)
+  }
+  /*
+   * How far back to reach. Omitted for an ordinary sync, which gets the default window.
+   *
+   * Sent without a cursor when backfilling, because a delta is "what changed since X" and nothing
+   * about an old balance has changed — it was simply never sent. Asking for a delta with an earlier
+   * `from` would return nothing at all.
+   */
+  if (from !== undefined) {
+    url.searchParams.set('from', from)
   }
 
   const response = await fetch(url, { credentials: 'same-origin' })
@@ -112,6 +122,35 @@ export async function syncWorkingSet(): Promise<SyncOutcome> {
   await applyDelta(response)
   return {
     wasFullResync: cursor === null,
+    accounts: response.accounts.length,
+    balances: response.balances.length,
+    transactions: response.transactions.length,
+  }
+}
+
+/**
+ * Fetches history older than the cache currently holds.
+ *
+ * The working set carries about two years by default, because eager-loading a decade across forty
+ * accounts is tens of megabytes on a phone (ARCHITECTURE.md §7.2). The design always said older
+ * data would be "fetched on demand when the user extends the range past it" — this is that, and
+ * without it selecting a custom range reaching back further simply drew nothing, with no
+ * explanation, because the client had nothing to draw.
+ *
+ * **A full read, not a delta.** Deltas answer "what changed since X", and nothing about a 2019
+ * balance has changed — it was never sent. So this asks with `from` and no cursor, and lets the
+ * upsert absorb the rows it already has.
+ *
+ * Deliberately does not move the stored cursor. This request is about *widening* the window, and a
+ * cursor written from it would be indistinguishable from an ordinary sync having happened.
+ */
+export async function backfillWorkingSet(from: string): Promise<SyncOutcome> {
+  const response = await request(null, from)
+
+  await applyDelta(response, { keepCursor: true })
+
+  return {
+    wasFullResync: false,
     accounts: response.accounts.length,
     balances: response.balances.length,
     transactions: response.transactions.length,

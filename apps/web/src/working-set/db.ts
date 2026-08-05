@@ -155,7 +155,10 @@ export async function readSyncState(): Promise<SyncState> {
  * apply that still advanced the cursor would skip the rest of that batch forever — the client would
  * hold a permanently incomplete working set and have no way to detect it.
  */
-export async function applyDelta(response: WorkingSetResponse): Promise<void> {
+export async function applyDelta(
+  response: WorkingSetResponse,
+  options: { keepCursor?: boolean } = {},
+): Promise<void> {
   const db = await workingSetDb()
   const tx = db.transaction(['accounts', 'balances', 'transactions', 'meta'], 'readwrite')
 
@@ -236,8 +239,28 @@ export async function applyDelta(response: WorkingSetResponse): Promise<void> {
   await tx.objectStore('meta').put(response.confirmedTransferIds, 'confirmedTransferIds')
   await tx.objectStore('meta').put(response.categories, 'categories')
   await tx.objectStore('meta').put(response.householdId, 'householdId')
-  await tx.objectStore('meta').put(response.cursor, 'cursor')
-  await tx.objectStore('meta').put(response.coverageFrom, 'coverageFrom')
+
+  /*
+   * A backfill widens the window; it does not advance time.
+   *
+   * Writing its cursor would claim an ordinary sync had happened at that moment, so anything
+   * committed between the last real sync and the backfill would fall before the new cursor and
+   * never be sent again — a row silently missing from the client forever.
+   */
+  if (options.keepCursor !== true) {
+    await tx.objectStore('meta').put(response.cursor, 'cursor')
+  }
+
+  /*
+   * Only ever moves earlier. A backfill reaches further back than an ordinary sync, and letting the
+   * next ordinary sync write its own later `coverageFrom` would make the cache claim to hold less
+   * than it does — and then refuse to backfill again because it thinks it already has that range.
+   */
+  const knownFrom = (await tx.objectStore('meta').get('coverageFrom')) as string | undefined
+  const widest =
+    knownFrom === undefined || response.coverageFrom < knownFrom ? response.coverageFrom : knownFrom
+
+  await tx.objectStore('meta').put(widest, 'coverageFrom')
 
   await tx.done
 }

@@ -21,6 +21,7 @@ import {
   toChartSeries,
 } from '../net-worth/display.js'
 import { useWorkingSet } from '../working-set/use-working-set.js'
+import { useHistoryBackfill } from '../working-set/use-history-backfill.js'
 import type { DerivedAccount, DerivedWorkingSet } from '../working-set/derive.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
 import {
@@ -112,8 +113,18 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
    * Slicing the range is a local operation on a series already in memory — no fetch, no spinner.
    * That is what makes changing the range feel instant.
    */
+  const window = useMemo(() => resolveWindow(range, todayIso()), [range])
+
+  /*
+   * A range reaching further back than the cache holds fetches the rest.
+   *
+   * The working set carries about two years, so a custom range starting in 2019 previously drew
+   * nothing before that and said nothing about why — the data was on the server and simply had not
+   * been asked for.
+   */
+  const backfill = useHistoryBackfill(window.start)
+
   const sliced = useMemo(() => {
-    const window = resolveWindow(range, todayIso())
     const take = <T extends { date: string }>(series: readonly T[]): T[] =>
       sliceToWindow(series, window)
 
@@ -121,7 +132,14 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
       household: take(household),
       bySection: new Map(sections.map((group) => [group.section, take(group.series)])),
     }
-  }, [range, household, sections])
+  }, [window, household, sections])
+
+  const backfillNotice =
+    backfill.error !== null
+      ? NET_WORTH_STATE_COPY.loadingHistoryFailed
+      : backfill.isLoading
+        ? NET_WORTH_STATE_COPY.loadingHistory
+        : null
 
   const activeGroup = sections.find((group) => group.section === activeKey)
   const scope = activeKey ?? 'household'
@@ -243,6 +261,26 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
             }}
           />
         </div>
+
+        {/*
+          Under the chart, where the empty stretch is.
+          
+          An unexplained gap reads as "this history does not exist" rather than "it has not arrived
+          yet", and those want opposite reactions from the reader.
+        */}
+        {backfillNotice !== null && (
+          <p
+            aria-live="polite"
+            className={cn(
+              'mt-2 text-xs',
+              backfill.error !== null
+                ? 'text-rose-600 dark:text-rose-400'
+                : 'text-slate-500 dark:text-slate-400',
+            )}
+          >
+            {backfillNotice}
+          </p>
+        )}
 
         <CategoryChart
           className="mt-3"

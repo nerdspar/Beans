@@ -82,6 +82,16 @@ export const NET_WORTH_SCRUB_COPY = {
 } as const
 
 export const NET_WORTH_STATE_COPY = {
+  /**
+   * Fetching history older than the cache holds.
+   *
+   * Said because the alternative is an empty stretch of chart with no explanation — which reads as
+   * "this history does not exist" rather than "it has not arrived yet", and those want completely
+   * different reactions.
+   */
+  loadingHistory: 'Fetching older history…',
+  loadingHistoryFailed: 'Could not fetch the older history. The chart shows what is already here.',
+
   loading: 'Counting the beans.',
 
   empty: 'Nothing to add up yet',

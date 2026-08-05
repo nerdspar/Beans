@@ -330,6 +330,17 @@ them. Something must hold plaintext to do that work. The options were server mem
 - **Default window is ~2 years**, with older data fetched on demand when the user extends the range
   past it. Eager-loading a decade across fifteen accounts is a ~60MB initial payload — fine on
   desktop, awful on cellular.
+
+  The on-demand half went unbuilt for a while, and the symptom was not an error: a custom range
+  reaching back to 2019 simply drew nothing before the window and said nothing about why. The data
+  was on the server; it had never been asked for. `useHistoryBackfill` now watches the resolved
+  range and fetches when it starts earlier than the cached `coverageFrom`.
+
+  Two rules make that safe. A backfill sends `from` **with no cursor** — a delta answers "what
+  changed since X", and nothing about a 2019 balance changed; it was never sent. And it must **not
+  write the cursor**, or anything committed between the last real sync and the backfill would fall
+  before the new one and never be sent again. `coverageFrom` only ever moves earlier, so a later
+  ordinary sync cannot make the cache claim to hold less than it does.
 - **One cache, not two.** IndexedDB is the only _persistent_ cache. TanStack Query is the in-memory
   view over it — no persister plugin layered on top, no second TTL. Two caching layers with
   independent TTLs is where staleness bugs live.
