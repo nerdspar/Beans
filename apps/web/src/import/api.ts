@@ -24,10 +24,28 @@ export type StageResult = {
 
 export type PreviewRow = {
   rowNumber: number
+  /** `pending`, `skipped` or `failed`. A skip carries a reason and is not a problem. */
+  status: string
   date: string | null
   description: string | null
   amount: string | null
   error: string | null
+}
+
+export type ImportRecord = {
+  id: string
+  originalFilename: string
+  status: string
+  rowCount: number
+  committedRowCount: number | null
+  createdAt: string
+  committedAt: string | null
+  reversibleUntil: string | null
+}
+
+/** Recent imports, so undoing one survives navigating away from the screen that offered it. */
+export function listImports(): Promise<ImportRecord[]> {
+  return send<{ imports: ImportRecord[] }>('/api/imports').then((body) => body.imports)
 }
 
 export type Preview = {

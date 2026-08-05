@@ -92,6 +92,57 @@ export const importRoutes: FastifyPluginAsync<ImportRoutesOptions> = async (fast
    * Deliberately not part of staging: the user has to see and correct the guess before any row is
    * interpreted, because a wrong amount column is not visible in a total until it is far too late.
    */
+  /**
+   * Recent imports, so an undo outlives the screen that offered it.
+   *
+   * Committing landed on a page with a reverse button, and that page was the only route to it —
+   * navigate away to check whether the numbers look right, which is exactly what somebody does
+   * next, and the way back was gone. Returning to Import started a new one.
+   *
+   * Reversibility already had a lifetime in the data (`reversible_until`); it simply had no
+   * surface. Nothing here is new state.
+   */
+  fastify.get('/api/imports', async (request, reply) => {
+    const user = await requireUser(request, reply)
+    if (user === null) return
+
+    try {
+      const imports = await withHouseholdContext(deps, user.id, async (context) => {
+        const rows = await context.client.query<{
+          id: string
+          original_filename: string
+          status: string
+          row_count: number
+          committed_row_count: number | null
+          created_at: Date
+          committed_at: Date | null
+          reversible_until: Date | null
+        }>(
+          `select id, original_filename, status, row_count, committed_row_count,
+                  created_at, committed_at, reversible_until
+             from imports
+            order by created_at desc
+            limit 20`,
+        )
+
+        return rows.rows.map((row) => ({
+          id: row.id,
+          originalFilename: row.original_filename,
+          status: row.status,
+          rowCount: row.row_count,
+          committedRowCount: row.committed_row_count,
+          createdAt: row.created_at.toISOString(),
+          committedAt: row.committed_at?.toISOString() ?? null,
+          reversibleUntil: row.reversible_until?.toISOString() ?? null,
+        }))
+      })
+
+      return reply.header('cache-control', 'no-store').send({ imports })
+    } catch (error) {
+      return handleError(error, reply) ?? Promise.reject(error)
+    }
+  })
+
   fastify.post('/api/imports/inspect', async (request, reply) => {
     const user = await requireUser(request, reply)
     if (user === null) return

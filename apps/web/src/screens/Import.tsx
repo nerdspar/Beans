@@ -1,11 +1,13 @@
 import { ACCOUNT_TYPES, COLUMN_ROLES, IMPORT_COPY, IMPORT_PRESETS } from '@beans/shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { formatShortDate } from '../net-worth/display.js'
 import { createManualAccount, listManagedAccounts } from '../accounts/api.js'
 import {
   commitImport,
   inspectCsv,
   previewImport,
+  listImports,
   reverseImport,
   stageImport,
   type Inspection,
@@ -549,10 +551,18 @@ export function Import(): ReactNode {
                   <p className="truncate text-sm">{row.description ?? '—'}</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">{row.date ?? '—'}</p>
                 </div>
+                {/*
+                  Red is for something that needs a decision, not for anything with a reason.
+                  
+                  A skipped row carries one too — naming the account it belonged to — and colouring
+                  it the same made a page of deliberate choices read as a page of errors, which is
+                  the thing this whole distinction exists to stop.
+                */}
                 <span
                   className={cn(
                     'shrink-0 text-sm tabular-nums',
-                    row.error !== null && 'text-rose-600 dark:text-rose-400',
+                    row.status === 'failed' && 'text-rose-600 dark:text-rose-400',
+                    row.status === 'skipped' && 'text-slate-400 dark:text-slate-500',
                   )}
                 >
                   {row.error ?? row.amount ?? '—'}
@@ -610,6 +620,23 @@ export function Import(): ReactNode {
 
           <RunningCount progress={progress} />
         </div>
+      )}
+
+      {/*
+        Past imports, so undo is reachable after leaving the screen that offered it.
+        
+        Only on the opening stage: mid-import the reader is answering questions about *this* file,
+        and a list of previous ones underneath is noise at exactly the wrong moment.
+      */}
+      {stage.kind === 'choose' && (
+        <ImportHistory
+          onReversed={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['imports'] })
+            // Reversing deletes transactions and rebuilds history, so every chart is stale.
+            await queryClient.invalidateQueries({ queryKey: WORKING_SET_KEY })
+            await queryClient.invalidateQueries({ queryKey: ['working-set', 'sync'] })
+          }}
+        />
       )}
 
       {stage.kind === 'done' && (
@@ -719,5 +746,88 @@ function RunningCount({ progress }: { progress: ImportProgress | null }): ReactN
         ? IMPORT_COPY.progressReading(progress.done, progress.total)
         : IMPORT_COPY.progressCommitting(progress.done, progress.total)}
     </p>
+  )
+}
+
+/**
+ * Previous imports, with an undo for the ones still inside their window.
+ *
+ * Reversibility already had a lifetime in the data — `reversible_until`, thirty days — and no
+ * surface. This is the surface, not new behaviour.
+ */
+function ImportHistory({ onReversed }: { onReversed: () => Promise<void> }): ReactNode {
+  const imports = useQuery({ queryKey: ['imports'], queryFn: listImports })
+  const [reversing, setReversing] = useState<string | null>(null)
+
+  const reverse = useMutation({
+    mutationFn: reverseImport,
+    onSuccess: async () => {
+      setReversing(null)
+      await onReversed()
+    },
+  })
+
+  const rows = imports.data ?? []
+  if (rows.length === 0) return null
+
+  return (
+    <section className="mt-8">
+      <h2 className="text-sm font-semibold">{IMPORT_COPY.historyHeading}</h2>
+
+      <ul className="mt-2 divide-y divide-slate-200 dark:divide-slate-800">
+        {rows.map((record) => {
+          const undoable =
+            record.status === 'committed' &&
+            record.reversibleUntil !== null &&
+            new Date(record.reversibleUntil).getTime() > Date.now()
+
+          return (
+            <li key={record.id} className="flex items-center justify-between gap-3 py-2.5">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{record.originalFilename}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {record.status === 'reversed'
+                    ? IMPORT_COPY.historyReversed
+                    : record.status !== 'committed'
+                      ? IMPORT_COPY.historyStaged
+                      : IMPORT_COPY.historyRows(record.committedRowCount ?? 0, record.rowCount)}
+                  {record.status === 'committed' &&
+                    ` · ${
+                      undoable && record.reversibleUntil !== null
+                        ? IMPORT_COPY.historyReversibleUntil(
+                            formatShortDate(record.reversibleUntil.slice(0, 10)),
+                          )
+                        : IMPORT_COPY.historyNotReversible
+                    }`}
+                </p>
+              </div>
+
+              {undoable && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReversing(record.id)
+                    reverse.mutate(record.id)
+                  }}
+                  disabled={reverse.isPending}
+                  className={cn(
+                    'shrink-0 rounded-lg border px-3 py-2 text-xs font-medium',
+                    'border-slate-300 text-rose-600 hover:bg-rose-50',
+                    'dark:border-slate-700 dark:text-rose-400 dark:hover:bg-rose-950/40',
+                    'focus-visible:outline-2 focus-visible:outline-rose-600 disabled:opacity-50',
+                  )}
+                >
+                  {reversing === record.id && reverse.isPending
+                    ? IMPORT_COPY.reversing
+                    : IMPORT_COPY.reverse}
+                </button>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+
+      <Problem error={reverse.error} fallback={IMPORT_COPY.commitFailed} />
+    </section>
   )
 }

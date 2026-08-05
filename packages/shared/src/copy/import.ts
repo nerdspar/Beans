@@ -77,6 +77,23 @@ export const IMPORT_COPY = {
    * A partial re-import — pick up one account, skip the other forty — is a normal thing to do, and
    * it used to produce a page of red. Choices the reader just made are not findings.
    */
+  // ── Past imports ───────────────────────────────────────────────────────────
+  /**
+   * The undo path, given a home.
+   *
+   * Committing landed on a page offering to reverse, and that page was the only route to it — so
+   * navigating away to check the numbers, which is the very next thing anybody does, lost it.
+   */
+  historyHeading: 'Past imports',
+  historyEmpty: 'Nothing imported yet.',
+  historyRows: (committed: number, total: number): string =>
+    `${committed.toLocaleString()} of ${total.toLocaleString()} rows added`,
+  historyReversed: 'Undone',
+  historyStaged: 'Never finished',
+  /** Says the deadline plainly rather than implying undo is always available. */
+  historyReversibleUntil: (date: string): string => `Can be undone until ${date}`,
+  historyNotReversible: 'Too old to undo',
+
   rowsSkipped: (count: number): string =>
     `${count.toLocaleString()} row${count === 1 ? '' : 's'} belong to accounts you skipped.`,
 
