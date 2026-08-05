@@ -134,17 +134,19 @@ export function Portfolio(): ReactNode {
       .reduce((sum, transaction) => sum + transaction.amountCents, 0n)
 
     /*
-     * Dated whenever the move is not the latest day we hold.
+     * Dated whenever the move did not land today.
      *
-     * That gap is the provider not having published today's value yet, and an undated figure would
-     * pass yesterday's move off as today's.
+     * Compared against today rather than against the end of the series, because both ways of being
+     * behind matter and this catches them together: the provider may have published nothing since
+     * yesterday, or it may still be repeating a value from days ago.
+     *
+     * This is the difference that made a figure look wrong next to a broker's app. A brokerage
+     * shows today's session live; through SimpleFIN it reports a settled balance dated to a
+     * completed day. Both are right about different days, and only the date says which.
      */
-    const latestDate = account.series.at(-1)?.date
-    const stale = latestDate !== undefined && move.toDate < latestDate
-
     dayChanges.set(account.id, {
       change: dayChange(move.openingCents, move.closingCents, flow),
-      staleSince: stale ? formatShortDate(move.toDate) : null,
+      staleSince: move.toDate < today ? formatShortDate(move.toDate) : null,
     })
   }
 
