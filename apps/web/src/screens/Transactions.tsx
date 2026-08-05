@@ -9,7 +9,14 @@ import {
 } from '@beans/shared'
 import { Search, X } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useDeferredValue, useMemo, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useDeferredValue,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { CategorySheet } from '../categories/CategorySheet.js'
 import { listCategories } from '../categories/api.js'
 import { cn } from '../lib/cn.js'
@@ -70,6 +77,48 @@ export function Transactions(): ReactNode {
 
   const accounts = workingSet.data?.byId
   const today = localToday()
+
+  /*
+   * The filter block's height, published as a custom property for the date headers to pin below.
+   *
+   * Measured rather than assumed, because the block grows and shrinks with the category chip and
+   * wraps on a narrow screen — any constant is wrong in some state, and being wrong here puts every
+   * date header behind the filters instead of below them.
+   *
+   * Written straight to the DOM rather than held in state: it changes on every resize frame, and
+   * re-rendering a list of hundreds of transactions to move one header would be real work for a
+   * value only CSS consumes.
+   *
+   * A callback ref rather than an effect. This screen returns early while loading, so the element
+   * appears and disappears across renders; an effect would need to re-observe on every render to
+   * catch that, and would tear down and rebuild the observer each time. A callback ref fires
+   * exactly when the node mounts and unmounts, which is the question being asked.
+   */
+  const observerRef = useRef<ResizeObserver | null>(null)
+
+  const filtersRef = useCallback((node: HTMLDivElement | null): void => {
+    observerRef.current?.disconnect()
+    observerRef.current = null
+    if (node === null) return
+
+    /*
+     * Set on the parent, which is the page container.
+     *
+     * The property has to live on a common ancestor of both the filters and the date headers, since
+     * custom properties inherit downward and the two are siblings. React attaches child refs before
+     * parent ones, so a ref on the container is not reliably available at this point — the node's
+     * own parent is.
+     */
+    const publish = (): void => {
+      node.parentElement?.style.setProperty('--transactions-filters', `${node.offsetHeight}px`)
+    }
+
+    publish()
+
+    const observer = new ResizeObserver(publish)
+    observer.observe(node)
+    observerRef.current = observer
+  }, [])
 
   const { visible, total } = useMemo(() => {
     const window = resolveWindow(range, today)
@@ -138,7 +187,10 @@ export function Transactions(): ReactNode {
   return (
     <div className="mx-auto max-w-2xl pb-16">
       {/* Opaque, no blur: see MobileShell — backdrop-filter lags a scroll on iOS. */}
-      <div className="sticky top-[var(--beans-inset-top)] z-10 bg-slate-50 px-5 pb-3 pt-5 dark:bg-slate-950">
+      <div
+        ref={filtersRef}
+        className="sticky top-[var(--beans-inset-top)] z-10 bg-slate-50 px-5 pb-3 pt-5 dark:bg-slate-950"
+      >
         <div className="flex items-baseline justify-between gap-3">
           <h1 className="text-2xl font-semibold">{TRANSACTIONS_COPY.title}</h1>
           <RangeControl value={range} onChange={setRange} />
@@ -253,7 +305,28 @@ export function Transactions(): ReactNode {
       ) : (
         byDate.map(([date, group]) => (
           <section key={date}>
-            <h2 className="sticky top-[9.5rem] z-[5] bg-slate-100 px-5 py-1.5 text-xs font-semibold text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+            {/*
+              Pinned below the filter block, whose height is measured rather than assumed.
+              
+              It used to be a hardcoded `9.5rem`, which was about seventy pixels short of the block
+              above it — so every date header wedged *underneath* the filters instead of below
+              them. And the block is not a fixed height: the category chip appears and disappears,
+              and the account select wraps on a narrow screen.
+              
+              The eight-pixel overshoot is the same trick as the cash flow list: pinning flush left
+              a strip of the row crossing the top visible above the date, so the header pins eight
+              pixels higher, those pixels are clipped, and `pt-3.5` puts them back as padding. The
+              date sits exactly where it looks like it should and its background covers the strip.
+              
+              `z-[5]` against the filter block's `z-10`, so a date slides under the filters rather
+              than over them.
+            */}
+            <h2
+              style={{
+                top: 'calc(var(--beans-inset-top) + var(--transactions-filters, 9.5rem) - 8px)',
+              }}
+              className="sticky z-[5] bg-slate-100 px-5 pb-1.5 pt-3.5 text-xs font-semibold text-slate-600 dark:bg-slate-900 dark:text-slate-300"
+            >
               {formatDate(date)}
             </h2>
             <ul>
