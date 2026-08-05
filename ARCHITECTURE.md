@@ -546,6 +546,13 @@ reads it, falling back to its own default for a deep link or a bookmark. **One l
 chains unwind a step at a time and terminate at the fallback; there is no stack to grow and nothing
 to get stuck in.
 
+**Which view a screen is showing belongs in the URL for the same reason.** The portfolio's
+account/holding grouping was component state, so opening a holding from the grouped list and coming
+back landed on the account breakdown — the screen forgetting which of its two views was being read.
+In `?group=` it survives the round trip, a reload and a shared link. It is *replaced* rather than
+pushed: switching the control is changing what you are looking at, not going somewhere, and stacking
+history entries would make back undo a toggle.
+
 `history.back()` was the alternative and is wrong here. Installed as a PWA there is no browser
 chrome, so this control is the only way back and has to name its destination — an unlabelled arrow
 in a two-screen cycle says nothing about which of them you are about to land on. A path in the query

@@ -16,7 +16,7 @@ import {
 } from '@beans/shared'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState, type ReactNode } from 'react'
-import { Link } from 'wouter'
+import { Link, useLocation, useSearch } from 'wouter'
 import { readHouseholdHoldings } from '../accounts/api.js'
 import { withReturn } from '../lib/back.js'
 import { AreaChart } from '../charts/AreaChart.js'
@@ -43,8 +43,29 @@ const CHART_HEIGHT = 180
 export function Portfolio(): ReactNode {
   const workingSet = useWorkingSet()
   const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE)
-  const [grouping, setGrouping] = useState<Grouping>('account')
   const today = localToday()
+
+  /*
+   * The grouping lives in the URL, not in component state.
+   *
+   * State is discarded the moment you navigate, so opening a holding from the grouped list and
+   * coming back landed on the account breakdown — the screen quietly forgetting which of its two
+   * views you were reading. In the address it survives the round trip, a reload, and a shared link.
+   *
+   * Replaced rather than pushed: switching the dropdown is changing what you are looking at, not
+   * going somewhere, and stacking history entries would make the back control undo a toggle.
+   */
+  const [, navigate] = useLocation()
+  const grouping: Grouping =
+    new URLSearchParams(useSearch()).get('group') === 'holding' ? 'holding' : 'account'
+
+  const here = grouping === 'holding' ? `${PORTFOLIO_PATH}?group=holding` : PORTFOLIO_PATH
+
+  const setGrouping = (next: Grouping): void => {
+    navigate(next === 'holding' ? `${PORTFOLIO_PATH}?group=holding` : PORTFOLIO_PATH, {
+      replace: true,
+    })
+  }
 
   /*
    * Fetched only once the reader asks for it.
@@ -375,13 +396,17 @@ export function Portfolio(): ReactNode {
           total={grouped.reduce((sum, group) => sum + group.marketValueCents, 0n)}
           isLoading={holdings.isLoading}
           hasFailed={holdings.error !== null}
+          returnTo={{ href: here, label: PORTFOLIO_COPY.title }}
         />
       ) : (
       <ul className="mt-2 divide-y divide-slate-200 dark:divide-slate-800">
         {ordered.map((account, index) => (
           <li key={account.id}>
             <Link
-              href={`/accounts/${account.id}`}
+              href={withReturn(`/accounts/${account.id}`, {
+                href: here,
+                label: PORTFOLIO_COPY.title,
+              })}
               className="flex items-center gap-3 py-2.5 focus-visible:outline-2 focus-visible:outline-sky-500"
             >
               {/* Ties the row to its band, which is the only thing naming the colours. */}
@@ -588,8 +613,10 @@ function DayChangeCell({
   )
 }
 
-/** Which breakdown the list below the chart is showing. */
+/** Which breakdown the list below the chart is showing. Carried in `?group=`. */
 type Grouping = 'account' | 'holding'
+
+const PORTFOLIO_PATH = '/portfolio'
 
 /**
  * The same security wherever it is held, as one row.
@@ -607,11 +634,14 @@ function HoldingGroups({
   total,
   isLoading,
   hasFailed,
+  returnTo,
 }: {
   groups: readonly GroupedHolding[]
   total: bigint
   isLoading: boolean
   hasFailed: boolean
+  /** Carries the grouped view back, so returning does not land on the account breakdown. */
+  returnTo: { href: string; label: string }
 }): ReactNode {
   if (isLoading) {
     return <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{PORTFOLIO_COPY.loading}</p>
@@ -641,8 +671,8 @@ function HoldingGroups({
             {/* Links through, like an account row — the row is the way into where it is held. */}
             <Link
               href={withReturn(`/holdings/${encodeURIComponent(group.key)}`, {
-                href: '/portfolio',
-                label: PORTFOLIO_COPY.title,
+                href: returnTo.href,
+                label: returnTo.label,
               })}
               className="flex items-start gap-3 py-2.5 focus-visible:outline-2 focus-visible:outline-sky-500"
             >
