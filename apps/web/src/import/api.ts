@@ -18,6 +18,8 @@ export type StageResult = {
   unparsedCount: number
   /** Rows that parsed cleanly but named an account nothing is mapped to. A different fix entirely. */
   unroutedCount: number
+  /** Rows for accounts you chose to skip. A decision, not a failure. */
+  skippedCount: number
 }
 
 export type PreviewRow = {
@@ -32,6 +34,8 @@ export type Preview = {
   rows: PreviewRow[]
   totalRows: number
   failedRows: number
+  /** Rows for accounts you chose to skip. Neither imported nor a problem. */
+  skippedRows: number
   /** Every failure reason with a count, over the whole file rather than the previewed rows. */
   reasons: Array<{ reason: string; count: number }>
 }
@@ -63,6 +67,8 @@ export function stageImport(input: {
   targetAccountId?: string
   /** Maps each account named in the file to a Beans account. */
   accountMap?: Array<{ value: string; accountId: string }>
+  /** Names deliberately not imported, so a skip is distinguishable from an oversight. */
+  skippedAccounts?: string[]
   originalFilename: string
   mapping: Array<{ columnIndex: number; role: string }>
 }): Promise<StageResult> {

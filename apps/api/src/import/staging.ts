@@ -62,6 +62,14 @@ export type StageOptions = {
   targetAccountId?: string | undefined
   /** Maps each account name found in the file to a Beans account. */
   accountMap?: ReadonlyArray<{ value: string; accountId: string }> | undefined
+  /**
+   * Account names the user deliberately chose not to import.
+   *
+   * Sent explicitly, because "I skipped this" and "I forgot this" produce identical rows and want
+   * opposite reactions. Without it a partial re-import — mapping one account and skipping forty —
+   * reports a page of red errors for the forty decisions the user just made on purpose.
+   */
+  skippedAccounts?: readonly string[] | undefined
   originalFilename: string
   /** Overrides detection, for a column that is genuinely ambiguous. */
   dateFormat?: DateFormat
@@ -96,6 +104,8 @@ export type StageResult = {
    */
   unparsedCount: number
   unroutedCount: number
+  /** Rows for accounts the user chose not to import. A decision, not a failure. */
+  skippedCount: number
   dateFormat: DateFormat
   /** Blocking problems, if any. When present nothing was staged. */
   problems: ReturnType<typeof validateMapping>
@@ -130,7 +140,9 @@ export async function stageImport(
   const accountMap = new Map(
     (options.accountMap ?? []).map((entry) => [accountKey(entry.value), entry.accountId]),
   )
-  const routeByAccountColumn = accountColumn !== undefined && accountMap.size > 0
+  const skipped = new Set((options.skippedAccounts ?? []).map(accountKey))
+  const routeByAccountColumn =
+    accountColumn !== undefined && (accountMap.size > 0 || skipped.size > 0)
 
   const problems = validateMapping(mapping, kind)
   if (hasBlockingProblem(problems)) {
@@ -141,6 +153,7 @@ export async function stageImport(
       failedCount: 0,
       unparsedCount: 0,
       unroutedCount: 0,
+      skippedCount: 0,
       dateFormat: 'unrecognized',
       problems,
     }
@@ -160,6 +173,7 @@ export async function stageImport(
       failedCount: 0,
       unparsedCount: 0,
       unroutedCount: 0,
+      skippedCount: 0,
       dateFormat,
       problems: [
         {
@@ -200,6 +214,7 @@ export async function stageImport(
   let failedCount = 0
   let unparsedCount = 0
   let unroutedCount = 0
+  let skippedCount = 0
 
   /*
    * Published as the loop runs, so a fourteen-thousand-row file is not a frozen button.
@@ -249,6 +264,7 @@ export async function stageImport(
 
       let rowAccountId: string | null = targetAccountId ?? null
       let unmappedAccount: string | null = null
+      let deliberatelySkipped = false
 
       if (routeByAccountColumn) {
         const named = result.ok
@@ -256,23 +272,41 @@ export async function stageImport(
           : (cells[accountColumn.columnIndex]?.trim() ?? '')
         rowAccountId =
           named === null || named === '' ? null : (accountMap.get(accountKey(named)) ?? null)
-        if (rowAccountId === null) unmappedAccount = named === '' ? null : named
+
+        if (rowAccountId === null && named !== null && named !== '') {
+          unmappedAccount = named
+          deliberatelySkipped = skipped.has(accountKey(named))
+        }
       }
 
-      // An unroutable row fails loudly here rather than being dropped at commit, where the only trace
-      // would have been a count that did not add up.
-      const failedReason = !result.ok
-        ? result.reason
-        : rowAccountId === null
-          ? unmappedAccount === null
-            ? 'No account named in this row'
-            : `No account is mapped to “${unmappedAccount}”`
-          : null
+      /*
+       * An unroutable row fails loudly here rather than being dropped at commit, where the only
+       * trace would have been a count that did not add up.
+       *
+       * A **deliberate** skip is not that. Somebody re-importing a file to pick up one account
+       * answers "skip" for the other forty, and reporting forty decisions as forty errors buries
+       * the one thing that might genuinely be wrong.
+       */
+      const failedReason = deliberatelySkipped
+        ? null
+        : !result.ok
+          ? result.reason
+          : rowAccountId === null
+            ? unmappedAccount === null
+              ? 'No account named in this row'
+              : `No account is mapped to “${unmappedAccount}”`
+            : null
 
-      if (failedReason === null) {
+      if (deliberatelySkipped) {
+        skippedCount += 1
+      } else if (failedReason === null) {
         parsedCount += 1
       } else {
         failedCount += 1
+        // Split by cause: a row that would not parse needs the mapping fixed, a row naming an
+        // unmapped account needs the account added. Different actions, so different counts.
+        if (result.ok) unroutedCount += 1
+        else unparsedCount += 1
       }
 
       pending.push([
@@ -284,8 +318,10 @@ export async function stageImport(
         context.cipher.encryptJson(cells),
         result.ok ? context.cipher.encryptJson(toStored(result.row)) : null,
         rowAccountId,
-        failedReason === null ? 'pending' : 'failed',
-        failedReason,
+        deliberatelySkipped ? 'skipped' : failedReason === null ? 'pending' : 'failed',
+        deliberatelySkipped
+          ? `Skipped — “${unmappedAccount ?? ''}” was not selected for import`
+          : failedReason,
       ])
 
       if (pending.length >= INSERT_BATCH) await flush()
@@ -302,6 +338,7 @@ export async function stageImport(
       failedCount,
       unparsedCount,
       unroutedCount,
+      skippedCount,
       dateFormat,
       problems,
     }
@@ -334,6 +371,8 @@ export async function previewImport(
   rows: PreviewRow[]
   totalRows: number
   failedRows: number
+  /** Rows for accounts the reader chose to skip. Reported apart from failures, being neither. */
+  skippedRows: number
   reasons: ReasonCount[]
 }> {
   const rows = await context.client.query<{
@@ -343,14 +382,23 @@ export async function previewImport(
     raw: Buffer | null
     parsed: Buffer | null
   }>(
+    /*
+     * Failures first, then everything else in order.
+     *
+     * The list is capped, and on a partial re-import the first fifty rows by number are all skips —
+     * so the rows worth reading never appeared. Ordering by status puts the ones needing a decision
+     * where they can be seen.
+     */
     `select row_number, status, status_reason, raw, parsed
-       from import_rows where import_id = $1 order by row_number limit $2`,
+       from import_rows where import_id = $1
+      order by (status = 'failed') desc, row_number limit $2`,
     [importId, limit],
   )
 
-  const counts = await context.client.query<{ total: string; failed: string }>(
+  const counts = await context.client.query<{ total: string; failed: string; skipped: string }>(
     `select count(*)::text as total,
-            count(*) filter (where status = 'failed')::text as failed
+            count(*) filter (where status = 'failed')::text as failed,
+            count(*) filter (where status = 'skipped')::text as skipped
        from import_rows where import_id = $1`,
     [importId],
   )
@@ -365,6 +413,13 @@ export async function previewImport(
    * Grouped in SQL, which is possible only because `status_reason` is plaintext. It has to stay
    * that way: the reasons quote an account *name* from the file, which is why they are capped in
    * length at the point they are written rather than being free-form.
+   */
+  /*
+   * Failures only — skips are excluded deliberately.
+   *
+   * A partial re-import answers "skip" for every account it is not interested in, and listing those
+   * as reasons would fill the screen with decisions the user had just made, burying the one line
+   * that might genuinely need acting on.
    */
   const reasons = await context.client.query<{ reason: string; count: string }>(
     `select coalesce(status_reason, 'Unknown') as reason, count(*)::text as count
@@ -386,6 +441,7 @@ export async function previewImport(
     })),
     totalRows: Number(counts.rows[0]?.total ?? 0),
     failedRows: Number(counts.rows[0]?.failed ?? 0),
+    skippedRows: Number(counts.rows[0]?.skipped ?? 0),
     reasons: reasons.rows.map((row) => ({ reason: row.reason, count: Number(row.count) })),
   }
 }

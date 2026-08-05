@@ -49,6 +49,7 @@ const stageBody = z.object({
    * individually because a single-account export and a whole-portfolio export are both normal.
    */
   targetAccountId: z.string().uuid().optional(),
+  skippedAccounts: z.array(z.string()).max(500).optional(),
   accountMap: z
     .array(z.object({ value: z.string().min(1), accountId: z.string().uuid() }))
     .max(200)
@@ -140,7 +141,8 @@ export const importRoutes: FastifyPluginAsync<ImportRoutesOptions> = async (fast
     if (preset === undefined) return reply.status(400).send({ error: 'Unknown preset' })
 
     const namesAccounts = body.data.mapping.some((column) => column.role === 'account')
-    const hasAccountMap = (body.data.accountMap ?? []).length > 0
+    const hasAccountMap =
+      (body.data.accountMap ?? []).length > 0 || (body.data.skippedAccounts ?? []).length > 0
 
     // Refused rather than defaulted: picking an account for a file that names its own would put
     // every row in one place, which is precisely the mistake this check exists to prevent.
@@ -161,6 +163,7 @@ export const importRoutes: FastifyPluginAsync<ImportRoutesOptions> = async (fast
           kind: body.data.kind,
           targetAccountId: body.data.targetAccountId,
           accountMap: body.data.accountMap,
+          skippedAccounts: body.data.skippedAccounts,
           originalFilename: body.data.originalFilename,
           ...(body.data.dateFormat === undefined ? {} : { dateFormat: body.data.dateFormat }),
         }),
@@ -189,6 +192,7 @@ export const importRoutes: FastifyPluginAsync<ImportRoutesOptions> = async (fast
       return reply.header('cache-control', 'no-store').send({
         totalRows: preview.totalRows,
         failedRows: preview.failedRows,
+        skippedRows: preview.skippedRows,
         reasons: preview.reasons,
         rows: preview.rows.map((row) => ({
           rowNumber: row.rowNumber,

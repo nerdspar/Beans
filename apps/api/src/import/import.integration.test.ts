@@ -260,6 +260,88 @@ describeIntegration('csv import', () => {
       expect(result.rows.every((row) => row.status === 'pending')).toBe(true)
     })
 
+    /**
+     * A partial re-import: pick up one account, deliberately skip the rest.
+     *
+     * A skip and an oversight produce identical rows, so without an explicit answer the server
+     * cannot tell them apart — and reporting forty deliberate decisions as forty errors buries the
+     * one line that might genuinely need acting on.
+     */
+    it('records a deliberate skip as a skip, not a failure', async () => {
+      const result = await withHouseholdContext(deps, USER, async (ctx) => {
+        const card = await makeAccount(ctx)
+
+        const csv = parseCsv(MULTI_ACCOUNT_CSV)
+        const staged = await stageImport(ctx, {
+          csv,
+          mapping: guessMapping(csv.headers),
+          preset: findPreset('empower')!,
+          kind: 'transactions',
+          accountMap: [{ value: 'Amazon Card', accountId: card }],
+          skippedAccounts: ['Rental Checking', 'Joint Cash Account'],
+          originalFilename: 'partial.csv',
+        })
+
+        return { staged, rows: await stagedRows(ctx, staged.importId) }
+      })
+
+      // Two Amazon Card rows import; the other two were skipped on purpose.
+      expect(result.staged.parsedCount).toBe(2)
+      expect(result.staged.skippedCount).toBe(2)
+      expect(result.staged.failedCount).toBe(0)
+
+      expect(result.rows.filter((row) => row.status === 'skipped')).toHaveLength(2)
+      expect(result.rows.filter((row) => row.status === 'failed')).toHaveLength(0)
+    })
+
+    /** An account nobody answered for is still a failure — that is the distinction. */
+    it('still fails an account that was neither mapped nor skipped', async () => {
+      const result = await withHouseholdContext(deps, USER, async (ctx) => {
+        const card = await makeAccount(ctx)
+
+        const csv = parseCsv(MULTI_ACCOUNT_CSV)
+        const staged = await stageImport(ctx, {
+          csv,
+          mapping: guessMapping(csv.headers),
+          preset: findPreset('empower')!,
+          kind: 'transactions',
+          accountMap: [{ value: 'Amazon Card', accountId: card }],
+          skippedAccounts: ['Rental Checking'],
+          originalFilename: 'partial.csv',
+        })
+
+        return staged
+      })
+
+      expect(result.skippedCount).toBe(1)
+      expect(result.failedCount).toBe(1)
+      // And split by cause, which is what tells the reader which fix applies.
+      expect(result.unroutedCount).toBe(1)
+      expect(result.unparsedCount).toBe(0)
+    })
+
+    /** Skipped rows must not be committed by the very next step. */
+    it('commits nothing for a skipped account', async () => {
+      const result = await withHouseholdContext(deps, USER, async (ctx) => {
+        const card = await makeAccount(ctx)
+
+        const csv = parseCsv(MULTI_ACCOUNT_CSV)
+        const staged = await stageImport(ctx, {
+          csv,
+          mapping: guessMapping(csv.headers),
+          preset: findPreset('empower')!,
+          kind: 'transactions',
+          accountMap: [{ value: 'Amazon Card', accountId: card }],
+          skippedAccounts: ['Rental Checking', 'Joint Cash Account'],
+          originalFilename: 'partial.csv',
+        })
+
+        return commitImport(ctx, staged.importId, new Date('2026-08-05T12:00:00Z'))
+      })
+
+      expect(result.committed).toBe(2)
+    })
+
     it('matches account names case-insensitively', async () => {
       const rows = await withHouseholdContext(deps, USER, async (ctx) => {
         const card = await makeAccount(ctx)

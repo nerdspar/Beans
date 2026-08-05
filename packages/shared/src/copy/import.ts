@@ -69,7 +69,20 @@ export const IMPORT_COPY = {
   rowsParsed: (parsed: number, total: number): string =>
     parsed === total
       ? `${total.toLocaleString()} row${total === 1 ? '' : 's'} read.`
-      : `${parsed.toLocaleString()} of ${total.toLocaleString()} rows read. The rest will be skipped:`,
+      : `${parsed.toLocaleString()} of ${total.toLocaleString()} rows will be imported.`,
+
+  /**
+   * Skips, counted separately and stated in the ordinary voice.
+   *
+   * A partial re-import — pick up one account, skip the other forty — is a normal thing to do, and
+   * it used to produce a page of red. Choices the reader just made are not findings.
+   */
+  rowsSkipped: (count: number): string =>
+    `${count.toLocaleString()} row${count === 1 ? '' : 's'} belong to accounts you skipped.`,
+
+  /** Only shown when there is something genuinely unresolved. */
+  rowsFailed: (count: number): string =>
+    `${count.toLocaleString()} row${count === 1 ? '' : 's'} could not be placed:`,
 
   commit: 'Add these transactions',
   committing: 'Adding',

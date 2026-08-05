@@ -185,6 +185,14 @@ export function Import(): ReactNode {
                   return target !== '' && target !== CREATE_SENTINEL
                 })
                 .map((name) => ({ value: name, accountId: resolved[name] as string })),
+              /*
+                Skips, stated rather than implied by absence.
+                
+                They used to be filtered out with everything unanswered, so the server could not
+                tell a decision from an oversight — and a re-import that mapped one account and
+                skipped forty reported forty errors for forty deliberate choices.
+              */
+              skippedAccounts: namedAccounts.filter((name) => (resolved[name] ?? '') === ''),
             }),
         originalFilename: input.filename,
         mapping,
@@ -490,12 +498,27 @@ export function Import(): ReactNode {
           <Problem error={preview.error} fallback={IMPORT_COPY.stageFailed} />
 
           {preview.data !== undefined && (
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              {IMPORT_COPY.rowsParsed(
-                preview.data.totalRows - preview.data.failedRows,
-                preview.data.totalRows,
+            <>
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                {IMPORT_COPY.rowsParsed(
+                  preview.data.totalRows - preview.data.failedRows - preview.data.skippedRows,
+                  preview.data.totalRows,
+                )}
+              </p>
+
+              {/* Ordinary text, not red: a skip is a decision the reader already made. */}
+              {preview.data.skippedRows > 0 && (
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {IMPORT_COPY.rowsSkipped(preview.data.skippedRows)}
+                </p>
               )}
-            </p>
+
+              {preview.data.failedRows > 0 && (
+                <p className="mt-1 text-xs text-rose-700 dark:text-rose-400">
+                  {IMPORT_COPY.rowsFailed(preview.data.failedRows)}
+                </p>
+              )}
+            </>
           )}
 
           {/*
