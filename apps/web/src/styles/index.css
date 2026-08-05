@@ -21,8 +21,16 @@
 
 @layer base {
   html {
-    /* Momentum scrolling, so lists feel native rather than web. */
-    -webkit-overflow-scrolling: touch;
+    /*
+     * No `-webkit-overflow-scrolling: touch`.
+     *
+     * It was here for momentum scrolling, which iOS has done by default since version 13 — so it
+     * bought nothing, and it cost the thing that matters more: the property puts the page on a
+     * legacy compositing path where `position: sticky` and `position: fixed` are updated a frame
+     * late. Everything pinned drifts a few pixels against any scroll and snaps back, on every
+     * screen, which is not a bug in any one of them.
+     */
+
     /* Stops the whole page rubber-banding under a fixed bottom bar on iOS. */
     overscroll-behavior: none;
   }
