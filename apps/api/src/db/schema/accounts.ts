@@ -128,6 +128,17 @@ export const accounts = pgTable(
     simplefinAccountId: text('simplefin_account_id'),
 
     /**
+     * When a sync last looked at this account's response for positions.
+     *
+     * Set on every sync regardless of whether any arrived, which is the entire point: without it,
+     * an account with no holdings rows is ambiguous between *the provider reports none* and *we
+     * have not asked since the feature existed*, and those want opposite reactions from the reader.
+     * The holdings themselves cannot record the second case, because the deliberate behaviour when
+     * a response carries no positions is to write nothing at all.
+     */
+    holdingsCheckedAt: timestamp('holdings_checked_at', { withTimezone: true }),
+
+    /**
      * Whether this provider reports the balance with the opposite sign to our convention.
      *
      * **The SimpleFIN protocol never specifies balance signs.** The only sign rule it states is for

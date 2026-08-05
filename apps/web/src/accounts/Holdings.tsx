@@ -33,12 +33,24 @@ export function Holdings({ accountId }: { accountId: string }): ReactNode {
   }
 
   const reading = query.data
+
   if (reading === undefined || reading.asOfDate === null || reading.holdings.length === 0) {
+    /*
+     * Two different empty states, and telling them apart is most of the value of this screen.
+     *
+     * Positions are only ever written by a sync, so an account that has not synced since holdings
+     * existed has none for a reason that says nothing whatsoever about its institution. Presenting
+     * that as "no positions reported" would blame a provider nobody has asked yet.
+     */
+    const neverChecked = reading === undefined || reading.checkedAt === null
+
     return (
       <div className="px-5 pb-2">
-        <p className="text-sm font-medium">{HOLDINGS_COPY.unsupported}</p>
+        <p className="text-sm font-medium">
+          {neverChecked ? HOLDINGS_COPY.notCheckedYet : HOLDINGS_COPY.unsupported}
+        </p>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          {HOLDINGS_COPY.unsupportedDetail}
+          {neverChecked ? HOLDINGS_COPY.notCheckedYetDetail : HOLDINGS_COPY.unsupportedDetail}
         </p>
       </div>
     )

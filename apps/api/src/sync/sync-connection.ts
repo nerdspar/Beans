@@ -5,7 +5,7 @@ import { fetchAccounts, splitIntoWindows, type Fetcher } from '../simplefin/clie
 import type { SimplefinAccount, SimplefinTransaction } from '../simplefin/protocol.js'
 import { isConnectionAttentionError, isRateLimitError } from '../simplefin/protocol.js'
 import { loadAccessUrl } from '../repositories/connections.js'
-import { replaceHoldings } from '../repositories/holdings.js'
+import { markHoldingsChecked, replaceHoldings } from '../repositories/holdings.js'
 import type { HouseholdContext } from '../repositories/household-context.js'
 import { syncWindowStart } from './quota.js'
 
@@ -144,6 +144,15 @@ export async function syncConnection(
           providerAccount.holdings,
         )
       }
+
+      /*
+       * Recorded whether or not any arrived — that is what makes it worth having.
+       *
+       * An account with no holdings rows is otherwise ambiguous between "this institution reports
+       * no positions" and "nothing has synced since holdings existed", and the holdings table
+       * cannot settle it: writing nothing is precisely the correct behaviour for an empty response.
+       */
+      await markHoldingsChecked(context, account.id, options.now)
 
       /**
        * Set once, on the first window that produces data, and never moved afterwards.

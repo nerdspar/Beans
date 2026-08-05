@@ -30,6 +30,14 @@ export type Holding = {
 export type HoldingsReading = {
   /** The date these positions were observed. Null when the account has never reported any. */
   asOfDate: IsoDate | null
+  /**
+   * When a sync last inspected this account for positions, whether or not it found any.
+   *
+   * The whole reason an empty list is readable. Null means nothing has synced since holdings
+   * existed, which is a different thing from an institution that reports none — and without this
+   * the screen would have to present both as the same shrug.
+   */
+  checkedAt: string | null
   holdings: Holding[]
   /**
    * The previous date with positions, and what they were worth then.
@@ -64,6 +72,12 @@ export async function readHoldings(
   context: HouseholdContext,
   accountId: string,
 ): Promise<HoldingsReading> {
+  const checked = await context.client.query<{ holdings_checked_at: Date | null }>(
+    'select holdings_checked_at from accounts where id = $1',
+    [accountId],
+  )
+  const checkedAt = checked.rows[0]?.holdings_checked_at?.toISOString() ?? null
+
   const dates = await context.client.query<{ as_of_date: IsoDate }>(
     `select distinct as_of_date
        from holdings
@@ -77,7 +91,13 @@ export async function readHoldings(
   const previous = dates.rows[1]?.as_of_date ?? null
 
   if (latest === null) {
-    return { asOfDate: null, holdings: [], previousAsOfDate: null, previousMarketValues: {} }
+    return {
+      asOfDate: null,
+      checkedAt,
+      holdings: [],
+      previousAsOfDate: null,
+      previousMarketValues: {},
+    }
   }
 
   const current = await context.client.query<HoldingRow>(
@@ -121,7 +141,7 @@ export async function readHoldings(
     }
   }
 
-  return { asOfDate: latest, holdings, previousAsOfDate: previous, previousMarketValues }
+  return { asOfDate: latest, checkedAt, holdings, previousAsOfDate: previous, previousMarketValues }
 }
 
 /**
@@ -186,4 +206,22 @@ function toHolding(context: HouseholdContext, row: HoldingRow, marketValueCents:
 function nullableMoney(context: HouseholdContext, sealed: Buffer | null): string | null {
   const cents = context.cipher.decryptMoneyOrNull(sealed)
   return cents === null ? null : centsToDecimalString(cents)
+}
+
+/**
+ * Records that a sync looked, whatever it found.
+ *
+ * Separate from writing the positions themselves because the interesting case is the one where
+ * there were none: an empty response writes no holdings by design, so nothing else in the data
+ * would distinguish it from an account that has never been synced.
+ */
+export async function markHoldingsChecked(
+  context: HouseholdContext,
+  accountId: string,
+  at: Date,
+): Promise<void> {
+  await context.client.query('update accounts set holdings_checked_at = $1 where id = $2', [
+    at,
+    accountId,
+  ])
 }

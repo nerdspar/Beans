@@ -16,6 +16,17 @@ export const HOLDINGS_COPY = {
   unsupportedDetail:
     'This institution sends Beans a balance for this account but not what is inside it. Nothing is missing from your net worth — only the breakdown is unavailable.',
 
+  /**
+   * The other empty state, and the reason there are two.
+   *
+   * Positions are only recorded during a sync, so an account that has not synced since holdings
+   * were added has none for a reason that says nothing about the institution. Showing that as "no
+   * positions reported" would blame a provider that has not been asked yet.
+   */
+  notCheckedYet: 'Not looked at yet',
+  notCheckedYetDetail:
+    'Positions arrive with a sync. This account has not synced since Beans started reading them — refresh the connection on the accounts screen, and they will appear here if the institution sends them.',
+
   failed: 'Could not load holdings',
 
   /** The column, and the caveat that belongs to it. */

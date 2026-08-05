@@ -102,6 +102,8 @@ export type Holding = {
 export type HoldingsReading = {
   /** Null when this account has never reported positions — which is not the same as holding none. */
   asOfDate: string | null
+  /** When a sync last looked, whatever it found. Null means it never has. */
+  checkedAt: string | null
   holdings: Holding[]
   previousAsOfDate: string | null
   /** Keyed by `providerHoldingId`. Absent for a position that did not exist at that observation. */

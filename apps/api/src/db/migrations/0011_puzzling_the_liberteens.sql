@@ -1,0 +1,1 @@
+ALTER TABLE "accounts" ADD COLUMN "holdings_checked_at" timestamp with time zone;
