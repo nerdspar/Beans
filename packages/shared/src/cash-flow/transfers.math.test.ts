@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   cumulativeDailyFlow,
+  dayChange,
   incomeByCategory,
   precedingWindow,
   isExcludedFromCashFlow,
@@ -427,5 +428,62 @@ describe('precedingWindow', () => {
   it('compares equal spans across months of different lengths', () => {
     const previous = precedingWindow('2026-02-01', '2026-02-28')
     expect(previous).toEqual({ start: '2026-01-04', end: '2026-01-31' })
+  })
+})
+
+/**
+ * A day's performance, with the money separated from the market.
+ *
+ * The number everyone else shows is the balance delta, which counts a deposit as a gain. On the day
+ * somebody moves a bonus into a brokerage that reads as the best day they have ever had.
+ */
+describe('dayChange', () => {
+  it('reports the market move when nothing was paid in', () => {
+    const change = dayChange(100_000_00n, 101_000_00n, 0n)
+    expect(change.marketCents).toBe(1_000_00n)
+    expect(change.fraction).toBeCloseTo(0.01)
+  })
+
+  /** The case the whole function exists for. */
+  it('does not count a deposit as a gain', () => {
+    // Opened at $100k, paid in $5k, closed at $105k: the market did nothing.
+    const change = dayChange(100_000_00n, 105_000_00n, 5_000_00n)
+    expect(change.marketCents).toBe(0n)
+    expect(change.fraction).toBe(0)
+  })
+
+  it('does not count a withdrawal as a loss', () => {
+    const change = dayChange(100_000_00n, 95_000_00n, -5_000_00n)
+    expect(change.marketCents).toBe(0n)
+  })
+
+  it('separates a real gain from a deposit made the same day', () => {
+    // Paid in $5k and gained $1k on top.
+    const change = dayChange(100_000_00n, 106_000_00n, 5_000_00n)
+    expect(change.marketCents).toBe(1_000_00n)
+  })
+
+  it('reports a loss as a loss', () => {
+    const change = dayChange(100_000_00n, 98_000_00n, 0n)
+    expect(change.marketCents).toBe(-2_000_00n)
+    expect(change.fraction).toBeCloseTo(-0.02)
+  })
+
+  /**
+   * Against the opening plus what was paid in, which is the money actually exposed that day.
+   * Against the opening alone, a deposit larger than the account would flatter every percentage.
+   */
+  it('measures the percentage against the money that was exposed', () => {
+    const change = dayChange(0n, 101_000_00n, 100_000_00n)
+    expect(change.marketCents).toBe(1_000_00n)
+    expect(change.fraction).toBeCloseTo(0.01)
+  })
+
+  it('reports no percentage when there was nothing to measure against', () => {
+    expect(dayChange(0n, 0n, 0n).fraction).toBeNull()
+  })
+
+  it('keeps the flow, so a screen can explain an odd-looking figure', () => {
+    expect(dayChange(100_000_00n, 105_000_00n, 5_000_00n).flowCents).toBe(5_000_00n)
   })
 })

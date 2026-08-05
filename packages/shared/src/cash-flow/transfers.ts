@@ -350,3 +350,44 @@ export function precedingWindow(
   // passes the wrong one to a function that reads the other.
   return { start: addDays(from, -(span + 1)), end: addDays(to, -(span + 1)) }
 }
+
+export type DayChange = {
+  /** Value moved by the market, with money paid in or taken out removed. */
+  marketCents: bigint
+  /** As a fraction of where the account started the day. Null when it started at nothing. */
+  fraction: number | null
+  /** What was paid in or taken out, kept so a screen can say why a figure looks odd. */
+  flowCents: bigint
+}
+
+/**
+ * What an investment account did in a day, separating the market from the money.
+ *
+ * A balance moved by a deposit is not performance. Empower's one-day figure is the balance delta,
+ * so paying $5,000 into a brokerage reads as a $5,000 gain — the most flattering possible day, and
+ * entirely untrue. Subtracting the day's own transactions leaves what the market did.
+ *
+ * Where a provider sends no transactions for an account, `flowCents` is zero and this degrades to
+ * the delta. That is the best available answer, not a claim that nothing was paid in.
+ */
+export function dayChange(
+  openingCents: bigint,
+  closingCents: bigint,
+  flowCents: bigint,
+): DayChange {
+  const marketCents = closingCents - openingCents - flowCents
+
+  return {
+    marketCents,
+    /*
+     * Measured against the opening balance plus what was paid in, which is the money that was
+     * actually exposed to the market that day. Against the opening alone, a large deposit would
+     * shrink the percentage of a good day toward nothing.
+     */
+    fraction:
+      openingCents + flowCents === 0n
+        ? null
+        : Number(marketCents) / Math.abs(Number(openingCents + flowCents)),
+    flowCents,
+  }
+}

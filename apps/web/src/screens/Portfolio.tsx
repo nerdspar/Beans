@@ -1,13 +1,15 @@
 import {
   NET_WORTH_STATE_COPY,
   PORTFOLIO_COPY,
+  dayChange,
   formatCents,
   resolveWindow,
   sliceToWindow,
   toIsoDate,
 } from '@beans/shared'
 import { useMemo, useState, type ReactNode } from 'react'
-import { CategoryChart } from '../charts/CategoryChart.js'
+import { Link } from 'wouter'
+import { StackedArea } from '../charts/StackedArea.js'
 import { cn } from '../lib/cn.js'
 import { SECTION_COLORS } from '../net-worth/colors.js'
 import { formatAxisValue } from '../net-worth/display.js'
@@ -87,6 +89,41 @@ export function Portfolio(): ReactNode {
     return <Message title={PORTFOLIO_COPY.empty} detail={PORTFOLIO_COPY.emptyDetail} />
   }
 
+  /*
+   * What each account did in its last day, market only.
+   *
+   * The closing balance minus the opening minus that day's own transactions — a deposit is not
+   * performance. Where a provider sends no investment transactions the flow is zero and this is the
+   * plain delta, which is the best answer available rather than a claim nothing was paid in.
+   */
+  const dayChanges = new Map<string, ReturnType<typeof dayChange> | null>()
+  for (const account of investments) {
+    const points = account.series
+    const closing = points.at(-1)
+    const opening = points.at(-2)
+
+    if (closing === undefined || opening === undefined) {
+      dayChanges.set(account.id, null)
+      continue
+    }
+
+    const flow = workingSet.transactions
+      .filter(
+        (transaction) =>
+          transaction.accountId === account.id &&
+          transaction.postedDate === closing.date &&
+          transaction.status !== 'void',
+      )
+      .reduce((sum, transaction) => sum + transaction.amountCents, 0n)
+
+    dayChanges.set(account.id, dayChange(opening.value, closing.value, flow))
+  }
+
+  const ordered = [...investments].sort(
+    (left, right) =>
+      Number((right.series.at(-1)?.value ?? 0n) - (left.series.at(-1)?.value ?? 0n)),
+  )
+
   const total = investments.reduce(
     (sum, account) => sum + (account.series.at(-1)?.value ?? account.currentBalanceCents ?? 0n),
     0n,
@@ -112,12 +149,22 @@ export function Portfolio(): ReactNode {
 
       <p className="mt-1 text-3xl font-semibold tabular-nums">{formatCents(total)}</p>
 
+      {/*
+        One band per account rather than one line for the total.
+        
+        The same pixels then also say which accounts hold the money and which one moved — a band
+        thickening while the total stays flat is money crossing between two of them, which a single
+        line cannot show.
+      */}
       {series.length > 0 && (
         <div className="mt-3">
-          <CategoryChart
-            categoryKey="portfolio"
-            series={series}
-            color={SECTION_COLORS.investment}
+          <StackedArea
+            bands={ordered.map((account, index) => ({
+              key: account.id,
+              label: account.name,
+              color: BAND_COLORS[index % BAND_COLORS.length] ?? SECTION_COLORS.investment,
+              points: account.series,
+            }))}
             formatValue={(cents, digits) => formatAxisValue(cents, 'investment', digits)}
             height={CHART_HEIGHT}
           />
@@ -129,23 +176,45 @@ export function Portfolio(): ReactNode {
       </p>
 
       <h2 className="mt-6 text-sm font-semibold">{PORTFOLIO_COPY.byAccount}</h2>
-      <ul className="mt-2 space-y-2">
-        {[...investments]
-          .sort(
-            (left, right) =>
-              Number((right.series.at(-1)?.value ?? 0n) - (left.series.at(-1)?.value ?? 0n)),
-          )
-          .map((account) => (
-            <li key={account.id}>
-              <Share
-                label={account.name}
-                sublabel={account.institutionName}
-                cents={account.series.at(-1)?.value ?? account.currentBalanceCents ?? 0n}
-                total={total}
+      <ul className="mt-2 divide-y divide-slate-200 dark:divide-slate-800">
+        {ordered.map((account, index) => (
+          <li key={account.id}>
+            <Link
+              href={`/accounts/${account.id}`}
+              className="flex items-center gap-3 py-2.5 focus-visible:outline-2 focus-visible:outline-sky-500"
+            >
+              {/* Ties the row to its band, which is the only thing naming the colours. */}
+              <span
+                aria-hidden
+                className="h-8 w-1 shrink-0 rounded-full"
+                style={{ backgroundColor: BAND_COLORS[index % BAND_COLORS.length] }}
               />
-            </li>
-          ))}
+
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium">{account.name}</span>
+                <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+                  {account.institutionName ?? ''}
+                </span>
+              </span>
+
+              <DayChangeCell change={dayChanges.get(account.id) ?? null} />
+
+              <span className="shrink-0 text-right">
+                <span className="block text-sm tabular-nums">
+                  {formatCents(account.series.at(-1)?.value ?? account.currentBalanceCents ?? 0n)}
+                </span>
+                <span className="block text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                  {shareOf(account.series.at(-1)?.value ?? 0n, total)}
+                </span>
+              </span>
+            </Link>
+          </li>
+        ))}
       </ul>
+
+      <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+        {PORTFOLIO_COPY.oneDayNote}
+      </p>
 
       <h2 className="mt-6 text-sm font-semibold">{PORTFOLIO_COPY.byTax}</h2>
       <ul className="mt-2 space-y-2">
@@ -228,5 +297,69 @@ function Message({
         </p>
       )}
     </div>
+  )
+}
+
+/**
+ * Band colours, largest holding first.
+ *
+ * A ramp rather than a categorical palette: these are slices of one quantity, and distinct hues
+ * would imply the accounts are different kinds of thing. Light-to-dark reads as an ordering, which
+ * is what the list beneath is.
+ */
+const BAND_COLORS = [
+  '#1d4ed8',
+  '#2563eb',
+  '#3b82f6',
+  '#60a5fa',
+  '#38bdf8',
+  '#22d3ee',
+  '#34d399',
+  '#4ade80',
+  '#a3e635',
+]
+
+/** A share of the whole, to one decimal. More precision than that is noise on a pie. */
+function shareOf(cents: bigint, total: bigint): string {
+  if (total === 0n) return ''
+  return `${((Number(cents) / Number(total)) * 100).toFixed(2)}%`
+}
+
+/**
+ * A day's move for one account.
+ *
+ * Silent when there is no prior day to compare against — an account connected today has no
+ * performance, and a dash is the honest answer where a zero would read as a flat day.
+ */
+function DayChangeCell({ change }: { change: ReturnType<typeof dayChange> | null }): ReactNode {
+  if (change === null) {
+    return (
+      <span className="shrink-0 text-right text-xs text-slate-400 dark:text-slate-500">—</span>
+    )
+  }
+
+  const up = change.marketCents > 0n
+
+  return (
+    <span
+      className={cn(
+        'shrink-0 text-right tabular-nums',
+        change.marketCents === 0n
+          ? 'text-slate-500 dark:text-slate-400'
+          : up
+            ? 'text-emerald-600 dark:text-emerald-400'
+            : 'text-rose-600 dark:text-rose-400',
+      )}
+    >
+      <span className="block text-sm">
+        {change.fraction === null
+          ? ''
+          : `${up ? '+' : ''}${(change.fraction * 100).toFixed(2)}%`}
+      </span>
+      <span className="block text-xs">
+        {up ? '+' : ''}
+        {formatCents(change.marketCents)}
+      </span>
+    </span>
   )
 }

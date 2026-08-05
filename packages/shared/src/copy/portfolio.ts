@@ -18,6 +18,18 @@ export const PORTFOLIO_COPY = {
   byTax: 'By tax treatment',
 
   /** Named because it changes what a projection would mean, not merely how a total is labelled. */
+  /*
+   * A day's move, and what it excludes.
+   *
+   * Money paid in is not performance, so it is taken out — which means this figure will not match a
+   * broker's on a day something was contributed. Said once, under the list, rather than annotating
+   * every row.
+   */
+  oneDay: '1-day',
+  oneDayNote:
+    'A day’s change is the market only. Money paid in or taken out that day is excluded, so this will differ from your provider on a contribution day.',
+  noDayChange: 'No prior day',
+
   taxLabel: {
     taxable: 'Taxable',
     traditional: 'Traditional — taxed on withdrawal',
