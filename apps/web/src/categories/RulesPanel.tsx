@@ -11,18 +11,22 @@ import {
   updateRule,
   type Rule,
   type RuleInput,
-} from '../categories/api.js'
-import { CategoryTree } from '../categories/CategoryTree.js'
-import { RuleBuilder } from '../categories/RuleBuilder.js'
+} from './api.js'
+import { RuleBuilder } from './RuleBuilder.js'
 import { cn } from '../lib/cn.js'
 import { WORKING_SET_KEY, useWorkingSet } from '../working-set/use-working-set.js'
 
 /**
- * Categories, and the rules that assign them.
+ * The rules that assign categories, and the merchants worth writing one for.
  *
- * The rules half is the point. Creating one from the transactions screen was possible before this
- * existed, which meant a household could accumulate automation it had no way to see, reorder or
- * undo — worse than having none, because the effects are real and the cause is invisible.
+ * Separate from the category tree, which used to sit at the bottom of this same screen. They are
+ * different jobs on different schedules: the tree is a taxonomy edited a few times a year, rules
+ * are automation revisited whenever a statement throws up a merchant nobody has seen. Stacking them
+ * meant opening one to reach the other.
+ *
+ * Rules being visible at all is the point. Creating one from the transactions screen was possible
+ * before this existed, which meant a household could accumulate automation it had no way to see,
+ * reorder or undo — worse than having none, because the effects are real and the cause is invisible.
  */
 
 type Editing =
@@ -34,7 +38,7 @@ type Editing =
 /** Enough to be worth working through in one sitting. Past this it reads as a backlog. */
 const SUGGESTION_LIMIT = 12
 
-export function Categories(): ReactNode {
+export function RulesPanel(): ReactNode {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState<Editing>({ kind: 'none' })
 
@@ -89,11 +93,6 @@ export function Categories(): ReactNode {
     [workingSet.transactions],
   )
 
-  const refreshCategories = async (): Promise<void> => {
-    await queryClient.invalidateQueries({ queryKey: ['categories'] })
-    // Removing a category moves transactions, so the cached working set is stale.
-    await queryClient.invalidateQueries({ queryKey: WORKING_SET_KEY })
-  }
 
   return (
     <div>
@@ -245,10 +244,6 @@ export function Categories(): ReactNode {
         </>
       )}
 
-      <h2 className="mt-8 text-sm font-semibold">{CATEGORY_COPY.categoriesHeading}</h2>
-      <div className="mt-2">
-        <CategoryTree categories={categories.data ?? []} onChanged={refreshCategories} />
-      </div>
     </div>
   )
 }

@@ -3,19 +3,44 @@ import {
   HISTORY_SETTING_COPY,
   HOUSEHOLD_COPY,
   IMPORT_COPY,
+  SETTINGS_COPY,
 } from '@beans/shared'
 import { ChevronDown, ChevronRight, ChevronUp, Plus, X } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { cn } from '../lib/cn.js'
 import { usePreferences } from '../preferences/use-preferences.js'
-import { Categories } from './Categories.js'
+import { CategoryTree } from '../categories/CategoryTree.js'
+import { RulesPanel } from '../categories/RulesPanel.js'
 import { Household } from './Household.js'
 import { Import } from './Import.js'
+import { listCategories, listRules } from '../categories/api.js'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { WORKING_SET_KEY } from '../working-set/use-working-set.js'
 import { TAB_SLOTS, tabbableDestinations } from '../navigation/destinations.js'
 import { useTabOrder } from '../navigation/use-tab-order.js'
 
 /**
- * Choosing which destinations occupy the four configurable tab slots, and in what order.
+ * Everything you can change, grouped by what kind of thing it is.
+ *
+ * ## Why it is grouped rather than listed
+ *
+ * This page grew by accretion: three collapsible sections, then two bare ones bolted underneath as
+ * they were needed. **Two visual grammars on one page**, which is exactly why the bare two read as
+ * homeless — they were not missing a home, they were the only things not in one.
+ *
+ * So everything is a row inside a labelled group now, and the groups are by *kind* rather than by
+ * which screen a thing came from:
+ *
+ * - **Display** — changes what the app looks like. Cheap, reversible, no data touched.
+ * - **Categorizing** — the taxonomy, and the automation over it. Two jobs on different schedules,
+ *   which is why they are two rows: a category tree is edited a few times a year, rules whenever a
+ *   statement throws up a merchant nobody has seen.
+ * - **Household** — people, and getting data in.
+ *
+ * A boolean toggles in place; anything with an editor behind it expands. Making a checkbox take a
+ * click to reveal would be consistent and worse.
+ *
+ * ## The tab reorder, which lives here
  *
  * **Up/down buttons rather than drag and drop.** With four items the reorder is two taps at most,
  * and a drag inside a scrolling settings page fights the scroll — on touch especially, where the
@@ -25,6 +50,23 @@ import { useTabOrder } from '../navigation/use-tab-order.js'
 export function TabSettings(): ReactNode {
   const { tabs, setTabOrder, resetTabOrder, isSaving } = useTabOrder()
   const { preferences, patch } = usePreferences()
+  const queryClient = useQueryClient()
+
+  /*
+   * Counts for the closed rows.
+   *
+   * A row that says only "Categories" makes you open it to learn anything, and these are cheap —
+   * both lists are already cached by the panels behind them, so this shares a query rather than
+   * adding one.
+   */
+  const categories = useQuery({ queryKey: ['categories'], queryFn: listCategories })
+  const rules = useQuery({ queryKey: ['rules'], queryFn: listRules })
+
+  const refreshCategories = async (): Promise<void> => {
+    await queryClient.invalidateQueries({ queryKey: ['categories'] })
+    // Removing a category moves transactions, so the cached working set is stale.
+    await queryClient.invalidateQueries({ queryKey: WORKING_SET_KEY })
+  }
 
   const chosen = tabs
   const chosenKeys = chosen.map((tab) => tab.key)
@@ -48,63 +90,13 @@ export function TabSettings(): ReactNode {
 
   return (
     <div className="mx-auto max-w-3xl p-6">
-      <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
+      <h1 className="text-xl font-semibold tracking-tight">{SETTINGS_COPY.title}</h1>
 
-      {/*
-        Household, categories and import live here rather than as destinations of their own.
-        
-        Each is something you set up once and revisit rarely — a tab spent on any of them is a tab
-        not spent on the four screens used daily. Collapsed by default so the page reads as a list
-        of what can be changed, rather than three screens stacked on top of each other.
-      */}
-      <Collapsible title={HOUSEHOLD_COPY.title}>
-        <Household />
-      </Collapsible>
-
-      <Collapsible title={CATEGORY_COPY.rulesHeading}>
-        <Categories />
-      </Collapsible>
-
-      <Collapsible title={IMPORT_COPY.title}>
-        <Import />
-      </Collapsible>
-
-      <section className="mt-8" aria-labelledby="history-heading">
-        <h2 id="history-heading" className="text-base font-semibold">
-          {HISTORY_SETTING_COPY.heading}
-        </h2>
-
-        <label className="mt-3 flex items-start gap-3">
-          <input
-            type="checkbox"
-            checked={preferences.showIncompleteHistory}
-            onChange={(event) => patch({ showIncompleteHistory: event.target.checked })}
-            className="mt-0.5 size-4 shrink-0 accent-sky-600"
-          />
-          <span className="text-sm">
-            <span className="font-medium">{HISTORY_SETTING_COPY.label}</span>
-            {/*
-              The consequence of the current state, not of the switch. Describing the other option
-              is how a toggle ends up read backwards.
-            */}
-            <span className="mt-0.5 block text-slate-500 dark:text-slate-400">
-              {preferences.showIncompleteHistory
-                ? HISTORY_SETTING_COPY.on
-                : HISTORY_SETTING_COPY.off}
-            </span>
-          </span>
-        </label>
-      </section>
-
-      <section className="mt-8" aria-labelledby="tabs-heading">
-        <h2 id="tabs-heading" className="text-base font-semibold">
-          Bottom tabs
-        </h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Pick up to {TAB_SLOTS} and put them in order. More always fills the last slot and holds
-          everything else.
-        </p>
-
+      <Group title={SETTINGS_COPY.displayGroup}>
+        <ExpandableRow title={SETTINGS_COPY.tabsTitle} summary={SETTINGS_COPY.tabsSummary}>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {SETTINGS_COPY.tabsHelp(TAB_SLOTS)}
+          </p>
         <ol className="mt-4 space-y-2">
           {chosen.map((destination, index) => {
             const Icon = destination.icon
@@ -203,8 +195,150 @@ export function TabSettings(): ReactNode {
         <span aria-live="polite" className="sr-only">
           {isSaving ? 'Saving your tab order' : ''}
         </span>
-      </section>
+        </ExpandableRow>
+
+        {/*
+          A boolean toggles in place. Hiding a checkbox behind a disclosure would be consistent with
+          the rows around it and strictly worse — one extra tap to reach one tap.
+        */}
+        <ToggleRow
+          title={HISTORY_SETTING_COPY.label}
+          checked={preferences.showIncompleteHistory}
+          onChange={(next) => patch({ showIncompleteHistory: next })}
+          // The consequence of the state it is in, not of the switch. Describing the other option
+          // is how a toggle ends up read backwards.
+          detail={
+            preferences.showIncompleteHistory
+              ? HISTORY_SETTING_COPY.on
+              : HISTORY_SETTING_COPY.off
+          }
+        />
+      </Group>
+
+      <Group title={SETTINGS_COPY.categorizingGroup}>
+        <ExpandableRow
+          title={CATEGORY_COPY.categoriesHeading}
+          summary={
+            categories.data === undefined
+              ? undefined
+              : SETTINGS_COPY.categoriesSummary(categories.data.length)
+          }
+        >
+          <CategoryTree categories={categories.data ?? []} onChanged={refreshCategories} />
+        </ExpandableRow>
+
+        <ExpandableRow
+          title={CATEGORY_COPY.rulesHeading}
+          summary={
+            rules.data === undefined ? undefined : SETTINGS_COPY.rulesSummary(rules.data.length)
+          }
+        >
+          <RulesPanel />
+        </ExpandableRow>
+      </Group>
+
+      <Group title={SETTINGS_COPY.householdGroup}>
+        <ExpandableRow title={HOUSEHOLD_COPY.title}>
+          <Household />
+        </ExpandableRow>
+
+        <ExpandableRow title={IMPORT_COPY.title} summary={SETTINGS_COPY.importSummary}>
+          <Import />
+        </ExpandableRow>
+      </Group>
     </div>
+  )
+}
+
+/** A labelled set of rows. The label is what stops anything reading as bolted on underneath. */
+function Group({ title, children }: { title: string; children: ReactNode }): ReactNode {
+  return (
+    <section className="mt-8">
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        {title}
+      </h2>
+      <div className="mt-2 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+        {children}
+      </div>
+    </section>
+  )
+}
+
+/**
+ * A row that opens on demand.
+ *
+ * Mounted only while open, which is not tidiness: each of these fetches on mount — the household
+ * and its invites, the rule list, the import history — and firing all of them for a page somebody
+ * opened to reorder their tabs would be most of the cost of the screen.
+ */
+function ExpandableRow({
+  title,
+  summary,
+  children,
+}: {
+  title: string
+  /** Shown while closed, so the row says what is inside without being opened. */
+  summary?: string | undefined
+  children: ReactNode
+}): ReactNode {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className={cn(
+          'flex w-full items-center gap-3 px-4 py-3 text-left',
+          'hover:bg-slate-50 dark:hover:bg-slate-900',
+          'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-sky-500',
+        )}
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium">{title}</span>
+          {summary !== undefined && (
+            <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+              {summary}
+            </span>
+          )}
+        </span>
+        <ChevronRight
+          className={cn('size-4 shrink-0 text-slate-400 transition-transform', open && 'rotate-90')}
+          aria-hidden
+        />
+      </button>
+
+      {open && <div className="border-t border-slate-200 px-4 py-4 dark:border-slate-800">{children}</div>}
+    </div>
+  )
+}
+
+/** A row that is its own control, for a setting small enough to have no screen behind it. */
+function ToggleRow({
+  title,
+  detail,
+  checked,
+  onChange,
+}: {
+  title: string
+  detail: string
+  checked: boolean
+  onChange: (next: boolean) => void
+}): ReactNode {
+  return (
+    <label className="flex cursor-pointer items-start gap-3 px-4 py-3">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="mt-0.5 size-4 shrink-0 accent-sky-600"
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-medium">{title}</span>
+        <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">{detail}</span>
+      </span>
+    </label>
   )
 }
 
@@ -236,35 +370,5 @@ function IconButton({
     >
       {children}
     </button>
-  )
-}
-
-/**
- * A settings section that opens on demand.
- *
- * Mounted only while open, which is not just tidiness: each of these fetches on mount — the
- * household and its invites, the category list and its rules — and three screens' worth of requests
- * fired for a page somebody opened to reorder their tabs would be most of the cost of the screen.
- */
-function Collapsible({ title, children }: { title: string; children: ReactNode }): ReactNode {
-  const [open, setOpen] = useState(false)
-
-  return (
-    <section className="mt-8 border-t border-slate-200 pt-6 dark:border-slate-800">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-1.5 text-base font-semibold focus-visible:outline-2 focus-visible:outline-sky-500"
-      >
-        <ChevronRight
-          className={cn('size-4 shrink-0 transition-transform', open && 'rotate-90')}
-          aria-hidden
-        />
-        {title}
-      </button>
-
-      {open && <div className="mt-4">{children}</div>}
-    </section>
   )
 }

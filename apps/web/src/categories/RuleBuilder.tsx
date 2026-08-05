@@ -185,14 +185,22 @@ export function RuleBuilder({
           ])}
       </select>
 
-      <label className="mt-3 flex items-center gap-2 text-xs">
+      <label className="mt-3 flex items-start gap-2 text-xs">
         <input
           type="checkbox"
           checked={matchType === 'regex'}
           onChange={(event) => setMatchType(event.target.checked ? 'regex' : 'contains')}
-          className="size-4 accent-sky-600"
+          className="mt-0.5 size-4 shrink-0 accent-sky-600"
         />
-        {CATEGORY_COPY.ruleRegexToggle}
+        <span>
+          <span className="font-medium">{CATEGORY_COPY.ruleRegexToggle}</span>
+          {/* Only explained once it is switched on — an unticked box does not need a paragraph. */}
+          {matchType === 'regex' && (
+            <span className="mt-0.5 block text-slate-500 dark:text-slate-400">
+              {CATEGORY_COPY.ruleRegexHelp}
+            </span>
+          )}
+        </span>
       </label>
 
       {error !== null && (

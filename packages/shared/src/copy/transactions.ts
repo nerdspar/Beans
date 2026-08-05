@@ -75,7 +75,7 @@ export const CATEGORY_COPY = {
   ruleDeleteNote: 'Deleting a rule leaves transactions it already categorized as they are.',
   ruleApply: 'Apply rules',
   /** Named because the order decides outcomes: the first matching rule wins. */
-  ruleRegex: 'Matched as a regular expression.',
+  ruleRegex: 'Matched as patterns.',
 
   // ── Building a rule ────────────────────────────────────────────────────────
   ruleNew: 'New rule',
@@ -99,7 +99,16 @@ export const CATEGORY_COPY = {
   },
   ruleCategoryLabel: 'Category',
   rulePickCategory: 'Choose a category',
-  ruleRegexToggle: 'Treat each keyword as a regular expression',
+  /**
+   * Named for when you would want it, not for what it does.
+   *
+   * It read "treat each keyword as a regular expression", which answers a question nobody asked and
+   * assumes the reader knows what that is. It is also mostly obsolete: the reason people reached for
+   * it was alternation, and a keyword list already says "any of these" without a syntax.
+   */
+  ruleRegexToggle: 'Advanced: match with patterns',
+  ruleRegexHelp:
+    'Keywords normally match anywhere in a description. Turn this on to use regular expressions instead — for things plain words cannot say, like “starts with”. Most rules never need it.',
   ruleSave: 'Save rule',
   ruleSaving: 'Saving',
   ruleCancel: 'Cancel',
