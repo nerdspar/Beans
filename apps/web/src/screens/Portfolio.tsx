@@ -2,6 +2,7 @@ import {
   NET_WORTH_STATE_COPY,
   PORTFOLIO_COPY,
   dayChange,
+  latestMove,
   formatCents,
   resolveWindow,
   sliceToWindow,
@@ -12,7 +13,7 @@ import { Link } from 'wouter'
 import { StackedArea } from '../charts/StackedArea.js'
 import { cn } from '../lib/cn.js'
 import { SECTION_COLORS } from '../net-worth/colors.js'
-import { formatAxisValue } from '../net-worth/display.js'
+import { formatAxisValue, formatShortDate } from '../net-worth/display.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
 import { DEFAULT_RANGE, type RangeSelection } from '../net-worth/range.js'
 import { useWorkingSet } from '../working-set/use-working-set.js'
@@ -96,27 +97,42 @@ export function Portfolio(): ReactNode {
    * performance. Where a provider sends no investment transactions the flow is zero and this is the
    * plain delta, which is the best answer available rather than a claim nothing was paid in.
    */
-  const dayChanges = new Map<string, ReturnType<typeof dayChange> | null>()
-  for (const account of investments) {
-    const points = account.series
-    const closing = points.at(-1)
-    const opening = points.at(-2)
+  const dayChanges = new Map<
+    string,
+    { change: ReturnType<typeof dayChange>; days: number; since: string } | null
+  >()
 
-    if (closing === undefined || opening === undefined) {
+  for (const account of investments) {
+    /*
+     * Measured from the last day the value actually differed, not from yesterday.
+     *
+     * These series hold each reading flat until the next, so the last two days are routinely the
+     * same number and their delta is zero — which is what every account reading $0 was. The span is
+     * carried alongside so the label can name it rather than calling four days "1-day".
+     */
+    const move = latestMove(account.series)
+
+    if (move === null) {
       dayChanges.set(account.id, null)
       continue
     }
 
+    // Everything paid in or taken out over the same span, so the figure is the market alone.
     const flow = workingSet.transactions
       .filter(
         (transaction) =>
           transaction.accountId === account.id &&
-          transaction.postedDate === closing.date &&
+          transaction.postedDate > move.fromDate &&
+          transaction.postedDate <= move.toDate &&
           transaction.status !== 'void',
       )
       .reduce((sum, transaction) => sum + transaction.amountCents, 0n)
 
-    dayChanges.set(account.id, dayChange(opening.value, closing.value, flow))
+    dayChanges.set(account.id, {
+      change: dayChange(move.openingCents, move.closingCents, flow),
+      days: move.days,
+      since: formatShortDate(move.toDate),
+    })
   }
 
   const ordered = [...investments].sort(
@@ -197,7 +213,7 @@ export function Portfolio(): ReactNode {
                 </span>
               </span>
 
-              <DayChangeCell change={dayChanges.get(account.id) ?? null} />
+              <DayChangeCell reading={dayChanges.get(account.id) ?? null} />
 
               <span className="shrink-0 text-right">
                 <span className="block text-sm tabular-nums">
@@ -331,12 +347,20 @@ function shareOf(cents: bigint, total: bigint): string {
  * Silent when there is no prior day to compare against — an account connected today has no
  * performance, and a dash is the honest answer where a zero would read as a flat day.
  */
-function DayChangeCell({ change }: { change: ReturnType<typeof dayChange> | null }): ReactNode {
-  if (change === null) {
+function DayChangeCell({
+  reading,
+}: {
+  reading: { change: ReturnType<typeof dayChange>; days: number; since: string } | null
+}): ReactNode {
+  if (reading === null) {
     return (
-      <span className="shrink-0 text-right text-xs text-slate-400 dark:text-slate-500">—</span>
+      <span className="shrink-0 text-right text-xs text-slate-400 dark:text-slate-500">
+        {PORTFOLIO_COPY.noDayChange}
+      </span>
     )
   }
+
+  const { change } = reading
 
   const up = change.marketCents > 0n
 
@@ -360,6 +384,12 @@ function DayChangeCell({ change }: { change: ReturnType<typeof dayChange> | null
         {up ? '+' : ''}
         {formatCents(change.marketCents)}
       </span>
+      {/* The period, whenever it is not the day the column header implies. */}
+      {reading.days !== 1 && (
+        <span className="block text-[11px] font-normal text-slate-500 dark:text-slate-400">
+          {PORTFOLIO_COPY.moveSpan(reading.days, reading.since)}
+        </span>
+      )}
     </span>
   )
 }

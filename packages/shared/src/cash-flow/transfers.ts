@@ -391,3 +391,52 @@ export function dayChange(
     flowCents,
   }
 }
+
+export type LatestMove = {
+  /** The last day the value was something else. */
+  fromDate: IsoDate
+  toDate: IsoDate
+  /** How far apart they are. One means yesterday to today. */
+  days: number
+  openingCents: bigint
+  closingCents: bigint
+}
+
+/**
+ * The most recent change in a series, and how far back it reaches.
+ *
+ * Not "the last two days", which is what a one-day figure sounds like and is wrong here. An
+ * investment account's series is flat between real readings: providers report a balance dated to
+ * the previous market close, a sync can miss a day, and weekends never move — so the last two days
+ * are routinely the same number, and a delta across them is zero. Every account reading exactly
+ * zero is what that looks like.
+ *
+ * So this walks back to the last day the value differed and reports the span it crossed, leaving
+ * the screen to say "1-day" when that span is a day and name the date when it is longer. A figure
+ * whose period is stated cannot mislead about its period.
+ *
+ * Null when nothing in the series ever differs — a genuinely flat window has no move to report, and
+ * a zero would read as a flat *day*.
+ */
+export function latestMove(
+  series: readonly { date: IsoDate; value: bigint }[],
+): LatestMove | null {
+  const last = series[series.length - 1]
+  if (last === undefined) return null
+
+  for (let index = series.length - 2; index >= 0; index -= 1) {
+    const point = series[index]
+    if (point === undefined) continue
+    if (point.value === last.value) continue
+
+    return {
+      fromDate: point.date,
+      toDate: last.date,
+      days: daysBetween(point.date, last.date),
+      openingCents: point.value,
+      closingCents: last.value,
+    }
+  }
+
+  return null
+}

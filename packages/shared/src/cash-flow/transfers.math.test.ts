@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   cumulativeDailyFlow,
   dayChange,
+  latestMove,
   incomeByCategory,
   precedingWindow,
   isExcludedFromCashFlow,
@@ -485,5 +486,73 @@ describe('dayChange', () => {
 
   it('keeps the flow, so a screen can explain an odd-looking figure', () => {
     expect(dayChange(100_000_00n, 105_000_00n, 5_000_00n).flowCents).toBe(5_000_00n)
+  })
+})
+
+/**
+ * Finding the last real change in a series that is flat between readings.
+ *
+ * An investment account's series holds each reading flat until the next: providers date a balance
+ * to the previous market close, a sync can miss a day, and weekends never move. Comparing the last
+ * two days therefore returns zero most of the time — which is what "every account shows $0" looks
+ * like.
+ */
+describe('latestMove', () => {
+  const at = (date: string, value: bigint) => ({ date, value })
+
+  it('finds a change between consecutive days', () => {
+    const move = latestMove([at('2026-08-01', 100n), at('2026-08-02', 110n)])
+    expect(move).toEqual({
+      fromDate: '2026-08-01',
+      toDate: '2026-08-02',
+      days: 1,
+      openingCents: 100n,
+      closingCents: 110n,
+    })
+  })
+
+  /** The case that produced zero everywhere: the last two days are a flat fill. */
+  it('reaches back past days the value did not change', () => {
+    const move = latestMove([
+      at('2026-08-01', 100n),
+      at('2026-08-02', 110n),
+      at('2026-08-03', 110n),
+      at('2026-08-04', 110n),
+    ])
+
+    expect(move?.openingCents).toBe(100n)
+    expect(move?.closingCents).toBe(110n)
+    expect(move?.fromDate).toBe('2026-08-01')
+    // Stated, so the screen can name the period instead of calling three days "1-day".
+    expect(move?.days).toBe(3)
+  })
+
+  it('reports nothing for a window that never moved', () => {
+    expect(latestMove([at('2026-08-01', 100n), at('2026-08-02', 100n)])).toBeNull()
+  })
+
+  it('reports nothing for a single point', () => {
+    expect(latestMove([at('2026-08-01', 100n)])).toBeNull()
+  })
+
+  it('reports nothing for an empty series', () => {
+    expect(latestMove([])).toBeNull()
+  })
+
+  it('finds a fall as readily as a rise', () => {
+    const move = latestMove([at('2026-08-01', 110n), at('2026-08-02', 90n)])
+    expect(move?.closingCents).toBe(90n)
+    expect(move?.openingCents).toBe(110n)
+  })
+
+  /** Only the most recent move — an earlier one is history, not today's figure. */
+  it('ignores changes before the last one', () => {
+    const move = latestMove([
+      at('2026-08-01', 50n),
+      at('2026-08-02', 100n),
+      at('2026-08-03', 110n),
+    ])
+    expect(move?.openingCents).toBe(100n)
+    expect(move?.fromDate).toBe('2026-08-02')
   })
 })

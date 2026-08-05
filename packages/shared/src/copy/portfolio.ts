@@ -26,9 +26,19 @@ export const PORTFOLIO_COPY = {
    * every row.
    */
   oneDay: '1-day',
+  /**
+   * Named by its actual period, not called a day regardless.
+   *
+   * These series are flat between readings — a provider dates a balance to the previous close, a
+   * sync can miss a day, a weekend never moves — so the most recent change often spans more than a
+   * day. Reporting that as "1-day" would be wrong about the period, and reporting the last two days
+   * instead gives zero for nearly every account.
+   */
+  moveSpan: (days: number, since: string): string =>
+    days === 1 ? '1-day' : `since ${since}`,
   oneDayNote:
-    'A day’s change is the market only. Money paid in or taken out that day is excluded, so this will differ from your provider on a contribution day.',
-  noDayChange: 'No prior day',
+    'Change is the market only — money paid in or taken out over the same period is excluded, so this will differ from your provider after a contribution. Each figure names the period it covers.',
+  noDayChange: 'No change yet',
 
   taxLabel: {
     taxable: 'Taxable',
