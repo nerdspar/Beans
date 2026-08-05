@@ -21,19 +21,34 @@ const pkg = JSON.parse(await readFile(new URL('./package.json', import.meta.url)
 
 await rm(new URL('./dist', import.meta.url), { recursive: true, force: true })
 
-await build({
-  entryPoints: [`${root}src/index.ts`],
-  outfile: `${root}dist/index.js`,
-  bundle: true,
-  platform: 'node',
-  format: 'esm',
-  target: 'node22',
-  sourcemap: true,
-  // The workspace package is the one thing that must be inlined; everything else resolves from
-  // node_modules at runtime exactly as it does in development.
-  external: Object.keys(pkg.dependencies ?? {}).filter((name) => name !== '@beans/shared'),
-  logLevel: 'info',
-})
+const external = Object.keys(pkg.dependencies ?? {}).filter((name) => name !== '@beans/shared')
+
+const bundle = (entry, outfile) =>
+  build({
+    entryPoints: [`${root}${entry}`],
+    outfile: `${root}${outfile}`,
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    target: 'node22',
+    sourcemap: true,
+    // The workspace package is the one thing that must be inlined; everything else resolves from
+    // node_modules at runtime exactly as it does in development.
+    external,
+    logLevel: 'info',
+  })
+
+await bundle('src/index.ts', 'dist/index.js')
+
+/*
+ * The demo seeder, built because it has to run *in* the container.
+ *
+ * The runtime image carries `dist` and production dependencies only — no `src`, no `tsx`. So the
+ * `pnpm demo:seed` script works in a checkout and is unreachable on the NAS, which is the one place
+ * the demo actually needs creating. Shipping it compiled is the difference between a documented
+ * command and a command nobody can run.
+ */
+await bundle('src/demo/seed-cli.ts', 'dist/demo-seed.js')
 
 /*
  * Migrations are read from disk at runtime, resolved relative to the module that reads them. They

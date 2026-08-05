@@ -13,7 +13,8 @@ import { seedDemoHousehold } from './seed.js'
 /**
  * Creates the demo account and fills it, idempotently.
  *
- *     pnpm demo:seed
+ *     pnpm demo:seed                          # in a checkout
+ *     node apps/api/dist/demo-seed.js         # inside the container, where the NAS needs it
  *
  * Safe to re-run, and meant to be: it clears the demo household's financial data first, so a
  * scheduled run undoes whatever visitors have done to it without touching anything else.
