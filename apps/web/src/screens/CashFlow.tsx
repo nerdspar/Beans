@@ -243,13 +243,33 @@ export function CashFlow(): ReactNode {
    * that is what the line says at that point — it is a running total, and a breakdown of the single
    * day would disagree with the number the chart is showing above it.
    */
+  /**
+   * What is being shown: the point under the pointer, or the one held.
+   *
+   * A drag previews the whole filtered view rather than only the label. Reading a chart and having
+   * the numbers under it wait for you to let go makes the drag a guess — you cannot see what you
+   * are choosing until after you have chosen it.
+   *
+   * Built from primitives so its identity is stable across renders; an object rebuilt inline would
+   * re-filter every row on every frame regardless of whether anything moved.
+   */
+  const previewDate = scrubIndex === null ? null : (daily[scrubIndex]?.date ?? null)
+  const previewMonth =
+    monthIndex === null ? null : (summary.periods[monthIndex]?.month ?? null)
+
+  const active = useMemo<ChartSelection | null>(() => {
+    if (previewDate !== null) return { kind: 'day', date: previewDate }
+    if (previewMonth !== null) return { kind: 'month', month: previewMonth }
+    return pinned
+  }, [previewDate, previewMonth, pinned])
+
   const selection = useMemo(() => {
-    if (pinned === null) return null
+    if (active === null) return null
 
     const rows =
-      pinned.kind === 'month'
-        ? entries.filter((entry) => entry.postedDate.slice(0, 7) === pinned.month)
-        : entries.filter((entry) => entry.postedDate <= pinned.date)
+      active.kind === 'month'
+        ? entries.filter((entry) => entry.postedDate.slice(0, 7) === active.month)
+        : entries.filter((entry) => entry.postedDate <= active.date)
 
     const cashFlow = rows.map((entry) => ({
       id: entry.id,
@@ -268,17 +288,16 @@ export function CashFlow(): ReactNode {
 
     return {
       label:
-        pinned.kind === 'month'
-          ? formatMonth(pinned.month)
-          : CASH_FLOW_COPY.throughDay(formatShortDate(pinned.date)),
+        active.kind === 'month'
+          ? formatMonth(active.month)
+          : CASH_FLOW_COPY.throughDay(formatShortDate(active.date)),
       summary: summarizeCashFlow(cashFlow, workingSet.confirmedTransferIds),
       byCategory: spending,
       byIncomeCategory: income,
       uncategorizedSpending: uncategorizedTotal(spending),
       uncategorizedIncome: uncategorizedTotal(income),
-      rows,
     }
-  }, [pinned, entries, workingSet.categories, workingSet.confirmedTransferIds])
+  }, [active, entries, workingSet.categories, workingSet.confirmedTransferIds])
 
   /** The index of the pinned point in the current series, for the chart to hold. */
   const pinnedDayIndex =
@@ -360,6 +379,7 @@ export function CashFlow(): ReactNode {
   const onListScroll = useCallback((): void => {
     if (driver.current === 'chart') return
 
+
     const list = listRef.current
     if (list === null) return
 
@@ -393,6 +413,17 @@ export function CashFlow(): ReactNode {
   }
 
   const pending = proposals.data ?? []
+
+  /*
+   * The chip states what is *held*, never what is being previewed — a label that appeared under a
+   * passing finger and offered to clear something would be offering to clear the wrong thing.
+   */
+  const heldLabel =
+    pinned === null
+      ? null
+      : pinned.kind === 'month'
+        ? formatMonth(pinned.month)
+        : CASH_FLOW_COPY.throughDay(formatShortDate(pinned.date))
 
   /* Everything below the chart reads from the selection when there is one. */
   const shownSummary = selection?.summary ?? summary
@@ -500,17 +531,17 @@ export function CashFlow(): ReactNode {
           <div className="mt-4 grid grid-cols-3 gap-3">
             <Total
               label={CASH_FLOW_COPY.income}
-              cents={monthReading?.incomeCents ?? shownSummary.incomeCents}
+              cents={shownSummary.incomeCents}
               tone="income"
             />
             {/* Negated for display only. It stays negative everywhere else so it adds directly. */}
             <Total
               label={CASH_FLOW_COPY.spending}
-              cents={-(monthReading?.spendingCents ?? shownSummary.spendingCents)}
+              cents={-shownSummary.spendingCents}
             />
             <Total
               label={CASH_FLOW_COPY.net}
-              cents={monthReading?.netCents ?? shownSummary.netCents}
+              cents={shownSummary.netCents}
               tone="net"
             />
           </div>
@@ -586,7 +617,7 @@ export function CashFlow(): ReactNode {
                   ? `${formatShortDate(dailyReading.date)} · ${formatCents(dailyReading.cumulativeCents)}`
                   : null
             }
-            held={selection?.label ?? null}
+            held={heldLabel}
             onClear={() => setPinned(null)}
           />
 
@@ -635,7 +666,15 @@ export function CashFlow(): ReactNode {
                     category. A heading says it once for the group, and the row spends its second
                     line on the thing that actually differs.
                   */}
-                  {groupByDate(selection?.rows ?? entries).map(([date, rows]) => (
+                  {/*
+                    Never filtered by the selection.
+                    
+                    The aggregates above narrow to what is selected; this is the record they are
+                    drawn from, and the reading indexes into it rather than cutting it down. Filtering
+                    it would also break the other direction — scrolling it moves the point on the
+                    chart, and a list that shortened as the point moved would be chasing itself.
+                  */}
+                  {groupByDate(entries).map(([date, rows]) => (
                     <li key={date} data-on-or-before={date}>
                       <h3
                         className={cn(
@@ -698,23 +737,13 @@ export function CashFlow(): ReactNode {
           onSelectMonth={selectMonth}
           selectedDayIndex={pinnedDayIndex === -1 ? null : pinnedDayIndex}
           selectedMonthIndex={pinnedMonthIndex === -1 ? null : pinnedMonthIndex}
-          heldLabel={selection?.label ?? null}
+          heldLabel={heldLabel}
           onClear={() => setPinned(null)}
           reading={
             monthReading !== null
-              ? {
-                  label: formatMonth(monthReading.month),
-                  cents:
-                    tab === 'income' ? monthReading.incomeCents : -monthReading.spendingCents,
-                }
+              ? formatMonth(monthReading.month)
               : dailyReading !== null
-                ? {
-                    label: formatShortDate(dailyReading.date),
-                    cents:
-                      tab === 'income'
-                        ? dailyReading.cumulativeCents
-                        : -dailyReading.cumulativeCents,
-                  }
+                ? formatShortDate(dailyReading.date)
                 : null
           }
           totals={tab === 'income' ? shownIncome : shownSpending}
@@ -1164,8 +1193,8 @@ function Breakdown({
   onSelectMonth: (index: number, viaTap: boolean) => void
   selectedDayIndex: number | null
   selectedMonthIndex: number | null
-  /** What is being pointed at, if anything. Replaces the range total while it is. */
-  reading: { label: string; cents: bigint } | null
+  /** The label for what is being pointed at. The totals already follow it through `totalCents`. */
+  reading: string | null
   /** What is held, if anything. Rendered as the chip once the pointer lets go. */
   heldLabel: string | null
   onClear: () => void
@@ -1184,9 +1213,9 @@ function Breakdown({
       <div className="mt-4">
         {/* `exactOptionalPropertyTypes`: an absent tone and an explicit undefined are not the same. */}
         {label === CASH_FLOW_COPY.income ? (
-          <Total label={label} cents={reading?.cents ?? totalCents} tone="income" />
+          <Total label={label} cents={totalCents} tone="income" />
         ) : (
-          <Total label={label} cents={reading?.cents ?? totalCents} />
+          <Total label={label} cents={totalCents} />
         )}
 
       </div>
@@ -1251,7 +1280,7 @@ function Breakdown({
         />
       )}
 
-      <ReadingSlot reading={reading?.label ?? null} held={heldLabel} onClear={onClear} />
+      <ReadingSlot reading={reading} held={heldLabel} onClear={onClear} />
 
       {totals.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
