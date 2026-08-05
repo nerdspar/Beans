@@ -30,7 +30,7 @@ import { SECTION_COLORS } from '../net-worth/colors.js'
 import { formatAxisValue, formatShortDate } from '../net-worth/display.js'
 import { cn } from '../lib/cn.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
-import { DEFAULT_RANGE, type RangeSelection } from '../net-worth/range.js'
+import { type RangeSelection } from '../net-worth/range.js'
 import {
   detectTransfers,
   listProposedTransfers,
@@ -61,7 +61,14 @@ const STICKY_DATE_OFFSET_PX = 8
 export function CashFlow(): ReactNode {
   const workingSet = useWorkingSet()
   const queryClient = useQueryClient()
-  const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE)
+  /*
+   * This month, not the ninety days the other screens open on.
+   *
+   * Cash flow is asked about a month at a time — what came in and went out since the last payday,
+   * and whether that is normal. Ninety days answers a different question, and answers it as a bar
+   * chart of three months rather than the day-by-day view of the one anybody is standing in.
+   */
+  const [range, setRange] = useState<RangeSelection>({ kind: 'preset', key: 'this-month' })
   /*
    * Collapsed by default once there is nothing to decide. Proposals are a chore that appears after a
    * sync and then sits there; the totals above are what the screen is for, and a long list of

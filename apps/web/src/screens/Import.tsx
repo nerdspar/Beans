@@ -198,8 +198,7 @@ export function Import(): ReactNode {
   })
 
   return (
-    <div className="mx-auto max-w-2xl px-5 pb-16 pt-5">
-      <h1 className="text-2xl font-semibold">{IMPORT_COPY.title}</h1>
+    <div>
       <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{IMPORT_COPY.blurb}</p>
 
       {stage.kind === 'choose' && (

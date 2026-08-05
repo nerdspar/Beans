@@ -38,8 +38,7 @@ export function Categories(): ReactNode {
   const apply = useMutation({ mutationFn: applyRules, onSuccess: refresh })
 
   return (
-    <div className="mx-auto max-w-2xl px-5 pb-16 pt-5">
-      <h1 className="text-2xl font-semibold">{CATEGORY_COPY.rulesHeading}</h1>
+    <div>
 
       <div className="mt-2 flex items-baseline justify-between gap-3">
         <p className="text-xs text-slate-500 dark:text-slate-400">{CATEGORY_COPY.ruleScope}</p>

@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { type ReactNode } from 'react'
 import { Route, Switch } from 'wouter'
-import { DESTINATIONS } from './navigation/destinations.js'
 import { DesktopShell } from './shells/desktop/DesktopShell.js'
 import { MobileShell } from './shells/mobile/MobileShell.js'
 import { useIsDesktop } from './shells/use-shell.js'
@@ -10,9 +9,6 @@ import { readPendingInvite } from './auth/pending-invite.js'
 import { useSession } from './auth/use-session.js'
 import { AccountDetail } from './screens/AccountDetail.js'
 import { Accounts } from './screens/Accounts.js'
-import { Categories } from './screens/Categories.js'
-import { Household } from './screens/Household.js'
-import { Import } from './screens/Import.js'
 import { Portfolio } from './screens/Portfolio.js'
 import { CashFlow } from './screens/CashFlow.js'
 import { Transactions } from './screens/Transactions.js'
@@ -20,7 +16,6 @@ import { CreateHousehold } from './screens/CreateHousehold.js'
 import { JoinHousehold } from './screens/JoinHousehold.js'
 import { SignIn } from './screens/SignIn.js'
 import { NetWorth } from './screens/NetWorth.js'
-import { Placeholder } from './screens/Placeholder.js'
 import { TabSettings } from './screens/TabSettings.js'
 import { TransitionPrototype } from './screens/TransitionPrototype.js'
 
@@ -106,30 +101,15 @@ function Routes(): ReactNode {
       <Route path="/accounts" component={Accounts} />
       <Route path="/transactions" component={Transactions} />
       <Route path="/cash-flow" component={CashFlow} />
-      <Route path="/categories" component={Categories} />
       <Route path="/portfolio" component={Portfolio} />
-      <Route path="/household" component={Household} />
-      <Route path="/import" component={Import} />
       <Route path="/settings" component={TabSettings} />
       {/* Not in the destination registry: a workbench for judging the transition, not a screen. */}
       <Route path="/prototype/transition" component={TransitionPrototype} />
 
-      {DESTINATIONS.filter(
-        (destination) =>
-          destination.key !== 'settings' &&
-          destination.key !== 'net-worth' &&
-          destination.key !== 'accounts' &&
-          destination.key !== 'transactions' &&
-          destination.key !== 'cash-flow' &&
-          destination.key !== 'categories' &&
-          destination.key !== 'portfolio' &&
-          destination.key !== 'household' &&
-          destination.key !== 'import',
-      ).map((destination) => (
-        <Route key={destination.key} path={destination.path}>
-          <Placeholder destination={destination} />
-        </Route>
-      ))}
+      {/*
+        No placeholder fallback: every destination in the registry has a real route now. It existed
+        while screens were still being built, and kept a tab from leading nowhere.
+      */}
 
       <Route>
         <div className="p-6">

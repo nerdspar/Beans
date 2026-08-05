@@ -2,11 +2,8 @@ import {
   ArrowLeftRight,
   Banknote,
   ChartLine,
-  CreditCard,
   PiggyBank,
   Settings,
-  Upload,
-  Users,
   Wallet,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -26,9 +23,6 @@ export type DestinationKey =
   | 'cash-flow'
   | 'portfolio'
   | 'accounts'
-  | 'household'
-  | 'import'
-  | 'categories'
   | 'settings'
 
 export type Destination = {
@@ -106,30 +100,6 @@ export const DESTINATIONS: readonly Destination[] = [
     label: 'Manage accounts',
     short: 'Accounts',
     icon: Wallet,
-    tabbable: false,
-  },
-  {
-    key: 'household',
-    path: '/household',
-    label: 'Household',
-    short: 'Household',
-    icon: Users,
-    tabbable: false,
-  },
-  {
-    key: 'import',
-    path: '/import',
-    label: 'Import',
-    short: 'Import',
-    icon: Upload,
-    tabbable: false,
-  },
-  {
-    key: 'categories',
-    path: '/categories',
-    label: 'Categories',
-    short: 'Categories',
-    icon: CreditCard,
     tabbable: false,
   },
   {

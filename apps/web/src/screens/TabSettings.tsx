@@ -1,8 +1,16 @@
-import { HISTORY_SETTING_COPY } from '@beans/shared'
-import { ChevronDown, ChevronUp, Plus, X } from 'lucide-react'
-import { type ReactNode } from 'react'
+import {
+  CATEGORY_COPY,
+  HISTORY_SETTING_COPY,
+  HOUSEHOLD_COPY,
+  IMPORT_COPY,
+} from '@beans/shared'
+import { ChevronDown, ChevronRight, ChevronUp, Plus, X } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import { cn } from '../lib/cn.js'
 import { usePreferences } from '../preferences/use-preferences.js'
+import { Categories } from './Categories.js'
+import { Household } from './Household.js'
+import { Import } from './Import.js'
 import { TAB_SLOTS, tabbableDestinations } from '../navigation/destinations.js'
 import { useTabOrder } from '../navigation/use-tab-order.js'
 
@@ -41,6 +49,25 @@ export function TabSettings(): ReactNode {
   return (
     <div className="mx-auto max-w-3xl p-6">
       <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
+
+      {/*
+        Household, categories and import live here rather than as destinations of their own.
+        
+        Each is something you set up once and revisit rarely — a tab spent on any of them is a tab
+        not spent on the four screens used daily. Collapsed by default so the page reads as a list
+        of what can be changed, rather than three screens stacked on top of each other.
+      */}
+      <Collapsible title={HOUSEHOLD_COPY.title}>
+        <Household />
+      </Collapsible>
+
+      <Collapsible title={CATEGORY_COPY.rulesHeading}>
+        <Categories />
+      </Collapsible>
+
+      <Collapsible title={IMPORT_COPY.title}>
+        <Import />
+      </Collapsible>
 
       <section className="mt-8" aria-labelledby="history-heading">
         <h2 id="history-heading" className="text-base font-semibold">
@@ -209,5 +236,35 @@ function IconButton({
     >
       {children}
     </button>
+  )
+}
+
+/**
+ * A settings section that opens on demand.
+ *
+ * Mounted only while open, which is not just tidiness: each of these fetches on mount — the
+ * household and its invites, the category list and its rules — and three screens' worth of requests
+ * fired for a page somebody opened to reorder their tabs would be most of the cost of the screen.
+ */
+function Collapsible({ title, children }: { title: string; children: ReactNode }): ReactNode {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <section className="mt-8 border-t border-slate-200 pt-6 dark:border-slate-800">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-1.5 text-base font-semibold focus-visible:outline-2 focus-visible:outline-sky-500"
+      >
+        <ChevronRight
+          className={cn('size-4 shrink-0 transition-transform', open && 'rotate-90')}
+          aria-hidden
+        />
+        {title}
+      </button>
+
+      {open && <div className="mt-4">{children}</div>}
+    </section>
   )
 }

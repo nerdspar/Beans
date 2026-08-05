@@ -61,7 +61,7 @@ export function Household(): ReactNode {
 
   if (household.error instanceof Error) {
     return (
-      <div className="mx-auto max-w-2xl px-5 py-16 text-center">
+      <div className="py-8 text-center">
         <p className="text-base font-medium">{NET_WORTH_STATE_COPY.failed}</p>
         <p className="mt-2 font-mono text-xs text-slate-500">{household.error.message}</p>
       </div>
@@ -76,8 +76,7 @@ export function Household(): ReactNode {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-5 pb-16 pt-5">
-      <h1 className="text-2xl font-semibold">{household.data?.name ?? HOUSEHOLD_COPY.title}</h1>
+    <div>
 
       {/*
         Renaming lives here because the name is no longer asked for at sign-up — a household of one
