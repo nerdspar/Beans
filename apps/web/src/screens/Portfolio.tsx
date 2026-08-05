@@ -154,6 +154,19 @@ export function Portfolio(): ReactNode {
     })
   }
 
+  /*
+   * Whether Beans has anything to net out at all.
+   *
+   * The figures above claim to be the market alone, and that claim holds only where the provider
+   * reports transactions for these accounts. Where it reports none the flow is always zero and each
+   * figure is a plain balance change — a contribution lands in it as a gain, which is the one thing
+   * this column is supposed to prevent. Better to say which of the two the reader is looking at.
+   */
+  const investmentIds = new Set(investments.map((account) => account.id))
+  const reportsFlows = workingSet.transactions.some(
+    (transaction) => investmentIds.has(transaction.accountId) && transaction.status !== 'void',
+  )
+
   const ordered = [...investments].sort(
     (left, right) =>
       Number((right.series.at(-1)?.value ?? 0n) - (left.series.at(-1)?.value ?? 0n)),
@@ -248,7 +261,7 @@ export function Portfolio(): ReactNode {
       </ul>
 
       <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
-        {PORTFOLIO_COPY.oneDayNote}
+        {reportsFlows ? PORTFOLIO_COPY.oneDayNote : PORTFOLIO_COPY.oneDayNoteWithoutFlows}
       </p>
 
       <h2 className="mt-6 text-sm font-semibold">{PORTFOLIO_COPY.byTax}</h2>

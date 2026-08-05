@@ -37,6 +37,16 @@ export const PORTFOLIO_COPY = {
   asOfDay: (date: string): string => `as of ${date}`,
   oneDayNote:
     'Change is the market only — money paid in or taken out is excluded, so this will differ from your provider after a contribution. A dated figure is the most recent move your provider has published, not today’s.',
+  /**
+   * The same note when there is nothing to do the excluding with.
+   *
+   * Beans can only subtract a contribution it was told about, and not every institution reports
+   * transactions for an investment account. Where none arrive, the figure is a plain balance change
+   * and a deposit lands in it as a gain — so claiming the market alone would be false precisely
+   * when it misleads most. Saying which of the two you are looking at costs one line.
+   */
+  oneDayNoteWithoutFlows:
+    'Your provider reports no transactions for these accounts, so each figure is the plain change in balance: money paid in or taken out appears here as a gain or a loss. A dated figure is the most recent move your provider has published, not today’s.',
   noDayChange: 'No change yet',
 
   taxLabel: {
