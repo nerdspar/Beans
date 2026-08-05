@@ -85,6 +85,24 @@ export const IMPORT_COPY = {
    * navigating away to check the numbers, which is the very next thing anybody does, lost it.
    */
   historyHeading: 'Past imports',
+
+  /**
+   * Undo asks first, and says what it will remove.
+   *
+   * It deletes transactions — thousands of them on a whole-portfolio file — and did so on a single
+   * tap. A count in the question is the difference between a decision and an accident, and it is
+   * the one number that makes the size of the action obvious before it happens.
+   */
+  reverseConfirm: (count: number): string =>
+    `Remove ${count.toLocaleString()} transaction${count === 1 ? '' : 's'} this import added?`,
+  reverseConfirmDetail:
+    'The file stays here, so you can put them back without uploading it again.',
+  reverseConfirmAction: 'Remove them',
+  reverseCancel: 'Cancel',
+
+  /** Undo keeps the staged rows, so putting them back needs no re-upload. */
+  redo: 'Redo',
+  redoing: 'Adding them back',
   historyEmpty: 'Nothing imported yet.',
   historyRows: (committed: number, total: number): string =>
     `${committed.toLocaleString()} of ${total.toLocaleString()} rows added`,

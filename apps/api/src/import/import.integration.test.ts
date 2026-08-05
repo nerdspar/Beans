@@ -342,6 +342,71 @@ describeIntegration('csv import', () => {
       expect(result.committed).toBe(2)
     })
 
+    /**
+     * Undo, then redo.
+     *
+     * Reversing deletes the transactions and returns every row to `pending`, so the staged data
+     * survives in full — somebody who undid an import to see what changed should not have to
+     * re-upload and re-map the file to put it back.
+     */
+    it('can commit a reversed import again', async () => {
+      const result = await withHouseholdContext(deps, USER, async (ctx) => {
+        const card = await makeAccount(ctx)
+        const now = new Date('2026-08-05T12:00:00Z')
+
+        const csv = parseCsv(MULTI_ACCOUNT_CSV)
+        const staged = await stageImport(ctx, {
+          csv,
+          mapping: guessMapping(csv.headers),
+          preset: findPreset('empower')!,
+          kind: 'transactions',
+          accountMap: [{ value: 'Amazon Card', accountId: card }],
+          skippedAccounts: ['Rental Checking', 'Joint Cash Account'],
+          originalFilename: 'redo.csv',
+        })
+
+        const first = await commitImport(ctx, staged.importId, now)
+        const reversed = await reverseImport(ctx, staged.importId, now)
+        const second = await commitImport(ctx, staged.importId, now)
+
+        const live = await ctx.client.query<{ count: string }>(
+          'select count(*)::text as count from transactions where import_id = $1',
+          [staged.importId],
+        )
+
+        return { first, reversed, second, live: Number(live.rows[0]?.count ?? 0) }
+      })
+
+      expect(result.first.committed).toBe(2)
+      expect(result.reversed.reversed).toBe(2)
+      expect(result.second.committed).toBe(2)
+      // Re-applied, not doubled — the rows came back rather than arriving twice.
+      expect(result.live).toBe(2)
+    })
+
+    /** Committing twice without reversing is still refused: that is the doubling this guards. */
+    it('refuses to commit an import that is already committed', async () => {
+      await expect(
+        withHouseholdContext(deps, USER, async (ctx) => {
+          const card = await makeAccount(ctx)
+          const now = new Date('2026-08-05T12:00:00Z')
+
+          const csv = parseCsv(MULTI_ACCOUNT_CSV)
+          const staged = await stageImport(ctx, {
+            csv,
+            mapping: guessMapping(csv.headers),
+            preset: findPreset('empower')!,
+            kind: 'transactions',
+            accountMap: [{ value: 'Amazon Card', accountId: card }],
+            originalFilename: 'twice.csv',
+          })
+
+          await commitImport(ctx, staged.importId, now)
+          return commitImport(ctx, staged.importId, now)
+        }),
+      ).rejects.toThrow(/committed/)
+    })
+
     it('matches account names case-insensitively', async () => {
       const rows = await withHouseholdContext(deps, USER, async (ctx) => {
         const card = await makeAccount(ctx)

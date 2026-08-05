@@ -757,12 +757,21 @@ function RunningCount({ progress }: { progress: ImportProgress | null }): ReactN
  */
 function ImportHistory({ onReversed }: { onReversed: () => Promise<void> }): ReactNode {
   const imports = useQuery({ queryKey: ['imports'], queryFn: listImports })
-  const [reversing, setReversing] = useState<string | null>(null)
+
+  /** Which row is asking. Undo deletes transactions, so it never fires on the first tap. */
+  const [confirming, setConfirming] = useState<string | null>(null)
 
   const reverse = useMutation({
     mutationFn: reverseImport,
     onSuccess: async () => {
-      setReversing(null)
+      setConfirming(null)
+      await onReversed()
+    },
+  })
+
+  const redo = useMutation({
+    mutationFn: commitImport,
+    onSuccess: async () => {
       await onReversed()
     },
   })
@@ -782,7 +791,8 @@ function ImportHistory({ onReversed }: { onReversed: () => Promise<void> }): Rea
             new Date(record.reversibleUntil).getTime() > Date.now()
 
           return (
-            <li key={record.id} className="flex items-center justify-between gap-3 py-2.5">
+            <li key={record.id} className="py-2.5">
+              <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{record.originalFilename}</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -802,25 +812,88 @@ function ImportHistory({ onReversed }: { onReversed: () => Promise<void> }): Rea
                 </p>
               </div>
 
-              {undoable && (
+              {/*
+                Reversed imports offer to come back.
+                
+                Undo leaves every staged row in place, so redo is a re-commit rather than a
+                re-upload — which is what makes the confirmation below a fair thing to ask.
+              */}
+              {record.status === 'reversed' && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setReversing(record.id)
-                    reverse.mutate(record.id)
-                  }}
-                  disabled={reverse.isPending}
+                  onClick={() => redo.mutate(record.id)}
+                  disabled={redo.isPending}
+                  className={cn(
+                    'shrink-0 rounded-lg border px-3 py-2 text-xs font-medium',
+                    'border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800',
+                    'focus-visible:outline-2 focus-visible:outline-sky-500 disabled:opacity-50',
+                  )}
+                >
+                  {redo.isPending ? IMPORT_COPY.redoing : IMPORT_COPY.redo}
+                </button>
+              )}
+
+              {undoable && confirming !== record.id && (
+                <button
+                  type="button"
+                  onClick={() => setConfirming(record.id)}
                   className={cn(
                     'shrink-0 rounded-lg border px-3 py-2 text-xs font-medium',
                     'border-slate-300 text-rose-600 hover:bg-rose-50',
                     'dark:border-slate-700 dark:text-rose-400 dark:hover:bg-rose-950/40',
-                    'focus-visible:outline-2 focus-visible:outline-rose-600 disabled:opacity-50',
+                    'focus-visible:outline-2 focus-visible:outline-rose-600',
                   )}
                 >
-                  {reversing === record.id && reverse.isPending
-                    ? IMPORT_COPY.reversing
-                    : IMPORT_COPY.reverse}
+                  {IMPORT_COPY.reverse}
                 </button>
+              )}
+              </div>
+
+              {/*
+                Asked, not assumed.
+
+                Undo deletes transactions — thousands on a whole-portfolio file — and it used to go
+                on a single tap. The count is in the question because it is the one number that
+                makes the size of the action obvious before it happens, and the reassurance beneath
+                it is there because it is true: the staged rows survive, so this is undoable in turn.
+              */}
+              {confirming === record.id && (
+                <div className="mt-2 rounded-xl border border-rose-300 p-3 dark:border-rose-900">
+                  <p className="text-sm font-medium">
+                    {IMPORT_COPY.reverseConfirm(record.committedRowCount ?? 0)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {IMPORT_COPY.reverseConfirmDetail}
+                  </p>
+
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => reverse.mutate(record.id)}
+                      disabled={reverse.isPending}
+                      className={cn(
+                        'min-h-9 rounded-lg bg-rose-600 px-3 text-xs font-medium text-white',
+                        'focus-visible:outline-2 focus-visible:outline-offset-2',
+                        'focus-visible:outline-rose-500 disabled:opacity-50',
+                      )}
+                    >
+                      {reverse.isPending
+                        ? IMPORT_COPY.reversing
+                        : IMPORT_COPY.reverseConfirmAction}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirming(null)}
+                      className={cn(
+                        'min-h-9 rounded-lg border px-3 text-xs font-medium',
+                        'border-slate-300 hover:bg-slate-100',
+                        'dark:border-slate-700 dark:hover:bg-slate-800',
+                      )}
+                    >
+                      {IMPORT_COPY.reverseCancel}
+                    </button>
+                  </div>
+                </div>
               )}
             </li>
           )

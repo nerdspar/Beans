@@ -463,8 +463,18 @@ export async function commitImport(
   importId: string,
   now: Date = new Date(),
 ): Promise<{ committed: number; skipped: number }> {
+  /*
+   * A reversed import can be committed again — that is redo.
+   *
+   * Reversing deletes the transactions and puts every row back to `pending`, so the staged data is
+   * still there in full; only this guard stood between it and being re-applied. Somebody who undoes
+   * to check what changed and wants it back should not have to re-upload and re-map the file.
+   *
+   * `committed` is still refused: applying it twice would double every row, which is the one
+   * outcome nobody wants and the reason the guard exists at all.
+   */
   const status = await loadImportStatus(context, importId)
-  if (status !== 'staged') {
+  if (status !== 'staged' && status !== 'reversed') {
     throw new ImportError(`This import is ${status} and cannot be committed again`)
   }
 
@@ -539,7 +549,10 @@ export async function commitImport(
 
     await context.client.query(
       `update imports
-        set status = 'committed', committed_at = $1, committed_row_count = $2, reversible_until = $3
+        set status = 'committed', committed_at = $1, committed_row_count = $2, reversible_until = $3,
+            -- Cleared, or the row would claim to have been both reversed and committed, and the
+            -- screen could not say which happened last.
+            reversed_at = null
       where id = $4`,
       [now, committed, reversibleUntil, importId],
     )
