@@ -459,6 +459,44 @@ because the numbers quietly go stale and everything still looks fine.
 _existing_ connection and re-matches accounts to existing rows via `simplefin_account_id`. Under no
 circumstances may reconnecting create duplicate accounts or orphan balance history.
 
+### 10.1 Holdings, as built
+
+SimpleFIN optionally sends a `holdings` array per investment account. It is **genuinely absent from
+many institutions** — a brokerage can report a balance and nothing about what is inside it — so
+every layer treats an empty list as normal rather than as a failure, and the screen says "no
+positions reported" rather than showing an empty portfolio. Nothing is missing from net worth when
+holdings are absent; only the breakdown is.
+
+**Stored as dated snapshots, one row per position per date, exactly like `balance_snapshots`.** A
+position's value is a point-in-time observation, not an event that can be replayed: there is no
+transaction to walk backwards through, because a share price moving is not something anybody posts.
+The only way to say what a position did over a day is to have recorded it on both days.
+
+- Writes are **delete-then-insert scoped to one date**, not upsert. A position that was sold has to
+  disappear; an upsert would leave it sitting at its last known value forever and the positions
+  would slowly stop adding up to the account's balance. Scoping to the date leaves history alone.
+- Rows are dated to the provider's `balance-date`, so a position lands on the same day as the
+  balance it belongs to. Dating to the sync instant would put a settled Monday position on Tuesday
+  and make a day's move unmeasurable.
+- **Nothing is written when the provider sends no positions.** Replacing a real set with nothing on
+  the strength of a silent response would delete a portfolio.
+- `provider_holding_id` stays plaintext, like `simplefin_account_id`. Symbol, description, share
+  count and every amount are encrypted — a ticker is a statement about someone's finances even with
+  no amount beside it. Ordering by value therefore happens in TypeScript; `market_value` is `bytea`
+  and an `ORDER BY` on it would sort ciphertext into a convincing-looking arbitrary order (§3.1).
+- **Share counts are strings, not cents.** A quantity is not an amount: it is routinely fractional,
+  has no smallest unit to normalize to, and is never summed. It is carried verbatim so nothing
+  invents a precision the provider did not state. Price per share is derived for display only and
+  must never be multiplied back into a total — the market value is the authority.
+- A position's change is a **plain difference between two observations**. Unlike an account there is
+  no flow to net out, so shares bought or sold land in it exactly like a price move and nothing can
+  tell them apart. The screen states this rather than implying the figure is the market alone.
+
+**Served by `GET /api/accounts/:id/holdings`, not the working set.** The working set is what every
+screen needs on every load and is mirrored into IndexedDB (§7); holdings are drill-down detail for
+one account at a time, and pushing them through the delta cursor would grow every user's cache by
+something almost none of them are looking at.
+
 ---
 
 ## 11. Importing history

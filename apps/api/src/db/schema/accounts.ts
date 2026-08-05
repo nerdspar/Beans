@@ -296,3 +296,66 @@ export const manualBalanceUpdates = pgTable(
     householdIsolationPolicy('manual_balance_updates'),
   ],
 ).enableRLS()
+
+/**
+ * Positions inside an investment account, as the provider last reported them.
+ *
+ * **Dated snapshots, exactly like `balance_snapshots`, and for the same reason.** A holding's value
+ * is a point-in-time observation, not an event that can be replayed — so the only way to say what a
+ * position did over a day is to have recorded it on both days. One row per position per date makes
+ * that a lookup rather than a reconstruction, and reuses the mental model already in the codebase.
+ *
+ * A date with no rows for an account means the provider reported no positions that day. That is not
+ * the same as the account holding nothing, and nothing downstream may render it as such — plenty of
+ * institutions report a balance and no holdings at all.
+ *
+ * `provider_holding_id` is the provider's opaque key and stays plaintext, like
+ * `accounts.simplefin_account_id`. Everything describing what is actually held — the symbol, the
+ * description, the quantity, the money — is encrypted. A ticker is a statement about someone's
+ * finances even without an amount beside it.
+ */
+export const holdings = pgTable(
+  'holdings',
+  {
+    id: primaryId(),
+    householdId: householdId().references(() => households.id, { onDelete: 'cascade' }),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+
+    asOfDate: date('as_of_date').notNull(),
+    providerHoldingId: text('provider_holding_id').notNull(),
+
+    symbol: bytea('symbol'),
+    description: bytea('description'),
+
+    /**
+     * A share count, encrypted as its decimal string.
+     *
+     * Not money and not cents: quantities are routinely fractional, there is no smallest unit to
+     * normalize to, and they are never summed across positions. Carried verbatim so nothing has to
+     * invent a precision the provider did not state.
+     */
+    shares: bytea('shares'),
+
+    marketValue: bytea('market_value').notNull(),
+    costBasis: bytea('cost_basis'),
+    purchasePrice: bytea('purchase_price'),
+
+    currency: text('currency'),
+
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    unique('holdings_account_holding_date_uq').on(
+      table.accountId,
+      table.providerHoldingId,
+      table.asOfDate,
+    ),
+    index('holdings_account_date_idx').on(table.accountId, table.asOfDate),
+    index('holdings_household_updated_at_idx').on(table.householdId, table.updatedAt),
+
+    householdIsolationPolicy('holdings'),
+  ],
+).enableRLS()

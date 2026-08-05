@@ -5,6 +5,7 @@ import { fetchAccounts, splitIntoWindows, type Fetcher } from '../simplefin/clie
 import type { SimplefinAccount, SimplefinTransaction } from '../simplefin/protocol.js'
 import { isConnectionAttentionError, isRateLimitError } from '../simplefin/protocol.js'
 import { loadAccessUrl } from '../repositories/connections.js'
+import { replaceHoldings } from '../repositories/holdings.js'
 import type { HouseholdContext } from '../repositories/household-context.js'
 import { syncWindowStart } from './quota.js'
 
@@ -40,6 +41,8 @@ export type SyncOutcome = {
   rateLimited: boolean
   /** Accounts touched this run, so history is rebuilt for exactly those. */
   accountIds: Set<string>
+  /** Positions written. Zero is the normal answer for an institution that reports none. */
+  holdingsRecorded: number
 }
 
 type LinkedAccount = {
@@ -73,6 +76,7 @@ export async function syncConnection(
     errors: [],
     rateLimited: false,
     accountIds: new Set<string>(),
+    holdingsRecorded: 0,
   }
 
   if (linked.size === 0) {
@@ -120,6 +124,26 @@ export async function syncConnection(
 
       await updateBalance(context, account, providerAccount, options.now)
       outcome.accountsUpdated += 1
+
+      /*
+       * Positions, dated to the same day as the balance they belong to.
+       *
+       * `balance-date` rather than now, so a holding sits on the day the provider says it was
+       * true — the same day its account's balance lands on. Dating it to the sync instant would
+       * put a settled Monday position on Tuesday and make a day's move unmeasurable.
+       *
+       * Only written when the provider actually sent positions. An empty array here is the normal
+       * answer from most institutions, and replacing a real set with nothing on the strength of a
+       * silent response would delete a portfolio.
+       */
+      if (providerAccount.holdings.length > 0) {
+        outcome.holdingsRecorded += await replaceHoldings(
+          context,
+          account.id,
+          toIsoDate(providerAccount.balanceDate ?? options.now),
+          providerAccount.holdings,
+        )
+      }
 
       /**
        * Set once, on the first window that produces data, and never moved afterwards.

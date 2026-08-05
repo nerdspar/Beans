@@ -239,3 +239,125 @@ describe('error classification', () => {
     expect(isConnectionAttentionError('No credentials provided')).toBe(false)
   })
 })
+
+/**
+ * Holdings.
+ *
+ * Optional in the protocol and genuinely absent from many institutions, so the shape that matters
+ * most is the one where the key is missing entirely. That has to come back as an empty list and
+ * never as a failure — an account reporting no positions is normal, not broken.
+ *
+ * Note the field naming: `market_value` and `cost_basis` use underscores while `available-balance`
+ * and `balance-date` on the same object use hyphens. That is the protocol's inconsistency, not a
+ * typo here.
+ */
+describe('holdings', () => {
+  function accountWith(holdings: unknown): unknown {
+    return {
+      errors: [],
+      accounts: [
+        {
+          org: { domain: 'www.fidelity.com', name: 'Fidelity Investments' },
+          id: 'ACT-holdings',
+          name: 'Brokerage',
+          currency: 'USD',
+          balance: '13076.75',
+          'balance-date': 1_785_762_200,
+          transactions: [],
+          ...(holdings === undefined ? {} : { holdings }),
+        },
+      ],
+    }
+  }
+
+  it('parses a position', () => {
+    const result = parseAccountsResponse(
+      accountWith([
+        {
+          id: 'HLD-1',
+          symbol: 'CDW',
+          description: 'CDW Corp',
+          shares: '88.47',
+          market_value: '13076.75',
+          cost_basis: '9000.00',
+          purchase_price: '101.73',
+          currency: 'USD',
+        },
+      ]),
+    )
+
+    expect(result.accounts[0]?.holdings).toEqual([
+      {
+        id: 'HLD-1',
+        symbol: 'CDW',
+        description: 'CDW Corp',
+        shares: '88.47',
+        marketValueCents: 1_307_675n,
+        costBasisCents: 900_000n,
+        purchasePriceCents: 10_173n,
+        currency: 'USD',
+      },
+    ])
+  })
+
+  /** The common case by a distance. It is not an error and must not read as one. */
+  it('returns an empty list when the account reports no holdings at all', () => {
+    const result = parseAccountsResponse(accountWith(undefined))
+    expect(result.accounts[0]?.holdings).toEqual([])
+  })
+
+  it('returns an empty list for an explicitly empty array', () => {
+    const result = parseAccountsResponse(accountWith([]))
+    expect(result.accounts[0]?.holdings).toEqual([])
+  })
+
+  /** Without a stable key every sync would insert the same position again instead of replacing it. */
+  it('falls back to the symbol when the provider omits an id', () => {
+    const result = parseAccountsResponse(
+      accountWith([{ symbol: 'VWO', market_value: '14981.25' }]),
+    )
+    expect(result.accounts[0]?.holdings[0]?.id).toBe('VWO')
+  })
+
+  it('drops a position with neither an id nor a symbol', () => {
+    const result = parseAccountsResponse(accountWith([{ market_value: '100.00' }]))
+    expect(result.accounts[0]?.holdings).toEqual([])
+  })
+
+  it('drops a position with no market value, since that is not a position', () => {
+    const result = parseAccountsResponse(accountWith([{ id: 'HLD-2', symbol: 'X' }]))
+    expect(result.accounts[0]?.holdings).toEqual([])
+  })
+
+  it('keeps the optional money fields null rather than zero when absent', () => {
+    const result = parseAccountsResponse(
+      accountWith([{ id: 'HLD-3', symbol: 'VMFXX', market_value: '500.00' }]),
+    )
+    const holding = result.accounts[0]?.holdings[0]
+
+    expect(holding?.costBasisCents).toBeNull()
+    expect(holding?.purchasePriceCents).toBeNull()
+    expect(holding?.shares).toBeNull()
+    expect(holding?.currency).toBeNull()
+  })
+
+  /** One unparseable position must not discard the rest of a portfolio. */
+  it('keeps the good positions alongside a malformed one', () => {
+    const result = parseAccountsResponse(
+      accountWith([
+        { id: 'HLD-4', symbol: 'CDW', market_value: '13076.75' },
+        'not an object',
+        { id: 'HLD-5', symbol: 'VWO', market_value: '14981.25' },
+      ]),
+    )
+
+    expect(result.accounts[0]?.holdings.map((holding) => holding.symbol)).toEqual(['CDW', 'VWO'])
+  })
+
+  it('carries a fractional share count verbatim rather than rounding it', () => {
+    const result = parseAccountsResponse(
+      accountWith([{ id: 'HLD-6', symbol: 'FCNTX', shares: '262.834', market_value: '6815.31' }]),
+    )
+    expect(result.accounts[0]?.holdings[0]?.shares).toBe('262.834')
+  })
+})

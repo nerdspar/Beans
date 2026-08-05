@@ -16,6 +16,7 @@ import {
   withHouseholdContext,
   type ContextDependencies,
 } from '../repositories/household-context.js'
+import { readHoldings } from '../repositories/holdings.js'
 
 /**
  * Editing accounts directly.
@@ -95,6 +96,28 @@ export const accountRoutes: FastifyPluginAsync<AccountRoutesOptions> = async (fa
     try {
       const accounts = await withHouseholdContext(deps, user.id, listManagedAccounts)
       return reply.header('cache-control', 'no-store').send({ accounts })
+    } catch (error) {
+      return handleError(error, reply) ?? Promise.reject(error)
+    }
+  })
+
+  /**
+   * Positions inside one account.
+   *
+   * Its own route rather than a slice of the working set. The working set is what every screen needs
+   * on every load and is mirrored into IndexedDB; holdings are drill-down detail for one account at
+   * a time, and pushing them through the delta cursor would grow that cache for every user by
+   * something almost none of them are looking at.
+   */
+  fastify.get<{ Params: { id: string } }>('/api/accounts/:id/holdings', async (request, reply) => {
+    const user = await requireUser(request, reply)
+    if (user === null) return
+
+    try {
+      const reading = await withHouseholdContext(deps, user.id, (context) =>
+        readHoldings(context, request.params.id),
+      )
+      return reply.header('cache-control', 'no-store').send(reading)
     } catch (error) {
       return handleError(error, reply) ?? Promise.reject(error)
     }

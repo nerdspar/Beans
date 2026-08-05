@@ -199,6 +199,111 @@ describeIntegration('tenant isolation', () => {
     })
   })
 
+  /**
+   * Holdings, which are the newest household-scoped table and therefore the one most likely to have
+   * been created with `ENABLE ROW LEVEL SECURITY` and without `FORCE`.
+   *
+   * That distinction has no symptom: the policy exists, the table looks protected, and it is
+   * silently skipped for the role that owns it. These cases fail if migration 0010's hand-written
+   * FORCE is ever lost to a regenerated migration.
+   */
+  describe('holdings are isolated like everything else', () => {
+    async function accountIdFor(householdId: string): Promise<string> {
+      const result = await asHousehold(householdId, (c) => c.query('select id from accounts'))
+      return result.rows[0].id as string
+    }
+
+    async function seedHolding(householdId: string, symbol: string): Promise<void> {
+      const accountId = await accountIdFor(householdId)
+      const cipher = new HouseholdCipher(householdId, DataKey.generate())
+
+      await asHousehold(householdId, (c) =>
+        c.query(
+          `insert into holdings
+             (household_id, account_id, as_of_date, provider_holding_id, symbol, market_value)
+           values ($1, $2, '2026-08-03', $3, $4, $5)`,
+          [householdId, accountId, `h-${symbol}`, cipher.encryptText(symbol), cipher.encryptMoney(1_307_675n)],
+        ),
+      )
+    }
+
+    beforeEach(async () => {
+      await seedHolding(HOUSEHOLD_A, 'CDW')
+      await seedHolding(HOUSEHOLD_B, 'VWO')
+    })
+
+    it('sees only its own positions', async () => {
+      const a = await asHousehold(HOUSEHOLD_A, (c) =>
+        c.query('select provider_holding_id from holdings'),
+      )
+      expect(a.rows.map((r) => r.provider_holding_id)).toEqual(['h-CDW'])
+    })
+
+    it('returns nothing when explicitly querying another household positions', async () => {
+      const result = await asHousehold(HOUSEHOLD_A, (c) =>
+        c.query('select * from holdings where household_id = $1', [HOUSEHOLD_B]),
+      )
+      expect(result.rowCount).toBe(0)
+    })
+
+    it('fails closed with no household context', async () => {
+      const result = await asHousehold(null, (c) => c.query('select * from holdings'))
+      expect(result.rowCount).toBe(0)
+    })
+
+    it('cannot insert a position into another household', async () => {
+      const accountId = await accountIdFor(HOUSEHOLD_B)
+
+      await expect(
+        asHousehold(HOUSEHOLD_A, (c) =>
+          c.query(
+            `insert into holdings
+               (household_id, account_id, as_of_date, provider_holding_id, market_value)
+             values ($1, $2, '2026-08-03', 'sneaky', $3)`,
+            [HOUSEHOLD_B, accountId, Buffer.alloc(8)],
+          ),
+        ),
+      ).rejects.toThrow(/row-level security/i)
+    })
+
+    it('cannot delete another household positions', async () => {
+      const result = await asHousehold(HOUSEHOLD_A, (c) =>
+        c.query('delete from holdings where household_id = $1', [HOUSEHOLD_B]),
+      )
+      expect(result.rowCount).toBe(0)
+
+      const survivors = await asHousehold(HOUSEHOLD_B, (c) => c.query('select 1 from holdings'))
+      expect(survivors.rowCount).toBe(1)
+    })
+
+    /** A ticker says what somebody owns even with no amount beside it, so it is encrypted too. */
+    it('stores the symbol and the value as ciphertext', async () => {
+      const result = await asHousehold(HOUSEHOLD_A, (c) =>
+        c.query('select symbol, market_value from holdings'),
+      )
+
+      expect((result.rows[0].symbol as Buffer).toString('utf8')).not.toContain('CDW')
+      expect((result.rows[0].market_value as Buffer).toString('utf8')).not.toContain('1307675')
+    })
+
+    /** The delta cursor, which only exists if migration 0010's trigger was applied. */
+    it('advances updated_at on update, by trigger rather than by the writer', async () => {
+      const before = await asHousehold(HOUSEHOLD_A, (c) =>
+        c.query('select updated_at from holdings'),
+      )
+
+      await asHousehold(HOUSEHOLD_A, (c) =>
+        c.query(`update holdings set currency = 'USD'`),
+      )
+
+      const after = await asHousehold(HOUSEHOLD_A, (c) => c.query('select updated_at from holdings'))
+
+      expect(after.rows[0].updated_at.getTime()).toBeGreaterThan(
+        before.rows[0].updated_at.getTime(),
+      )
+    })
+  })
+
   describe('encryption is a second, independent barrier', () => {
     it('cannot decrypt another household ciphertext even holding the row and a key', async () => {
       const dek = DataKey.generate()

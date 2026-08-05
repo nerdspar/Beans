@@ -39,6 +39,29 @@ export type SimplefinTransaction = {
   date: Date
 }
 
+/**
+ * One position inside an investment account.
+ *
+ * Optional in the protocol and genuinely absent from many institutions — a brokerage that reports a
+ * balance may report no positions at all. Nothing downstream may treat an empty list as an error or
+ * as a claim that the account holds nothing.
+ *
+ * `shares` stays a **string**, deliberately. It is a quantity rather than an amount, it is routinely
+ * fractional, and there is no cents-equivalent unit to normalize it to — so it is carried verbatim
+ * from the provider and never arithmetic'd into a total.
+ */
+export type SimplefinHolding = {
+  /** The provider's stable id for the position. Falls back to the symbol when absent. */
+  id: string
+  symbol: string | null
+  description: string | null
+  shares: string | null
+  marketValueCents: bigint
+  costBasisCents: bigint | null
+  purchasePriceCents: bigint | null
+  currency: string | null
+}
+
 export type SimplefinAccount = {
   id: string
   name: string
@@ -54,6 +77,8 @@ export type SimplefinAccount = {
   availableBalanceCents: bigint | null
   balanceDate: Date | null
   transactions: SimplefinTransaction[]
+  /** Empty when the institution reports no positions, which is common and is not an error. */
+  holdings: SimplefinHolding[]
 }
 
 export type SimplefinResponse = {
@@ -203,6 +228,17 @@ function parseAccount(
     }
   }
 
+  const holdings: SimplefinHolding[] = []
+
+  if (Array.isArray(record['holdings'])) {
+    for (const entry of record['holdings']) {
+      const holding = parseHolding(entry)
+      if (holding !== null) {
+        holdings.push(holding)
+      }
+    }
+  }
+
   return {
     id,
     name: asString(record['name']) ?? '',
@@ -214,6 +250,42 @@ function parseAccount(
     availableBalanceCents: availableBalance === null ? null : parseDecimalToCents(availableBalance),
     balanceDate: asDate(record['balance-date']),
     transactions,
+    holdings,
+  }
+}
+
+/**
+ * One position, or null when it carries nothing worth storing.
+ *
+ * `market_value` is the only required field. A position with no value is not a position, and the
+ * identity falls back to the symbol because at least one institution omits `id` — without a stable
+ * key every sync would insert the same holding again rather than updating it.
+ *
+ * Lenient like `parseAccount`: one unparseable position must not discard the rest of a portfolio.
+ */
+function parseHolding(raw: unknown): SimplefinHolding | null {
+  const record = asRecord(raw)
+  if (record === null) return null
+
+  const marketValue = asString(record['market_value'])
+  if (marketValue === null) return null
+
+  const symbol = asString(record['symbol'])
+  const id = asString(record['id']) ?? symbol
+  if (id === null) return null
+
+  const costBasis = asString(record['cost_basis'])
+  const purchasePrice = asString(record['purchase_price'])
+
+  return {
+    id,
+    symbol,
+    description: asString(record['description']),
+    shares: asString(record['shares']),
+    marketValueCents: parseDecimalToCents(marketValue),
+    costBasisCents: costBasis === null ? null : parseDecimalToCents(costBasis),
+    purchasePriceCents: purchasePrice === null ? null : parseDecimalToCents(purchasePrice),
+    currency: asString(record['currency']),
   }
 }
 

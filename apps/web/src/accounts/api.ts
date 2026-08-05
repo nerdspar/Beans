@@ -80,3 +80,34 @@ export function recordManualBalance(
 export function deleteAccount(id: string): Promise<{ transactionsDeleted: number }> {
   return send(`/api/accounts/${id}`, { method: 'DELETE' })
 }
+
+/**
+ * One position, as the API returns it.
+ *
+ * Every amount is a decimal string, like everywhere else money crosses this boundary. `shares` is a
+ * string too, but for a different reason: it is a quantity carried verbatim from the provider, not
+ * an amount that was ever converted to cents.
+ */
+export type Holding = {
+  providerHoldingId: string
+  symbol: string | null
+  description: string | null
+  shares: string | null
+  marketValue: string
+  costBasis: string | null
+  purchasePrice: string | null
+  currency: string | null
+}
+
+export type HoldingsReading = {
+  /** Null when this account has never reported positions — which is not the same as holding none. */
+  asOfDate: string | null
+  holdings: Holding[]
+  previousAsOfDate: string | null
+  /** Keyed by `providerHoldingId`. Absent for a position that did not exist at that observation. */
+  previousMarketValues: Record<string, string>
+}
+
+export function readHoldings(accountId: string): Promise<HoldingsReading> {
+  return send<HoldingsReading>(`/api/accounts/${accountId}/holdings`)
+}

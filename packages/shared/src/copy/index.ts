@@ -20,5 +20,6 @@ export { ACCOUNTS_COPY, ACCOUNT_TYPE_LABELS, CONNECTION_COPY } from './connectio
 export { CATEGORY_COPY, TRANSACTIONS_COPY } from './transactions.js'
 export { CASH_FLOW_COPY } from './cash-flow.js'
 export { PORTFOLIO_COPY } from './portfolio.js'
+export { HOLDINGS_COPY } from './holdings.js'
 export { HOUSEHOLD_COPY } from './household.js'
 export { IMPORT_COPY } from './import.js'

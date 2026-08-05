@@ -1,5 +1,6 @@
 import {
   ACCOUNT_COPY,
+  HOLDINGS_COPY,
   NET_WORTH_SCRUB_COPY,
   NET_WORTH_STATE_COPY,
   carriedNotice,
@@ -17,6 +18,7 @@ import { Link } from 'wouter'
 import { AccountEditor, ManualBalanceForm } from '../accounts/AccountForms.js'
 import { listManagedAccounts, type ManagedAccount } from '../accounts/api.js'
 import { accountHealth, formatLastUpdated } from '../accounts/display.js'
+import { Holdings } from '../accounts/Holdings.js'
 import { CategoryChart } from '../charts/CategoryChart.js'
 import { cn } from '../lib/cn.js'
 import { SECTION_COLORS, SECTION_LABELS } from '../net-worth/colors.js'
@@ -347,6 +349,21 @@ function AccountView({
         )}
         <Field label={ACCOUNT_COPY.lastUpdated} value={formatLastUpdated(account)} />
       </dl>
+
+      {/*
+        Positions, for investment accounts only.
+
+        Below the balance chart rather than above it: the chart is what this account is worth, which
+        is the question the screen is opened to answer. What is inside it is the follow-up.
+      */}
+      {account.type === 'investment' && (
+        <>
+          <div className="px-5 pb-1 pt-6">
+            <h2 className="text-sm font-semibold">{HOLDINGS_COPY.heading}</h2>
+          </div>
+          <Holdings accountId={account.id} />
+        </>
+      )}
 
       <div className="flex items-baseline justify-between gap-3 px-5 pb-1 pt-6">
         <h2 className="text-sm font-semibold">{ACCOUNT_COPY.activityHeading}</h2>

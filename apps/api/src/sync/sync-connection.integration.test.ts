@@ -492,6 +492,7 @@ describeIntegration('connection sync', () => {
           errors: [],
           rateLimited: true,
           accountIds: new Set<string>(),
+          holdingsRecorded: 0,
         }),
       ).toBe('stale')
     })

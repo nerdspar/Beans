@@ -1,8 +1,9 @@
 /**
- * Copy for the portfolio screen.
+ * Copy for the portfolio screen, and for the positions inside one account.
  *
- * Account-level, because that is all SimpleFIN gives: it reports a balance per investment account,
- * not the holdings inside it. The screen says so rather than implying a detail it does not have.
+ * Holdings are optional in SimpleFIN and genuinely absent from many institutions, so every string
+ * here has to work when there are none. The empty state names the institution rather than blaming
+ * the account, because "no holdings" from a brokerage that plainly holds things reads as a bug.
  */
 
 export const PORTFOLIO_COPY = {
