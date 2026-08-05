@@ -1,4 +1,8 @@
 import { HISTORY_SETTING_COPY, SETTINGS_COPY } from '@beans/shared'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Loader2 } from 'lucide-react'
+import { getHousehold, setTrustImportedHistory } from '../household/api.js'
+import { WORKING_SET_KEY } from '../working-set/use-working-set.js'
 import { ChevronDown, ChevronRight, ChevronUp, Plus, X } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { cn } from '../lib/cn.js'
@@ -26,6 +30,23 @@ import { useTabOrder } from '../navigation/use-tab-order.js'
 export function TabSettings(): ReactNode {
   const { tabs, setTabOrder, resetTabOrder, isSaving } = useTabOrder()
   const { preferences, patch } = usePreferences()
+  const queryClient = useQueryClient()
+
+  const household = useQuery({ queryKey: ['household'], queryFn: getHousehold })
+
+  /*
+   * Rebuilds every account server-side, so this is slow by nature rather than by accident. The
+   * button says what it is doing rather than just going quiet.
+   */
+  const trust = useMutation({
+    mutationFn: setTrustImportedHistory,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['household'] })
+      // Every chart in the app is drawn from the working set, which just changed shape.
+      await queryClient.invalidateQueries({ queryKey: WORKING_SET_KEY })
+      await queryClient.invalidateQueries({ queryKey: ['working-set', 'sync'] })
+    },
+  })
 
   const chosen = tabs
   const chosenKeys = chosen.map((tab) => tab.key)
@@ -157,6 +178,59 @@ export function TabSettings(): ReactNode {
         <span aria-live="polite" className="sr-only">
           {isSaving ? 'Saving your tab order' : ''}
         </span>
+      </section>
+
+      {/*
+        The trust switch.
+        
+        Beside the incomplete-history toggle because they are about the same doubt: one decides
+        whether a partly-known stretch is drawn at all, this decides how far back "known" reaches.
+      */}
+      <section className="mt-10" aria-labelledby="trust-heading">
+        <h2 id="trust-heading" className="text-base font-semibold">
+          {SETTINGS_COPY.historyTrustTitle}
+        </h2>
+
+        <label className="mt-3 flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            checked={household.data?.trustImportedHistory ?? false}
+            disabled={household.data === undefined || trust.isPending}
+            onChange={(event) => trust.mutate(event.target.checked)}
+            className="mt-0.5 size-4 shrink-0 accent-sky-600"
+          />
+          <span className="text-sm">
+            <span className="font-medium">{SETTINGS_COPY.historyTrustLabel}</span>
+            {/* The consequence of the state it is in, not of the switch. */}
+            <span className="mt-0.5 block text-slate-500 dark:text-slate-400">
+              {household.data?.trustImportedHistory === true
+                ? SETTINGS_COPY.historyTrustOn
+                : SETTINGS_COPY.historyTrustOff}
+            </span>
+            <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+              {SETTINGS_COPY.historyTrustReversible}
+            </span>
+          </span>
+        </label>
+
+        {trust.isPending && (
+          <p className="mt-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+            <Loader2 className="size-3.5 animate-spin" aria-hidden />
+            {SETTINGS_COPY.historyTrustRebuilding}
+          </p>
+        )}
+
+        {trust.data !== undefined && !trust.isPending && (
+          <p role="status" className="mt-2 text-xs text-emerald-700 dark:text-emerald-400">
+            {SETTINGS_COPY.historyTrustDone(trust.data.accounts)}
+          </p>
+        )}
+
+        {trust.error instanceof Error && (
+          <p role="alert" className="mt-2 text-xs text-rose-600 dark:text-rose-400">
+            {trust.error.message}
+          </p>
+        )}
       </section>
 
       <section className="mt-10" aria-labelledby="history-heading">

@@ -1,5 +1,7 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
+import { rebuildHouseholdHistory } from '../balance-history/rebuild.js'
 import { ensureDefaultCategories } from '../repositories/categories.js'
+import { toIsoDate } from '@beans/shared'
 import { z } from 'zod'
 import type { Auth } from '../auth/auth.js'
 import { getSession } from '../auth/routes.js'
@@ -116,10 +118,11 @@ export const householdRoutes: FastifyPluginAsync<HouseholdRoutesOptions> = async
         const rows = await ctx.client.query<{
           id: string
           name: string
+          trust_imported_history: boolean
           user_id: string
           role: 'owner' | 'member'
         }>(
-          `select h.id, h.name, m.user_id, m.role
+          `select h.id, h.name, h.trust_imported_history, m.user_id, m.role
              from households h
              join household_members m on m.household_id = h.id
             where h.id = $1`,
@@ -129,6 +132,7 @@ export const householdRoutes: FastifyPluginAsync<HouseholdRoutesOptions> = async
         return {
           id: ctx.householdId,
           name: rows.rows[0]?.name ?? '',
+          trustImportedHistory: rows.rows[0]?.trust_imported_history ?? false,
           role: ctx.role,
           members: rows.rows.map((r) => ({ userId: r.user_id, role: r.role })),
         }
@@ -171,6 +175,45 @@ export const householdRoutes: FastifyPluginAsync<HouseholdRoutesOptions> = async
       })
 
       return reply.send({ name })
+    } catch (error) {
+      if (error instanceof NoHouseholdError) {
+        return reply.status(404).send({ error: 'You do not belong to a household yet' })
+      }
+      throw error
+    }
+  })
+
+  /**
+   * Whether imported transactions may extend how far back a chart is drawn.
+   *
+   * Rebuilds every account on the way out, because the setting has no visible effect otherwise —
+   * the series is materialized, so flipping a flag without recomputing changes nothing at all and
+   * looks exactly like a broken switch.
+   *
+   * Reversible by construction: `coverage_start_date` is never written here, only read, so turning
+   * it off and rebuilding restores the previous chart exactly.
+   */
+  fastify.patch('/api/households/me/history-trust', async (request, reply) => {
+    const user = await requireUser(request, reply)
+    if (user === null) return
+
+    const body = z.object({ trustImportedHistory: z.boolean() }).safeParse(request.body)
+    if (!body.success) {
+      return reply.status(400).send({ error: 'Invalid setting' })
+    }
+
+    try {
+      const result = await withHouseholdContext(deps, user.id, async (ctx) => {
+        await ctx.client.query('update households set trust_imported_history = $1 where id = $2', [
+          body.data.trustImportedHistory,
+          ctx.householdId,
+        ])
+
+        const rebuilt = await rebuildHouseholdHistory(ctx, toIsoDate(new Date()))
+        return { trustImportedHistory: body.data.trustImportedHistory, accounts: rebuilt.length }
+      })
+
+      return reply.send(result)
     } catch (error) {
       if (error instanceof NoHouseholdError) {
         return reply.status(404).send({ error: 'You do not belong to a household yet' })

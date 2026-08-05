@@ -3,6 +3,8 @@
 export type Household = {
   id: string
   name: string
+  /** Whether imported transactions may extend how far back a chart is drawn. */
+  trustImportedHistory: boolean
   role: 'owner' | 'member'
   members: Array<{ userId: string; role: 'owner' | 'member' }>
 }
@@ -80,4 +82,20 @@ export function ensureHousehold(name: string): Promise<void> {
   }).then(() => undefined)
 
   return creating
+}
+
+/**
+ * Whether imported transactions may extend how far back a chart is drawn.
+ *
+ * Rebuilds every account server-side, so the response takes as long as the rebuild and the caller
+ * should say so. Reversible: turning it off and rebuilding restores the previous chart exactly.
+ */
+export function setTrustImportedHistory(
+  trustImportedHistory: boolean,
+): Promise<{ trustImportedHistory: boolean; accounts: number }> {
+  return send('/api/households/me/history-trust', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ trustImportedHistory }),
+  })
 }

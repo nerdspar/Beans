@@ -4,6 +4,7 @@ import {
   carryStale,
   checkReconstruction,
   mergeSeries,
+  minDate,
   reconstructBackward,
   toIsoDate,
   type AccountType,
@@ -84,13 +85,25 @@ export async function rebuildAccountHistory(
 
   const currentBalance = context.cipher.decryptMoney(account.current_balance)
   const balanceAsOf = toIsoDate(account.balance_as_of)
-  const coverageStart = account.coverage_start_date
+  const declaredStart = account.coverage_start_date
 
-  if (coverageStart === null) {
+  if (declaredStart === null) {
     // Nothing has established how far back this account can be trusted, so there is no honest
     // series to draw. `ensureCoverageStart` sets it during sync.
     return empty
   }
+
+  /*
+   * Widened when the household has said it trusts its imported history.
+   *
+   * `coverage_start_date` is untouched — it keeps meaning "what the provider vouches for" — so
+   * turning the setting off and rebuilding restores exactly the previous chart. Overwriting it
+   * would have made the choice one-way, and the whole point is that somebody can change their mind
+   * once they see what it draws.
+   *
+   * Off, this is a no-op and the behaviour is what it always was.
+   */
+  const coverageStart = await effectiveCoverageStart(context, accountId, declaredStart)
 
   const series = account.is_manual
     ? await buildManualSeries(context, accountId, coverageStart, balanceAsOf)
@@ -111,6 +124,28 @@ export async function rebuildAccountHistory(
     account.closed_on === null ? carryStale(series, today) : endAtClosure(series, account.closed_on)
 
   const written = await writeSnapshots(context, accountId, withCarry)
+
+  /*
+   * Remove reconstructed days that fell outside this rebuild.
+   *
+   * `writeSnapshots` only ever upserts, deliberately — days outside the rebuilt range keep whatever
+   * they had, which is what lets *imported* history survive a resync. That is right, and it means a
+   * range which gets **narrower** leaves its old tail behind: turning imported-history trust off
+   * rebuilt a shorter series and the chart did not move, because the earlier snapshots were still
+   * sitting there.
+   *
+   * Scoped to `derived` rows, so this can only ever remove days this reconstruction produced.
+   * Imported and observed snapshots are exactly what the upsert-only rule exists to protect and are
+   * not touched.
+   */
+  const seriesStart = withCarry[0]?.date
+  if (seriesStart !== undefined) {
+    await context.client.query(
+      `delete from balance_snapshots
+        where account_id = $1 and source = 'derived' and as_of_date < $2`,
+      [accountId, seriesStart],
+    )
+  }
 
   /**
    * The consistency check exists for one specific failure: an institution reporting its balance and
@@ -369,6 +404,36 @@ async function writeSnapshots(
  * For reconstructable accounts it is the start of the transaction window fetched. For investment
  * accounts it is the day they were connected, because nothing earlier is knowable.
  */
+/**
+ * How far back to rebuild: the declared boundary, or the earliest transaction when trusted.
+ *
+ * The earliest *active* transaction rather than the earliest imported one. If a household says its
+ * history is complete, that statement is about the history, not about which pipe each row arrived
+ * through — and picking only imported rows would leave a gap wherever a synced transaction happens
+ * to be the oldest thing on the account.
+ */
+async function effectiveCoverageStart(
+  context: HouseholdContext,
+  accountId: string,
+  declaredStart: IsoDate,
+): Promise<IsoDate> {
+  const household = await context.client.query<{ trust_imported_history: boolean }>(
+    'select trust_imported_history from households where id = $1',
+    [context.householdId],
+  )
+
+  if (household.rows[0]?.trust_imported_history !== true) return declaredStart
+
+  const earliest = await context.client.query<{ earliest: IsoDate | null }>(
+    `select min(posted_date) as earliest
+       from transactions where account_id = $1 and status = 'active'`,
+    [accountId],
+  )
+
+  const found = earliest.rows[0]?.earliest
+  return found === null || found === undefined ? declaredStart : minDate(declaredStart, found)
+}
+
 export async function ensureCoverageStart(
   context: HouseholdContext,
   accountId: string,

@@ -630,4 +630,117 @@ describeIntegration('balance history rebuild', () => {
       expect(second).toEqual(first)
     })
   })
+
+  /**
+   * Trusting imported history, and being able to stop.
+   *
+   * The setting widens how far back a chart is drawn: normally the series starts where the provider
+   * vouches for it, and with trust on it starts at the earliest transaction on the account.
+   *
+   * The property that matters most is the **last** test here. `coverage_start_date` is only ever
+   * read by this path, never written — so turning the setting off has to restore the previous chart
+   * exactly, not approximately. If it overwrote the boundary the choice would be one-way, and the
+   * whole point is that somebody can look at what it draws and change their mind.
+   */
+  describe('trusting imported history', () => {
+    async function setTrust(context: HouseholdContext, trust: boolean): Promise<void> {
+      await context.client.query('update households set trust_imported_history = $1 where id = $2', [
+        trust,
+        context.householdId,
+      ])
+    }
+
+    /** Coverage says the 31st; the transactions reach back to the 20th. */
+    async function seed(context: HouseholdContext): Promise<string> {
+      const accountId = await makeAccount(context, {
+        type: 'depository',
+        balanceCents: 100_000n,
+        coverageStart: '2026-07-31',
+      })
+
+      await addTransaction(context, accountId, '2026-07-20', -5_000n)
+      await addTransaction(context, accountId, '2026-07-25', -3_000n)
+      return accountId
+    }
+
+    it('draws only from the declared boundary when the setting is off', async () => {
+      const series = await withHouseholdContext(deps, USER, async (ctx) => {
+        await setTrust(ctx, false)
+        const accountId = await seed(ctx)
+        await rebuildAccountHistory(ctx, accountId, TODAY)
+        return readSeries(ctx, accountId)
+      })
+
+      expect(series[0]?.date).toBe('2026-07-31')
+    })
+
+    it('reaches back to the earliest transaction when the setting is on', async () => {
+      const series = await withHouseholdContext(deps, USER, async (ctx) => {
+        await setTrust(ctx, true)
+        const accountId = await seed(ctx)
+        await rebuildAccountHistory(ctx, accountId, TODAY)
+        return readSeries(ctx, accountId)
+      })
+
+      expect(series[0]?.date).toBe('2026-07-20')
+    })
+
+    /** Reconstruction still has to be right over the widened stretch, not merely longer. */
+    it('reconstructs the widened stretch from the transactions', async () => {
+      const series = await withHouseholdContext(deps, USER, async (ctx) => {
+        await setTrust(ctx, true)
+        const accountId = await seed(ctx)
+        await rebuildAccountHistory(ctx, accountId, TODAY)
+        return readSeries(ctx, accountId)
+      })
+
+      /*
+       * `balance(T) = current − transactions posted *after* T`, so a spend dated T is already
+       * inside that day's balance rather than subtracted from it. On the 20th only the 25th's
+       * -3,000 is still to come.
+       */
+      expect(series[0]?.balance).toBe(103_000n)
+      // Nothing posts after the 25th, so it already equals the current balance.
+      expect(series.find((point) => point.date === '2026-07-25')?.balance).toBe(100_000n)
+    })
+
+    /** The guarantee. Off again must be byte-for-byte what it was, not merely shorter. */
+    it('restores the original series exactly when turned back off', async () => {
+      const result = await withHouseholdContext(deps, USER, async (ctx) => {
+        await setTrust(ctx, false)
+        const accountId = await seed(ctx)
+        await rebuildAccountHistory(ctx, accountId, TODAY)
+        const before = await readSeries(ctx, accountId)
+
+        await setTrust(ctx, true)
+        await rebuildAccountHistory(ctx, accountId, TODAY)
+        const widened = await readSeries(ctx, accountId)
+
+        await setTrust(ctx, false)
+        await rebuildAccountHistory(ctx, accountId, TODAY)
+        const after = await readSeries(ctx, accountId)
+
+        return { before, widened, after }
+      })
+
+      expect(result.widened.length).toBeGreaterThan(result.before.length)
+      expect(result.after).toEqual(result.before)
+    })
+
+    /** Nothing to widen to is not an error — it simply stays where it was. */
+    it('leaves an account with no earlier transactions alone', async () => {
+      const series = await withHouseholdContext(deps, USER, async (ctx) => {
+        await setTrust(ctx, true)
+        const accountId = await makeAccount(ctx, {
+          type: 'depository',
+          balanceCents: 100_000n,
+          coverageStart: '2026-07-31',
+        })
+        await rebuildAccountHistory(ctx, accountId, TODAY)
+        return readSeries(ctx, accountId)
+      })
+
+      expect(series[0]?.date).toBe('2026-07-31')
+    })
+  })
 })

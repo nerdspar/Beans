@@ -1,0 +1,1 @@
+ALTER TABLE "households" ADD COLUMN "trust_imported_history" boolean DEFAULT false NOT NULL;

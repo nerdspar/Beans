@@ -144,6 +144,33 @@ forward** change. Dates before it are provably unchanged: the shift in `current_
 shift in the transaction sum cancel exactly. This bounds delta-sync volume (§7) to how far back late
 postings reach — days to weeks, not the whole series.
 
+### 4.2a Trusting imported history
+
+`households.trust_imported_history` lets a household extend how far back a chart is drawn using
+imported transactions. **Off by default, and the default is the honest one** — see §4.3 for why the
+boundary exists at all.
+
+The switch exists because the alternative is worse for a real household. Reconstruction before the
+sync window is only sound if the CSV is complete, and *only the household can know that*. Beans
+guessing on their behalf means either refusing history somebody has good reason to trust, or drawing
+one they have good reason to doubt.
+
+**It widens the rebuild window; it never rewrites the boundary.** `coverage_start_date` keeps meaning
+"what the provider vouches for", and the effective start is `min(declared, earliest transaction)`
+computed at rebuild time. So turning it off and rebuilding restores the previous chart exactly, which
+is the property that makes it safe to try — and it is asserted by an integration test that compares
+the series before and after a round trip rather than merely checking it got shorter.
+
+That test caught a real defect: `writeSnapshots` only ever upserts, deliberately, so that imported
+history survives a resync (§4.1). A range that gets **narrower** therefore left its old tail behind
+and the chart did not move. The rebuild now deletes `derived` snapshots earlier than the series it
+just wrote — scoped to that source, because imported and observed rows are precisely what the
+upsert-only rule protects.
+
+Offered both at import time and in settings. Neither alone is enough: at import you are holding the
+file and know what is in it, but you cannot yet see what it draws; in settings you can see the
+result, but only after the moment you were best placed to judge the source.
+
 ### 4.3 Coverage boundary
 
 Every account records `coverage_start_date`, the earliest date for which its history is trustworthy.

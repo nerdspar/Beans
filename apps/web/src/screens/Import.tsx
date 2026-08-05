@@ -11,6 +11,8 @@ import {
   type Inspection,
 } from '../import/api.js'
 import { Loader2 } from 'lucide-react'
+import { SETTINGS_COPY } from '@beans/shared'
+import { getHousehold, setTrustImportedHistory } from '../household/api.js'
 import { cn } from '../lib/cn.js'
 import { useImportProgress } from '../import/use-import-progress.js'
 import type { ImportProgress } from '../import/api.js'
@@ -195,6 +197,22 @@ export function Import(): ReactNode {
    * exactly how a working import gets killed by somebody assuming it had hung.
    */
   const progress = useImportProgress(stageRows.isPending || commit.isPending)
+
+  /*
+   * The same household setting the settings screen holds, offered where the decision is live.
+   *
+   * Toggling it rebuilds every account, which is why it is not folded into the commit button —
+   * somebody should be able to change their mind about it without re-importing anything.
+   */
+  const household = useQuery({ queryKey: ['household'], queryFn: getHousehold })
+
+  const trust = useMutation({
+    mutationFn: setTrustImportedHistory,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['household'] })
+      await queryClient.invalidateQueries({ queryKey: WORKING_SET_KEY })
+    },
+  })
 
   const reverse = useMutation({
     mutationFn: () => reverseImport((stage as { importId: string }).importId),
@@ -486,6 +504,41 @@ export function Import(): ReactNode {
               </li>
             ))}
           </ul>
+
+          {/*
+            Asked here because this is where the question is live.
+            
+            The same switch is in settings, and it has to be — somebody only learns whether they
+            trust an export after seeing what it draws. But burying it there alone means the one
+            moment they are holding the file and know what is in it is the one moment they are not
+            asked.
+          */}
+          <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+            <input
+              type="checkbox"
+              checked={household.data?.trustImportedHistory ?? false}
+              disabled={household.data === undefined || trust.isPending}
+              onChange={(event) => trust.mutate(event.target.checked)}
+              className="mt-0.5 size-4 shrink-0 accent-sky-600"
+            />
+            <span className="text-sm">
+              <span className="font-medium">{SETTINGS_COPY.historyTrustLabel}</span>
+              <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
+                {household.data?.trustImportedHistory === true
+                  ? SETTINGS_COPY.historyTrustOn
+                  : SETTINGS_COPY.historyTrustOff}
+              </span>
+              <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+                {SETTINGS_COPY.historyTrustReversible}
+              </span>
+              {trust.isPending && (
+                <span className="mt-1 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                  {SETTINGS_COPY.historyTrustRebuilding}
+                </span>
+              )}
+            </span>
+          </label>
 
           <Problem error={commit.error} fallback={IMPORT_COPY.commitFailed} />
 

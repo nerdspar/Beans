@@ -51,6 +51,28 @@ export const households = pgTable(
      */
     keyVersion: integer('key_version').notNull(),
 
+    /**
+     * Whether imported transactions may extend how far back a chart is drawn.
+     *
+     * Off by default, and the default is the honest one. Reconstruction is
+     * `balance(T) = current balance − transactions after T`, which is only right if *every*
+     * transaction after T is present. Inside the sync window that holds. Before it, all there is
+     * is whatever a CSV happened to contain — so a missing row makes the reconstructed balance
+     * drift, silently, and worse the further back it goes (ARCHITECTURE.md §4.3).
+     *
+     * Only the household can answer whether their export is complete, so it is their switch rather
+     * than a guess made for them.
+     *
+     * **Nothing is destroyed by turning it on.** `coverage_start_date` keeps its meaning — what the
+     * provider vouches for — and this widens the rebuild window instead of overwriting it, so
+     * turning it off and rebuilding restores exactly the previous chart.
+     *
+     * On the household rather than in `user_preferences`, because it changes what is *computed and
+     * stored* in `balance_snapshots` rather than how it is displayed. Two members cannot hold
+     * different opinions about one stored series.
+     */
+    trustImportedHistory: boolean('trust_imported_history').notNull().default(false),
+
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
