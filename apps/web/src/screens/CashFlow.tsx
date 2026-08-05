@@ -550,6 +550,24 @@ export function CashFlow(): ReactNode {
             The totals follow the reading. Pointing at a month while the figures above it describe
             the whole range would put two answers on screen to one question.
           */}
+          {/*
+            The totals and the chart pin together, not the chart alone.
+            
+            Pinning only the chart looked like doing nothing: roughly three hundred pixels of
+            header — tabs, caveats, totals, the transfers note — has to scroll away before the chart
+            reaches the top, and there is rarely that much page left below it. The chart would come
+            to rest at the top exactly as the last row disappeared.
+            
+            Only when there are months to scroll through. On a single month the list below has its
+            own scroll box, so the page barely moves and a pinned block would cost height for
+            nothing.
+          */}
+          <div
+            className={cn(
+              !singleMonth &&
+                'sticky top-0 z-10 -mx-5 bg-slate-50 px-5 pb-2 dark:bg-slate-950',
+            )}
+          >
           <div className="mt-4 grid grid-cols-3 gap-3">
             <Total
               label={CASH_FLOW_COPY.income}
@@ -613,20 +631,7 @@ export function CashFlow(): ReactNode {
           )}
 
           {summary.periods.length > 1 && (
-            <div
-              className={cn(
-                /*
-                 * Pinned, so the chart stays put while the detail under it scrolls — reading a bar
-                 * and then scrolling to the rows it stands for is the whole motion of this screen,
-                 * and losing the chart on the way makes it two screens.
-                 *
-                 * The negative margin and matching padding push its background out to the container
-                 * edges. Without them the page's own side padding would be uncovered, and rows would
-                 * be visible sliding past in two strips either side of the chart.
-                 */
-                'sticky top-0 z-10 -mx-5 mt-4 bg-slate-50 px-5 pb-2 pt-2 dark:bg-slate-950',
-              )}
-            >
+            <div className="mt-4">
             <MonthlyBars
               periods={summary.periods}
               mode="net"
@@ -640,13 +645,14 @@ export function CashFlow(): ReactNode {
               scrubLabel={CASH_FLOW_COPY.byMonthReading}
             />
 
-            {/* Inside the pinned block: the label belongs to the chart, not to what scrolls past. */}
+            {/* The label belongs to the chart, not to what scrolls past beneath it. */}
             <ReadingSlot
               reading={monthReading === null ? null : formatMonth(monthReading.month)}
               held={heldLabel}
             />
             </div>
           )}
+          </div>
 
           {/* Kept below the chart: this is its table fallback as much as it is detail. */}
           {!singleMonth && (
@@ -1244,6 +1250,12 @@ function Breakdown({
 
   return (
     <>
+      {/*
+        The total and the chart pin together, for the same reason as the combined tab: pinning the
+        chart alone means it only reaches the top after everything above it has gone, and the
+        category list rarely leaves that much page.
+      */}
+      <div className="sticky top-0 z-10 -mx-5 bg-slate-50 px-5 pb-2 dark:bg-slate-950">
       <div className="mt-4">
         {/* `exactOptionalPropertyTypes`: an absent tone and an explicit undefined are not the same. */}
         {label === CASH_FLOW_COPY.income ? (
@@ -1259,18 +1271,7 @@ function Breakdown({
         that showed only bars would answer "which month" while the other two answered "which day".
       */}
       {singleMonth && daily.length > 1 && (
-        <section
-        className={cn(
-          /*
-           * Pinned, like the combined tab's. Scrolling a category list while the chart it came from
-           * has left the screen is reading two things that are meant to be one.
-           *
-           * The negative margin and matching padding carry its background out to the container
-           * edges, so nothing slides past in the strips either side of it.
-           */
-          'sticky top-0 z-10 -mx-5 mt-4 bg-slate-50 px-5 pb-2 pt-2 dark:bg-slate-950',
-        )}
-        >
+        <section className="mt-4">
           <CumulativeFlow
             series={daily}
             comparison={dailyBefore}
@@ -1303,18 +1304,7 @@ function Breakdown({
       )}
 
       {!singleMonth && (
-        <div
-        className={cn(
-          /*
-           * Pinned, like the combined tab's. Scrolling a category list while the chart it came from
-           * has left the screen is reading two things that are meant to be one.
-           *
-           * The negative margin and matching padding carry its background out to the container
-           * edges, so nothing slides past in the strips either side of it.
-           */
-          'sticky top-0 z-10 -mx-5 mt-4 bg-slate-50 px-5 pb-2 pt-2 dark:bg-slate-950',
-        )}
-        >
+        <div className="mt-4">
         <MonthlyBars
           periods={periods}
           mode={mode}
@@ -1333,10 +1323,11 @@ function Breakdown({
           averageLabel={CASH_FLOW_COPY.average}
         />
 
-        {/* Inside the pinned block: the label belongs to the chart, not to what scrolls past. */}
+        {/* The label belongs to the chart, not to what scrolls past beneath it. */}
         <ReadingSlot reading={reading} held={heldLabel} />
         </div>
       )}
+      </div>
 
       {totals.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
