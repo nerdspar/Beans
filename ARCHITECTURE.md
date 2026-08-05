@@ -497,7 +497,46 @@ screen needs on every load and is mirrored into IndexedDB (§7); holdings are dr
 one account at a time, and pushing them through the delta cursor would grow every user's cache by
 something almost none of them are looking at.
 
+### 10.2 Allocation and sectors — backlogged, and why
+
+Asset-class and sector breakdowns need something SimpleFIN does not send. A holding arrives as
+symbol, description, shares, market value, cost basis, purchase price, currency. **Nothing in it
+says what the security is.** No amount of work on the existing data produces "VWO is international
+stocks" or "CDW is technology"; that requires security reference data Beans has never had.
+
+Three ways to get it, recorded here so this is not re-litigated from scratch:
+
+1. **A bundled offline table**, shipped in the repo, plus per-household overrides for what it misses.
+   Resolves with no network and no API key. Coverage is partial by construction — broad-market ETFs,
+   common index and money market funds, and large-cap US equities are tractable; the long tail is
+   not — so a visible Unclassified share is permanent.
+2. **An external market-data provider.** Broadest coverage and self-maintaining. **Rejected as the
+   default.** Asking a third party to classify every ticker in the household hands them the
+   composition of the portfolio. The request carries no amounts and it is still exactly what this
+   app is self-hosted to avoid, and it would sit badly beside "the access URL never reaches the
+   client" and "Postgres stays LAN-only". If it is ever built it belongs behind an explicit opt-in
+   that states plainly what leaves the machine.
+3. **Manual classification only.** Exact, private, no staleness, and it costs the user an afternoon
+   up front plus a tag for every new holding.
+
+Two further decisions that shape the work:
+
+- **One asset class per fund.** Splitting a balanced or target-date fund across classes by its real
+  composition is more accurate and needs per-fund look-through data no free source provides
+  reliably. Single-asset-class index funds — most of what people hold — are exactly right under the
+  simple model, and a blended fund should be left Unclassified rather than forced into one bucket.
+- **A fund has no sector, only a blend.** Sectors are meaningful for directly-held equities and are
+  a fabrication for a diversified fund. A sector view must therefore state what share of the
+  portfolio it actually covers rather than implying it covers all of it.
+
+For scale on the honest ceiling here: Empower, with commercial feeds, reports **27.73% Unclassified**
+on a portfolio of this shape. A gap is normal rather than a defect — and a *wrong* classification is
+much worse than an absent one, because a fund filed under the wrong asset class silently misstates
+the split that retirement planning depends on. Nothing should ever be classified by guessing from
+its ticker.
+
 ---
+
 
 ## 11. Importing history
 
@@ -1074,7 +1113,8 @@ Specific traps already hit or avoided:
 
 | Item                                        | Status                                                                                                                                                                                                                                                                            |
 | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Holdings / allocation (Phase 2)             | Schema seam exists: `securities`, `holdings`, `security_prices` hang off investment `accounts` by stable id. Not built.                                                                                                                                                           |
+| Holdings                                    | **Built** — see §10.1. Positions are parsed, stored as dated snapshots, and shown per account and grouped by security across accounts.                                                                                                                                            |
+| Allocation and sectors                      | **Backlogged**, and the blocker is data rather than effort — see §10.2 for the decision and its reasoning, which should be read before anyone starts it.                                                                                                                          |
 | Budgeting (Phase 4)                         | Seam exists: `category_targets(category_id, month, amount)` attaches to stable `categories`. Not built.                                                                                                                                                                           |
 | Retirement (Phase 5), Tax profile (Phase 6) | New household-keyed tables. Depend on `tax_treatment` being populated and cash flow being clean, which is why both are handled properly in phase 1.                                                                                                                               |
 | Institution logos                           | If added, they go in a **separate global public table keyed by domain with no household reference**. The household-scoped row keeps its own encrypted name. Do not add a global FK from households to institutions — that would reveal which institutions a household banks with. |
