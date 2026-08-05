@@ -432,7 +432,7 @@ function AccountView({
               </span>
             )}
           </div>
-          <Holdings accountId={account.id} />
+          <Holdings accountId={account.id} headingDate={accountMove?.asOf ?? null} />
         </>
       )}
 

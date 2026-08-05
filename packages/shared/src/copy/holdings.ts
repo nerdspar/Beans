@@ -33,8 +33,19 @@ export const HOLDINGS_COPY = {
   columnMove: 'Change',
   columnValue: 'Value',
 
+  /**
+   * Shown only when the positions are dated differently from the account's move above them.
+   *
+   * The two come from different places — the heading's date is the last day the *balance* changed,
+   * this one is the last day *positions* were recorded — so they usually agree and occasionally do
+   * not. Printing it unconditionally repeated the heading; dropping it unconditionally would let a
+   * genuine disagreement pass silently.
+   */
   asOf: (date: string): string => `Positions as of ${date}`,
+
+  /** A continuation of the line above, and the same thing standing alone. */
   since: (date: string): string => `change since ${date}`,
+  changeSince: (date: string): string => `Change since ${date}`,
 
   /** A position with no earlier observation to measure against. */
   noPrevious: 'New',

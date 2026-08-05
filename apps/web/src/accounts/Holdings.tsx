@@ -25,7 +25,19 @@ import { formatShortDate } from '../net-worth/display.js'
  * missing from net worth when this list is empty; only the breakdown is.
  */
 
-export function Holdings({ accountId }: { accountId: string }): ReactNode {
+export function Holdings({
+  accountId,
+  headingDate,
+}: {
+  accountId: string
+  /**
+   * The date already shown beside the heading, so this does not repeat it.
+   *
+   * That date describes the account's last balance move; this list's describes when positions were
+   * last recorded. Equal almost always, and worth stating on the rare occasion they are not.
+   */
+  headingDate: string | null
+}): ReactNode {
   const query = useQuery({
     queryKey: ['holdings', accountId],
     queryFn: () => readHoldings(accountId),
@@ -68,13 +80,30 @@ export function Holdings({ accountId }: { accountId: string }): ReactNode {
     0n,
   )
 
+  /*
+   * Says only what the heading has not.
+   *
+   * When the positions carry the same date as the account's move above, repeating it is noise —
+   * which leaves the comparison date, if there is one, as the only thing left to say.
+   */
+  const repeatsHeading = reading.asOfDate === headingDate
+  const previous =
+    reading.previousAsOfDate === null ? null : formatShortDate(reading.previousAsOfDate)
+
+  const dateLine = repeatsHeading
+    ? previous === null
+      ? null
+      : HOLDINGS_COPY.changeSince(previous)
+    : [
+        HOLDINGS_COPY.asOf(formatShortDate(reading.asOfDate)),
+        ...(previous === null ? [] : [HOLDINGS_COPY.since(previous)]),
+      ].join(', ')
+
   return (
     <div>
-      <p className="px-5 text-xs text-slate-500 dark:text-slate-400">
-        {HOLDINGS_COPY.asOf(formatShortDate(reading.asOfDate))}
-        {reading.previousAsOfDate !== null &&
-          `, ${HOLDINGS_COPY.since(formatShortDate(reading.previousAsOfDate))}`}
-      </p>
+      {dateLine !== null && (
+        <p className="px-5 text-xs text-slate-500 dark:text-slate-400">{dateLine}</p>
+      )}
 
       <ul className="mt-2 divide-y divide-slate-200 dark:divide-slate-800">
         {reading.holdings.map((holding) => (
