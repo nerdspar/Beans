@@ -8,6 +8,7 @@ import { useWorkingSet } from './working-set/use-working-set.js'
 import { readPendingInvite } from './auth/pending-invite.js'
 import { useSession } from './auth/use-session.js'
 import { AccountDetail } from './screens/AccountDetail.js'
+import { HoldingDetail } from './screens/HoldingDetail.js'
 import { Accounts } from './screens/Accounts.js'
 import { Portfolio } from './screens/Portfolio.js'
 import { CashFlow } from './screens/CashFlow.js'
@@ -98,6 +99,7 @@ function Routes(): ReactNode {
     <Switch>
       <Route path="/" component={NetWorth} />
       <Route path="/accounts/:id" component={AccountDetail} />
+      <Route path="/holdings/:key" component={HoldingDetail} />
       <Route path="/accounts" component={Accounts} />
       <Route path="/transactions" component={Transactions} />
       <Route path="/cash-flow" component={CashFlow} />

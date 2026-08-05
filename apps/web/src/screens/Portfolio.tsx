@@ -8,6 +8,7 @@ import {
   holdingMove,
   latestMove,
   parseDecimalToCents,
+  personalIndex,
   pricePerShare,
   resolveWindow,
   sliceToWindow,
@@ -17,6 +18,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'wouter'
 import { readHouseholdHoldings } from '../accounts/api.js'
+import { AreaChart } from '../charts/AreaChart.js'
 import { StackedArea } from '../charts/StackedArea.js'
 import { cn } from '../lib/cn.js'
 import { SECTION_COLORS } from '../net-worth/colors.js'
@@ -118,6 +120,32 @@ export function Portfolio(): ReactNode {
       window,
     )
   }, [investments, range, today])
+
+  /*
+   * The portfolio's own performance, indexed to zero at the start of the window.
+   *
+   * Answers "how did my money do", which is not the question the stacked chart answers. Flows are
+   * stripped day by day and the days chain-linked, so a contribution does not read as a good day —
+   * where the provider sends no investment transactions the flow is zero and this degrades to plain
+   * percent change, which the note under the chart says.
+   */
+  const indexSeries = useMemo(() => {
+    const investmentIds = new Set(investments.map((account) => account.id))
+    const flowByDate = new Map<string, bigint>()
+
+    for (const transaction of workingSet.transactions) {
+      if (!investmentIds.has(transaction.accountId) || transaction.status === 'void') continue
+      flowByDate.set(
+        transaction.postedDate,
+        (flowByDate.get(transaction.postedDate) ?? 0n) + transaction.amountCents,
+      )
+    }
+
+    return personalIndex(series, flowByDate).map((point) => ({
+      date: point.date,
+      value: point.basisPoints,
+    }))
+  }, [series, investments, workingSet.transactions])
 
   if (workingSet.isLoading) return <Message title={PORTFOLIO_COPY.loading} />
 
@@ -266,7 +294,29 @@ export function Portfolio(): ReactNode {
         thickening while the total stays flat is money crossing between two of them, which a single
         line cannot show.
       */}
-      {series.length > 0 && (
+      {grouping === 'holding' && indexSeries.length > 0 && (
+        <div className="mt-3">
+          {/*
+            Performance, not composition.
+            
+            The stacked chart says which accounts hold the money, which is exactly the question the
+            holding list is not about — leaving it here meant the picture and the list underneath
+            were answering different questions.
+          */}
+          <AreaChart
+            series={indexSeries}
+            color={SECTION_COLORS.investment}
+            formatValue={(basisPoints) => formatPercent(basisPoints)}
+            height={CHART_HEIGHT}
+            scrubLabel={PORTFOLIO_COPY.indexScrubLabel}
+          />
+          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+            {reportsFlows ? PORTFOLIO_COPY.indexNote : PORTFOLIO_COPY.indexNoteWithoutFlows}
+          </p>
+        </div>
+      )}
+
+      {grouping === 'account' && series.length > 0 && (
         <div className="mt-3">
           <StackedArea
             bands={ordered.map((account, index) => ({
@@ -281,9 +331,11 @@ export function Portfolio(): ReactNode {
         </div>
       )}
 
-      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-        {PORTFOLIO_COPY.historyNote}
-      </p>
+      {grouping === 'account' && (
+        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+          {PORTFOLIO_COPY.historyNote}
+        </p>
+      )}
 
       <div className="mt-6 flex items-baseline justify-between gap-3">
         <label className="flex items-baseline gap-1.5">
@@ -584,15 +636,26 @@ function HoldingGroups({
         const down = move !== null && move.changeCents < 0n
 
         return (
-          <li key={group.key} className="flex items-start gap-3 py-2.5">
+          <li key={group.key}>
+            {/* Links through, like an account row — the row is the way into where it is held. */}
+            <Link
+              href={`/holdings/${encodeURIComponent(group.key)}`}
+              className="flex items-start gap-3 py-2.5 focus-visible:outline-2 focus-visible:outline-sky-500"
+            >
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium">
                 {group.symbol ?? group.description ?? '—'}
               </span>
+              {/*
+                Always the description, never the account count.
+                
+                The count used to take this line whenever a security sat in more than one account,
+                so the column alternated between a fund's name and a number — two different kinds of
+                fact in one place, which is unreadable at a glance. The row is a link now, and where
+                it is held is the first thing behind it.
+              */}
               <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
-                {group.accountCount > 1
-                  ? PORTFOLIO_COPY.heldInAccounts(group.accountCount)
-                  : (group.symbol === null ? '' : (group.description ?? ''))}
+                {group.symbol === null ? '' : (group.description ?? '')}
               </span>
             </span>
 
@@ -630,14 +693,22 @@ function HoldingGroups({
                 {formatCents(group.marketValueCents)}
               </span>
               <span className="block text-xs tabular-nums text-slate-500 dark:text-slate-400">
-                {group.shares === null
-                  ? shareOf(group.marketValueCents, total)
-                  : `${formatShares(group.shares)}${price === null ? '' : ` @ ${formatCents(price)}`}`}
+                {/* Share of the portfolio, which is what the grouped view exists to show. */}
+                {shareOf(group.marketValueCents, total)}
+                {group.shares !== null &&
+                  ` · ${formatShares(group.shares)}${price === null ? '' : ` @ ${formatCents(price)}`}`}
               </span>
             </span>
+            </Link>
           </li>
         )
       })}
     </ul>
   )
+}
+
+/** Basis points as a signed percentage. The index chart's only unit. */
+function formatPercent(basisPoints: bigint): string {
+  const percent = Number(basisPoints) / 100
+  return `${percent > 0 ? '+' : ''}${percent.toFixed(2)}%`
 }

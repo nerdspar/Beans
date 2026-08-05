@@ -497,6 +497,39 @@ screen needs on every load and is mirrored into IndexedDB (§7); holdings are dr
 one account at a time, and pushing them through the delta cursor would grow every user's cache by
 something almost none of them are looking at.
 
+### 10.1a A security's own page, and why it filters in TypeScript
+
+`GET /api/holdings/detail?symbol=&from=` answers "where is this security held, and what has it been
+worth". The filter runs in application code after decryption, not in SQL, and that is **forced**:
+`symbol` is `bytea`, so `where symbol = $1` has no ciphertext to compare against. The alternative is
+deterministic encryption on that column, which would leak which rows across the whole table share a
+symbol — a worse trade than the compute (§3.1).
+
+The cost that buys is bounded by `from`, which the caller sets from the chart's range. It grows with
+days × positions rather than with total history, which is the whole reason the parameter is required
+rather than defaulted — a missing bound would quietly turn into a full-table decrypt a year from now.
+
+A security's chart starts where Beans first recorded positions. Unlike a cash balance there is no
+walking it backwards: a share price moving is not something anybody posts, so nothing before the
+first snapshot exists to draw.
+
+### 10.1b The personal index
+
+The portfolio chart under **By holding** is performance, not composition — each day's return
+measured market-only and the days chain-linked:
+
+    return(d) = (close − open − flow) / (open + flow)
+    index(d)  = (1 + index(d−1)) × (1 + return(d)) − 1
+
+Chained rather than summed because returns compound; adding daily percentages drifts as soon as the
+window is longer than a few weeks. Flows are stripped for the reason that runs through all of §10:
+a contribution moves the balance and earns nothing, and a chart of raw percent change presents it as
+a good day. **Where the provider reports no transactions the flow is zero and this degrades to plain
+percent change** — the note under the chart says which of the two the reader is looking at.
+
+Benchmarking it against a real index (Empower charts the S&P 500 beside theirs) is backlogged with
+§10.2: it needs market data, and therefore the same decision about what leaves the machine.
+
 ### 10.2 Allocation and sectors — backlogged, and why
 
 Asset-class and sector breakdowns need something SimpleFIN does not send. A holding arrives as

@@ -16,7 +16,11 @@ import {
   withHouseholdContext,
   type ContextDependencies,
 } from '../repositories/household-context.js'
-import { readHoldings, readHouseholdHoldings } from '../repositories/holdings.js'
+import {
+  readHoldingDetail,
+  readHoldings,
+  readHouseholdHoldings,
+} from '../repositories/holdings.js'
 
 /**
  * Editing accounts directly.
@@ -66,6 +70,12 @@ const createBody = z.object({
 })
 
 const balanceBody = z.object({ balance: money, effectiveDate: isoDate })
+
+/** `from` bounds how much history is decrypted to answer, so it is required rather than defaulted. */
+const holdingDetailQuery = z.object({
+  symbol: z.string().trim().min(1).max(64),
+  from: isoDate,
+})
 
 export const accountRoutes: FastifyPluginAsync<AccountRoutesOptions> = async (fastify, options) => {
   const { auth, deps } = options
@@ -118,6 +128,34 @@ export const accountRoutes: FastifyPluginAsync<AccountRoutesOptions> = async (fa
       return handleError(error, reply) ?? Promise.reject(error)
     }
   })
+
+  /**
+   * One security, everywhere it is held.
+   *
+   * The symbol arrives as a query parameter rather than a path segment: tickers contain dots and
+   * slashes for share classes, and encoding those into a path is a recurring source of routing bugs.
+   */
+  fastify.get<{ Querystring: { symbol?: string; from?: string } }>(
+    '/api/holdings/detail',
+    async (request, reply) => {
+      const user = await requireUser(request, reply)
+      if (user === null) return
+
+      const query = holdingDetailQuery.safeParse(request.query)
+      if (!query.success) {
+        return reply.status(400).send({ error: 'Invalid holding' })
+      }
+
+      try {
+        const detail = await withHouseholdContext(deps, user.id, (context) =>
+          readHoldingDetail(context, query.data.symbol, query.data.from),
+        )
+        return reply.header('cache-control', 'no-store').send(detail)
+      } catch (error) {
+        return handleError(error, reply) ?? Promise.reject(error)
+      }
+    },
+  )
 
   /**
    * Positions inside one account.

@@ -233,6 +233,141 @@ export async function readHouseholdHoldings(
   return { holdings, asOfDate, everChecked: checked.rows[0]?.any_checked ?? false }
 }
 
+export type HoldingAccountSlice = {
+  accountId: string
+  accountName: string
+  institutionName: string | null
+  shares: string | null
+  marketValue: string
+  previousMarketValue: string | null
+}
+
+export type HoldingDetail = {
+  key: string
+  symbol: string | null
+  description: string | null
+  /** The security's total value across accounts, one point per observed date. */
+  series: { date: IsoDate; value: string }[]
+  accounts: HoldingAccountSlice[]
+  asOfDate: IsoDate | null
+  previousAsOfDate: IsoDate | null
+}
+
+type DetailRow = HoldingRow & {
+  account_id: string
+  display_name: Buffer | null
+  provider_name: Buffer | null
+  institution_name: Buffer | null
+}
+
+/**
+ * One security, everywhere it is held and everything we have recorded about it.
+ *
+ * **Filtered in TypeScript, not in SQL, and that is forced rather than lazy.** `symbol` is
+ * encrypted, so `where symbol = $1` cannot exist — there is no ciphertext to compare against that
+ * would not require deterministic encryption, which leaks which rows share a symbol across the
+ * whole table. So every row in the window is decrypted and matched here (ARCHITECTURE.md §3.1).
+ *
+ * That cost is bounded by `from`. It grows with days × positions rather than with history, which is
+ * why the window exists at all — the caller passes the chart's range and nothing older is read.
+ */
+export async function readHoldingDetail(
+  context: HouseholdContext,
+  key: string,
+  from: IsoDate,
+): Promise<HoldingDetail> {
+  const result = await context.client.query<DetailRow>(
+    `select h.account_id, h.as_of_date, h.provider_holding_id, h.symbol, h.description,
+            h.shares, h.market_value, h.cost_basis, h.purchase_price, h.currency,
+            a.display_name, a.provider_name, i.name as institution_name
+       from holdings h
+       join accounts a on a.id = h.account_id
+       left join institutions i on i.id = a.institution_id
+      where a.confirmed_at is not null and h.as_of_date >= $1
+      order by h.as_of_date`,
+    [from],
+  )
+
+  const wanted = key.trim().toUpperCase()
+
+  const matched = result.rows
+    .map((row) => ({
+      row,
+      symbol: context.cipher.decryptTextOrNull(row.symbol),
+      description: context.cipher.decryptTextOrNull(row.description),
+      cents: context.cipher.decryptMoney(row.market_value),
+    }))
+    .filter(
+      (entry) =>
+        (entry.symbol ?? entry.description ?? '').trim().toUpperCase() === wanted,
+    )
+
+  if (matched.length === 0) {
+    return {
+      key: wanted,
+      symbol: null,
+      description: null,
+      series: [],
+      accounts: [],
+      asOfDate: null,
+      previousAsOfDate: null,
+    }
+  }
+
+  // The security's total on each date it was observed.
+  const byDate = new Map<IsoDate, bigint>()
+  for (const entry of matched) {
+    byDate.set(entry.row.as_of_date, (byDate.get(entry.row.as_of_date) ?? 0n) + entry.cents)
+  }
+
+  const dates = [...byDate.keys()].sort()
+  const asOfDate = dates[dates.length - 1] ?? null
+  const previousAsOfDate = dates[dates.length - 2] ?? null
+
+  const previousByAccount = new Map<string, bigint>()
+  if (previousAsOfDate !== null) {
+    for (const entry of matched) {
+      if (entry.row.as_of_date !== previousAsOfDate) continue
+      previousByAccount.set(
+        entry.row.account_id,
+        (previousByAccount.get(entry.row.account_id) ?? 0n) + entry.cents,
+      )
+    }
+  }
+
+  // Largest first, sorted on the cents — comparing the decimal strings would order $9 above $10.
+  const accounts = matched
+    .filter((entry) => entry.row.as_of_date === asOfDate)
+    .sort((left, right) => (right.cents > left.cents ? 1 : right.cents < left.cents ? -1 : 0))
+    .map((entry) => {
+      const previous = previousByAccount.get(entry.row.account_id)
+      return {
+        accountId: entry.row.account_id,
+        // The user's name wins, exactly as it does everywhere else a name is shown.
+        accountName:
+          context.cipher.decryptTextOrNull(entry.row.display_name) ??
+          context.cipher.decryptTextOrNull(entry.row.provider_name) ??
+          'Account',
+        institutionName: context.cipher.decryptTextOrNull(entry.row.institution_name),
+        shares: context.cipher.decryptTextOrNull(entry.row.shares),
+        marketValue: centsToDecimalString(entry.cents),
+        previousMarketValue: previous === undefined ? null : centsToDecimalString(previous),
+      }
+    })
+
+  const identity = matched[matched.length - 1]
+
+  return {
+    key: wanted,
+    symbol: identity?.symbol ?? null,
+    description: identity?.description ?? null,
+    series: dates.map((date) => ({ date, value: centsToDecimalString(byDate.get(date) ?? 0n) })),
+    accounts,
+    asOfDate,
+    previousAsOfDate,
+  }
+}
+
 /**
  * Replaces one account's positions for a single date.
  *

@@ -22,12 +22,17 @@ export const PORTFOLIO_COPY = {
   byTax: 'By tax treatment',
 
   /**
-   * Said on a grouped row held in more than one account.
+   * The performance chart, and the caveat it carries.
    *
-   * Worth flagging because the row is then a sum rather than a position: nothing at any institution
-   * looks like this line, and somebody reconciling against a statement should know that.
+   * Named an index rather than "performance" because that is what it is: every day rebased to the
+   * start of the window, so the shape is comparable to a benchmark even though there is not one to
+   * compare against yet.
    */
-  heldInAccounts: (count: number): string => `${count} accounts`,
+  indexScrubLabel: 'Portfolio return. Arrow keys move by day.',
+  indexNote:
+    'Your portfolio rebased to 0% at the start of the range. Money paid in or taken out is removed day by day, so this is what the market did rather than what the balance did.',
+  indexNoteWithoutFlows:
+    'Your portfolio rebased to 0% at the start of the range. Your provider reports no transactions for these accounts, so anything paid in or taken out is inside this line rather than removed from it.',
 
   holdingsEmpty: 'No positions to group',
   holdingsEmptyDetail:

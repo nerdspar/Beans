@@ -65,4 +65,24 @@ export const HOLDINGS_COPY = {
     price === null ? `${shares} shares` : `${shares} @ ${price}`,
 
   costBasis: (amount: string): string => `Cost ${amount}`,
+
+  // ── The security's own page ────────────────────────────────────────────────
+  backToPortfolio: 'Portfolio',
+  byAccount: 'Held in',
+  chartScrubLabel: 'Value of this holding. Arrow keys move by day.',
+
+  /**
+   * The coverage boundary, restated for a security.
+   *
+   * A cash balance can be walked backwards through its transactions; a position cannot, because a
+   * share price moving is not something anybody posts. So this history starts where Beans started
+   * looking rather than where the position started, and saying so beats a line that implies the
+   * holding was opened the day we first saw it.
+   */
+  historyNote:
+    'History starts when Beans first recorded this position. A holding’s past value cannot be worked out from transactions the way a cash balance can.',
+
+  notFound: 'Nothing recorded for this holding',
+  notFoundDetail:
+    'It may have been sold, or it may be outside the selected range. Positions are only recorded on days a sync saw them.',
 } as const

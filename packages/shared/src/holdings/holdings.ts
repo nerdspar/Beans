@@ -227,3 +227,66 @@ export function groupBySymbol(holdings: readonly GroupableHolding[]): GroupedHol
         : 0,
   )
 }
+
+export type IndexPoint = {
+  date: string
+  /** Cumulative return since the first point, in basis points. Zero on day one by construction. */
+  basisPoints: bigint
+}
+
+/**
+ * The portfolio's own performance, indexed to zero at the start of the window.
+ *
+ * A personal index answers "how did my money do", which is a different question from "what is it
+ * worth" — and the difference is entirely money paid in. A chart of raw value shows a contribution
+ * as a jump indistinguishable from a good day, which is the failure this whole area keeps
+ * producing. So each day's return is measured market-only and the days are **chain-linked**:
+ *
+ *     return(d) = (close − open − flow) / (open + flow)
+ *     index(d)  = (1 + index(d−1)) × (1 + return(d)) − 1
+ *
+ * Chained rather than summed because returns compound; adding daily percentages drifts from the
+ * truth the moment the window is longer than a few weeks.
+ *
+ * **Where the provider reports no transactions the flow is zero and this degrades to plain percent
+ * change.** That is the best available answer rather than a claim nothing was paid in, and it is
+ * the same caveat the day figures carry — the caller states it.
+ *
+ * Basis points rather than a float so the result is exact and can be carried as a `bigint` through
+ * the charting layer like every other value. A day whose opening exposure is zero contributes no
+ * return: there is nothing to have earned on, and dividing would invent one.
+ */
+export function personalIndex(
+  series: readonly { date: string; value: bigint }[],
+  flowByDate: ReadonlyMap<string, bigint>,
+): IndexPoint[] {
+  if (series.length < 2) return []
+
+  const points: IndexPoint[] = []
+  let cumulative = 1
+
+  for (const [index, point] of series.entries()) {
+    if (index === 0) {
+      points.push({ date: point.date, basisPoints: 0n })
+      continue
+    }
+
+    const previous = series[index - 1]
+    if (previous === undefined) continue
+
+    const flow = flowByDate.get(point.date) ?? 0n
+    const exposed = previous.value + flow
+
+    if (exposed !== 0n) {
+      const gain = point.value - previous.value - flow
+      cumulative *= 1 + Number(gain) / Number(exposed)
+    }
+
+    points.push({
+      date: point.date,
+      basisPoints: BigInt(Math.round((cumulative - 1) * 10_000)),
+    })
+  }
+
+  return points
+}

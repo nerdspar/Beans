@@ -3,6 +3,7 @@ import {
   formatShares,
   groupBySymbol,
   holdingMove,
+  personalIndex,
   pricePerShare,
   sumShares,
   type GroupableHolding,
@@ -253,5 +254,105 @@ describe('groupBySymbol', () => {
 
   it('returns nothing for no holdings', () => {
     expect(groupBySymbol([])).toEqual([])
+  })
+})
+
+describe('personalIndex', () => {
+  const at = (date: string, value: bigint) => ({ date, value })
+  const noFlows = new Map<string, bigint>()
+
+  it('starts at zero on the first day', () => {
+    const index = personalIndex([at('2026-08-03', 100_000n), at('2026-08-04', 100_000n)], noFlows)
+    expect(index[0]).toEqual({ date: '2026-08-03', basisPoints: 0n })
+  })
+
+  it('reports a plain gain where nothing was paid in', () => {
+    const index = personalIndex([at('2026-08-03', 100_000n), at('2026-08-04', 102_000n)], noFlows)
+    // 2% of the opening.
+    expect(index[1]?.basisPoints).toBe(200n)
+  })
+
+  it('reports a fall as readily as a rise', () => {
+    const index = personalIndex([at('2026-08-03', 100_000n), at('2026-08-04', 99_000n)], noFlows)
+    expect(index[1]?.basisPoints).toBe(-100n)
+  })
+
+  /**
+   * The whole reason this is not a percent-change chart. A deposit moves the balance and earns
+   * nothing, and showing it as performance is the error this area keeps producing.
+   */
+  it('does not count a contribution as performance', () => {
+    const index = personalIndex(
+      [at('2026-08-03', 100_000n), at('2026-08-04', 150_000n)],
+      new Map([['2026-08-04', 50_000n]]),
+    )
+    expect(index[1]?.basisPoints).toBe(0n)
+  })
+
+  it('separates the market from a contribution on the same day', () => {
+    // Opened at 100,000, 50,000 paid in, closed at 153,000 — 3,000 earned on 150,000 exposed.
+    const index = personalIndex(
+      [at('2026-08-03', 100_000n), at('2026-08-04', 153_000n)],
+      new Map([['2026-08-04', 50_000n]]),
+    )
+    expect(index[1]?.basisPoints).toBe(200n)
+  })
+
+  it('treats a withdrawal the same way', () => {
+    const index = personalIndex(
+      [at('2026-08-03', 100_000n), at('2026-08-04', 50_000n)],
+      new Map([['2026-08-04', -50_000n]]),
+    )
+    expect(index[1]?.basisPoints).toBe(0n)
+  })
+
+  /** Chained, not summed: two 10% days are 21%, not 20%. */
+  it('compounds returns rather than adding them', () => {
+    const index = personalIndex(
+      [at('2026-08-03', 100_000n), at('2026-08-04', 110_000n), at('2026-08-05', 121_000n)],
+      noFlows,
+    )
+    expect(index[2]?.basisPoints).toBe(2100n)
+  })
+
+  it('holds flat across a day that did not move', () => {
+    const index = personalIndex(
+      [at('2026-08-03', 100_000n), at('2026-08-04', 102_000n), at('2026-08-05', 102_000n)],
+      noFlows,
+    )
+    expect(index[1]?.basisPoints).toBe(200n)
+    expect(index[2]?.basisPoints).toBe(200n)
+  })
+
+  /** Nothing was exposed, so nothing was earned — dividing would invent a return. */
+  it('contributes no return for a day opening at zero', () => {
+    const index = personalIndex([at('2026-08-03', 0n), at('2026-08-04', 10_000n)], noFlows)
+    expect(index[1]?.basisPoints).toBe(0n)
+  })
+
+  it('recovers once there is something to earn on', () => {
+    const index = personalIndex(
+      [at('2026-08-03', 0n), at('2026-08-04', 10_000n), at('2026-08-05', 10_500n)],
+      noFlows,
+    )
+    expect(index[2]?.basisPoints).toBe(500n)
+  })
+
+  it('has nothing to say about a single observation', () => {
+    expect(personalIndex([at('2026-08-03', 100_000n)], noFlows)).toEqual([])
+    expect(personalIndex([], noFlows)).toEqual([])
+  })
+
+  it('returns one point per day in the series', () => {
+    const series = [
+      at('2026-08-03', 100_000n),
+      at('2026-08-04', 101_000n),
+      at('2026-08-05', 102_000n),
+    ]
+    expect(personalIndex(series, noFlows).map((point) => point.date)).toEqual([
+      '2026-08-03',
+      '2026-08-04',
+      '2026-08-05',
+    ])
   })
 })

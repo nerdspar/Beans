@@ -131,3 +131,34 @@ export type HouseholdHoldingsReading = {
 export function readHouseholdHoldings(): Promise<HouseholdHoldingsReading> {
   return send<HouseholdHoldingsReading>('/api/holdings')
 }
+
+export type HoldingAccountSlice = {
+  accountId: string
+  accountName: string
+  institutionName: string | null
+  shares: string | null
+  marketValue: string
+  previousMarketValue: string | null
+}
+
+export type HoldingDetail = {
+  key: string
+  symbol: string | null
+  description: string | null
+  /** The security's total across accounts, one point per observed date. */
+  series: { date: string; value: string }[]
+  accounts: HoldingAccountSlice[]
+  asOfDate: string | null
+  previousAsOfDate: string | null
+}
+
+/**
+ * One security, everywhere it is held.
+ *
+ * `from` bounds how much history the server decrypts to answer — the symbol is encrypted, so every
+ * row in the window has to be opened and matched in application code.
+ */
+export function readHoldingDetail(symbol: string, from: string): Promise<HoldingDetail> {
+  const query = new URLSearchParams({ symbol, from })
+  return send<HoldingDetail>(`/api/holdings/detail?${query.toString()}`)
+}
