@@ -58,7 +58,6 @@ export const CASH_FLOW_COPY = {
   showingSelection: (label: string): string => `Showing ${label}`,
   clearSelection: 'Clear',
   throughDay: (label: string): string => `Through ${label}`,
-  activityHeading: 'What happened',
   activityEmpty: 'Nothing posted in this period.',
 
   /**

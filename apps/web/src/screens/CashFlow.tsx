@@ -418,12 +418,19 @@ export function CashFlow(): ReactNode {
    * The chip states what is *held*, never what is being previewed — a label that appeared under a
    * passing finger and offered to clear something would be offering to clear the wrong thing.
    */
-  const heldLabel =
-    pinned === null
-      ? null
-      : pinned.kind === 'month'
-        ? formatMonth(pinned.month)
-        : CASH_FLOW_COPY.throughDay(formatShortDate(pinned.date))
+  const heldLabel = pinned?.kind === 'month' ? formatMonth(pinned.month) : null
+
+  /*
+   * A held day reads as plain text, not a chip.
+   *
+   * On a single month the date is showing anyway — it persists after the drag — so a chip would be
+   * a second copy of it wearing a border. The chip earns its place on the monthly bars, where
+   * nothing else says which month the figures describe.
+   */
+  const heldDay =
+    pinned?.kind === 'day'
+      ? (daily.find((point) => point.date === pinned.date) ?? null)
+      : null
 
   /* Everything below the chart reads from the selection when there is one. */
   const shownSummary = selection?.summary ?? summary
@@ -615,7 +622,9 @@ export function CashFlow(): ReactNode {
                 ? formatMonth(monthReading.month)
                 : dailyReading !== null
                   ? `${formatShortDate(dailyReading.date)} · ${formatCents(dailyReading.cumulativeCents)}`
-                  : null
+                  : heldDay !== null
+                    ? `${formatShortDate(heldDay.date)} · ${formatCents(heldDay.cumulativeCents)}`
+                    : null
             }
             held={heldLabel}
             onClear={() => setPinned(null)}
@@ -646,18 +655,12 @@ export function CashFlow(): ReactNode {
           */}
           {singleMonth && (
             <section className="mt-6">
-              <h2 className="text-sm font-semibold">{CASH_FLOW_COPY.activityHeading}</h2>
-
               {entries.length === 0 ? (
                 <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                   {CASH_FLOW_COPY.activityEmpty}
                 </p>
               ) : (
-                <ul
-                  ref={listRef}
-                  onScroll={onListScroll}
-                  className="mt-2 max-h-96 overflow-y-auto"
-                >
+                <ul ref={listRef} onScroll={onListScroll} className="max-h-96 overflow-y-auto">
                   {/*
                     Grouped under a date, with the category on the row.
                     
@@ -678,9 +681,14 @@ export function CashFlow(): ReactNode {
                     <li key={date} data-on-or-before={date}>
                       <h3
                         className={cn(
-                          'sticky top-0 z-10 py-1 text-xs font-medium tabular-nums',
-                          'bg-slate-50/95 text-slate-500 backdrop-blur',
-                          'dark:bg-slate-950/95 dark:text-slate-400',
+                          'sticky top-0 z-10 py-1.5 text-xs font-medium tabular-nums',
+                          /*
+                           * Fully opaque, not 95%. Rows pass *behind* this as the list scrolls, and
+                           * at 95% they showed through it as a faint moving smear — the one place in
+                           * the app where a translucent surface has something sliding under it.
+                           */
+                          'bg-slate-50 text-slate-500',
+                          'dark:bg-slate-950 dark:text-slate-400',
                         )}
                       >
                         {formatShortDate(date)}
@@ -744,7 +752,9 @@ export function CashFlow(): ReactNode {
               ? formatMonth(monthReading.month)
               : dailyReading !== null
                 ? formatShortDate(dailyReading.date)
-                : null
+                : heldDay !== null
+                  ? formatShortDate(heldDay.date)
+                  : null
           }
           totals={tab === 'income' ? shownIncome : shownSpending}
           totalCents={
