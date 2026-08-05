@@ -61,3 +61,37 @@ export function holdingMove(
     fraction: previousCents === 0n ? null : Number(changeCents) / Number(previousCents),
   }
 }
+
+/** Decimal places shown for a share count. Two matches how brokerages print them. */
+const SHARE_DECIMALS = 2
+
+/**
+ * A share count, shortened for display.
+ *
+ * Providers send whatever precision they hold — `262.834`, `13.7601`, sometimes eight places on a
+ * fractional-share position — and the tail is noise in a list somebody is scanning.
+ *
+ * **Truncated, not rounded.** Rounding up would show more shares than are held, and a quantity that
+ * overstates a position is the wrong direction to be wrong in. Trailing zeros go too, so a whole
+ * number reads as `255` rather than `255.00`.
+ *
+ * Returns the original string when it is not a number, rather than inventing one. Some institutions
+ * put text where a count belongs, and passing it through is better than showing `NaN`.
+ */
+export function formatShares(shares: string): string {
+  const trimmed = shares.trim()
+  if (!/^-?\d*\.?\d+$/.test(trimmed)) return shares
+
+  const negative = trimmed.startsWith('-')
+  const digits = negative ? trimmed.slice(1) : trimmed
+  const [rawWhole = '', fraction = ''] = digits.split('.')
+
+  // `'.5'.split('.')` yields an empty string rather than undefined, so the destructuring default
+  // never fires and a bare `.5` would render as `.5`.
+  const whole = rawWhole === '' ? '0' : rawWhole
+
+  const kept = fraction.slice(0, SHARE_DECIMALS).replace(/0+$/, '')
+  const body = kept === '' ? whole : `${whole}.${kept}`
+
+  return negative ? `-${body}` : body
+}

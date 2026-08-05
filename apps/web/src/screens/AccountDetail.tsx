@@ -3,10 +3,13 @@ import {
   HOLDINGS_COPY,
   NET_WORTH_SCRUB_COPY,
   NET_WORTH_STATE_COPY,
+  PORTFOLIO_COPY,
   carriedNotice,
   compareDates,
+  dayChange,
   formatCents,
   isLiabilitySection,
+  latestMove,
   TAX_TREATMENT_LABELS,
   type NetWorthSection,
   type TaxTreatment,
@@ -71,6 +74,38 @@ export function AccountDetail({ params }: { params: { id: string } }): ReactNode
     [workingSet.transactions, params.id],
   )
 
+  /*
+   * What this account did in its last move, market only — the portfolio screen's figure, computed
+   * the same way so the two screens can never disagree about one account's day.
+   *
+   * `latestMove` rather than the last two days: an investment series holds each reading flat until
+   * the next, so yesterday-to-today is routinely zero. Contributions over the same span come out,
+   * because money paid in is not performance.
+   *
+   * Computed here rather than alongside the display, because the flow has to be netted against
+   * *every* transaction in the span. The list below is capped at a handful for display, and a
+   * contribution that fell outside that cap would silently be counted as market movement.
+   */
+  const accountMove = useMemo(() => {
+    const account = workingSet.data?.byId.get(params.id)
+    if (account === undefined || account.type !== 'investment') return null
+
+    const move = latestMove(account.series)
+    if (move === null) return null
+
+    const flow = workingSet.transactions
+      .filter(
+        (transaction) =>
+          transaction.accountId === params.id &&
+          transaction.postedDate > move.fromDate &&
+          transaction.postedDate <= move.toDate &&
+          transaction.status !== 'void',
+      )
+      .reduce((sum, transaction) => sum + transaction.amountCents, 0n)
+
+    return { change: dayChange(move.openingCents, move.closingCents, flow), asOf: move.toDate }
+  }, [workingSet.data, workingSet.transactions, params.id])
+
   if (workingSet.isLoading) {
     return <div className="p-6 text-sm text-slate-500">{NET_WORTH_STATE_COPY.loading}</div>
   }
@@ -87,6 +122,7 @@ export function AccountDetail({ params }: { params: { id: string } }): ReactNode
       range={range}
       onRange={setRange}
       recent={recent}
+      accountMove={accountMove}
     />
   )
 }
@@ -97,12 +133,15 @@ function AccountView({
   range,
   onRange,
   recent,
+  accountMove,
 }: {
   account: DerivedAccount
   section: NetWorthSection
   range: RangeSelection
   onRange: (value: RangeSelection) => void
   recent: readonly StoredTransaction[]
+  /** Null for anything that is not an investment, or that has never moved. */
+  accountMove: { change: ReturnType<typeof dayChange>; asOf: string } | null
 }): ReactNode {
   const [sheet, setSheet] = useState<'none' | 'edit' | 'value'>('none')
   const [scrubIndex, setScrubIndex] = useState<number | null>(null)
@@ -358,8 +397,40 @@ function AccountView({
       */}
       {account.type === 'investment' && (
         <>
-          <div className="px-5 pb-1 pt-6">
+          <div className="flex items-baseline justify-between gap-3 px-5 pb-1 pt-6">
             <h2 className="text-sm font-semibold">{HOLDINGS_COPY.heading}</h2>
+            {/*
+              The account's own move, the same figure the portfolio list shows for this row.
+
+              Beside the positions rather than beside the balance at the top, because the two
+              belong together: the individual changes below should roughly account for this one,
+              and putting them apart makes that impossible to check. It is deliberately the same
+              computation as the portfolio screen — two places disagreeing about one account's day
+              would be worse than not showing it twice.
+            */}
+            {accountMove !== null && (
+              <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                <span
+                  className={cn(
+                    'font-medium',
+                    accountMove.change.marketCents > 0n
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : accountMove.change.marketCents < 0n
+                        ? 'text-rose-600 dark:text-rose-400'
+                        : '',
+                  )}
+                >
+                  {accountMove.change.marketCents > 0n ? '+' : ''}
+                  {formatCents(accountMove.change.marketCents)}
+                  {accountMove.change.fraction === null
+                    ? ''
+                    : ` (${accountMove.change.marketCents > 0n ? '+' : ''}${(
+                        accountMove.change.fraction * 100
+                      ).toFixed(2)}%)`}
+                </span>{' '}
+                {PORTFOLIO_COPY.asOfDay(formatShortDate(accountMove.asOf))}
+              </span>
+            )}
           </div>
           <Holdings accountId={account.id} />
         </>

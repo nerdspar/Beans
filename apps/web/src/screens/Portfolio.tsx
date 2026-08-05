@@ -141,16 +141,17 @@ export function Portfolio(): ReactNode {
      * settled balance dated to a completed day. Both are right about different days, and only the
      * date says which — so an undated percentage is the one thing this column must never be.
      *
-     * Showing it only when the figure looked stale needed a notion of "today", and `toIsoDate` is
-     * UTC: after 8pm Eastern the browser's today is already tomorrow, so every account would have
-     * been branded stale every evening. Dating all of them is both honest and free of the question.
+     * Judging staleness against "today" would need a notion of it, and `toIsoDate` is UTC: after
+     * 8pm Eastern the browser's today is already tomorrow, so every account would read as stale
+     * every evening. The date is stated instead of inferred.
      *
-     * Accounts genuinely differ here — institutions publish on their own schedules — so this
-     * belongs on the row and not in one line above the list.
+     * Carried per account and hoisted into the heading below only when they all agree, which is the
+     * usual case — institutions publish on their own schedules, so one date above the list is a
+     * summary and not a guarantee.
      */
     dayChanges.set(account.id, {
       change: dayChange(move.openingCents, move.closingCents, flow),
-      asOf: formatShortDate(move.toDate),
+      asOf: move.toDate,
     })
   }
 
@@ -166,6 +167,22 @@ export function Portfolio(): ReactNode {
   const reportsFlows = workingSet.transactions.some(
     (transaction) => investmentIds.has(transaction.accountId) && transaction.status !== 'void',
   )
+
+  /*
+   * One date above the list when every figure shares it, which is what a single sync produces.
+   *
+   * Repeating it on every row was noise. Dropping it entirely would not be — the date is the whole
+   * reason these figures can be compared against a broker's app — so where accounts genuinely
+   * disagree the newest goes in the heading and only the rows behind it keep their own.
+   */
+  const readingDates = [...dayChanges.values()]
+    .map((reading) => reading?.asOf)
+    .filter((date): date is string => date !== undefined)
+
+  const newestReading = readingDates.length === 0 ? null : readingDates.reduce(
+    (latest, date) => (date > latest ? date : latest),
+  )
+  const datesAgree = readingDates.every((date) => date === newestReading)
 
   const ordered = [...investments].sort(
     (left, right) =>
@@ -223,7 +240,14 @@ export function Portfolio(): ReactNode {
         {PORTFOLIO_COPY.historyNote}
       </p>
 
-      <h2 className="mt-6 text-sm font-semibold">{PORTFOLIO_COPY.byAccount}</h2>
+      <div className="mt-6 flex items-baseline justify-between gap-3">
+        <h2 className="text-sm font-semibold">{PORTFOLIO_COPY.byAccount}</h2>
+        {newestReading !== null && (
+          <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+            {PORTFOLIO_COPY.asOfDay(formatShortDate(newestReading))}
+          </span>
+        )}
+      </div>
       <ul className="mt-2 divide-y divide-slate-200 dark:divide-slate-800">
         {ordered.map((account, index) => (
           <li key={account.id}>
@@ -245,7 +269,10 @@ export function Portfolio(): ReactNode {
                 </span>
               </span>
 
-              <DayChangeCell reading={dayChanges.get(account.id) ?? null} />
+              <DayChangeCell
+                reading={dayChanges.get(account.id) ?? null}
+                showDate={!datesAgree}
+              />
 
               <span className="shrink-0 text-right">
                 <span className="block text-sm tabular-nums">
@@ -381,8 +408,11 @@ function shareOf(cents: bigint, total: bigint): string {
  */
 function DayChangeCell({
   reading,
+  showDate,
 }: {
   reading: { change: ReturnType<typeof dayChange>; asOf: string } | null
+  /** Only when the accounts disagree — otherwise the heading has already said it once. */
+  showDate: boolean
 }): ReactNode {
   if (reading === null) {
     return (
@@ -416,10 +446,12 @@ function DayChangeCell({
         {up ? '+' : ''}
         {formatCents(change.marketCents)}
       </span>
-      {/* The day this figure is about. Never omitted — see the note where it is computed. */}
-      <span className="block text-[11px] font-normal text-slate-500 dark:text-slate-400">
-        {PORTFOLIO_COPY.asOfDay(reading.asOf)}
-      </span>
+      {/* Only where this row is behind the date in the heading. */}
+      {showDate && (
+        <span className="block text-[11px] font-normal text-slate-500 dark:text-slate-400">
+          {PORTFOLIO_COPY.asOfDay(formatShortDate(reading.asOf))}
+        </span>
+      )}
     </span>
   )
 }

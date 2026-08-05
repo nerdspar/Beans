@@ -1,4 +1,11 @@
-import { HOLDINGS_COPY, formatCents, holdingMove, parseDecimalToCents, pricePerShare } from '@beans/shared'
+import {
+  HOLDINGS_COPY,
+  formatCents,
+  formatShares,
+  holdingMove,
+  parseDecimalToCents,
+  pricePerShare,
+} from '@beans/shared'
 import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { readHoldings, type Holding } from './api.js'
@@ -153,7 +160,7 @@ function Row({
           {holding.shares === null
             ? shareOf(valueCents, total)
             : HOLDINGS_COPY.quantity(
-                holding.shares,
+                formatShares(holding.shares),
                 price === null ? null : formatCents(price),
               )}
         </span>

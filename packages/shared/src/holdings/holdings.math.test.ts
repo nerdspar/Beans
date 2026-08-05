@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { holdingMove, pricePerShare } from './holdings.js'
+import { formatShares, holdingMove, pricePerShare } from './holdings.js'
 
 describe('pricePerShare', () => {
   it('divides a market value by its share count', () => {
@@ -71,5 +71,51 @@ describe('holdingMove', () => {
     const move = holdingMove(1000n, 0n)
     expect(move?.changeCents).toBe(1000n)
     expect(move?.fraction).toBeNull()
+  })
+})
+
+describe('formatShares', () => {
+  it('truncates a long fraction to two places', () => {
+    expect(formatShares('262.834')).toBe('262.83')
+    expect(formatShares('13.760104')).toBe('13.76')
+  })
+
+  /**
+   * Truncated rather than rounded, deliberately: rounding up would print more shares than are held,
+   * and overstating a position is the wrong direction to be wrong in.
+   */
+  it('never rounds up', () => {
+    expect(formatShares('88.479')).toBe('88.47')
+    expect(formatShares('0.999')).toBe('0.99')
+  })
+
+  it('drops a fraction that is only zeros', () => {
+    expect(formatShares('255.00')).toBe('255')
+    expect(formatShares('164.000')).toBe('164')
+  })
+
+  it('drops only the trailing zero, not a meaningful one', () => {
+    expect(formatShares('58.70')).toBe('58.7')
+    expect(formatShares('58.07')).toBe('58.07')
+  })
+
+  it('leaves a short count alone', () => {
+    expect(formatShares('21.93')).toBe('21.93')
+    expect(formatShares('7')).toBe('7')
+  })
+
+  it('keeps a short position negative', () => {
+    expect(formatShares('-10.5678')).toBe('-10.56')
+  })
+
+  it('handles a leading decimal point', () => {
+    expect(formatShares('.5')).toBe('0.5')
+  })
+
+  /** Some institutions put text where a count belongs. Passing it through beats printing NaN. */
+  it('returns anything unparseable untouched', () => {
+    expect(formatShares('n/a')).toBe('n/a')
+    expect(formatShares('')).toBe('')
+    expect(formatShares('1,234.5')).toBe('1,234.5')
   })
 })

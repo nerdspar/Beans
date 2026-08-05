@@ -1,1 +1,1 @@
-export { pricePerShare, holdingMove, type HoldingMove } from './holdings.js'
+export { pricePerShare, holdingMove, formatShares, type HoldingMove } from './holdings.js'
