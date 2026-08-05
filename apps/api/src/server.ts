@@ -79,7 +79,7 @@ export async function buildServer({
   const contextDeps = { pool, keyProvider, keyCache }
 
   await fastify.register(householdRoutes, { auth, config, mailer, deps: contextDeps })
-  await fastify.register(connectionRoutes, { auth, deps: contextDeps })
+  await fastify.register(connectionRoutes, { auth, config, deps: contextDeps })
   await fastify.register(accountRoutes, { auth, deps: contextDeps })
   await fastify.register(categoryRoutes, { auth, deps: contextDeps })
   await fastify.register(importRoutes, { auth, deps: contextDeps })
@@ -130,7 +130,49 @@ export async function buildServer({
     return reply.send({
       googleSignIn: config.google !== null,
       emailDelivery: config.mail.kind !== 'disabled',
+      /*
+       * Absent unless the operator configured it. A demo button is a session handed to anyone who
+       * can reach the host, so it is opt-in per deployment rather than something Beans ships on.
+       */
+      demoSignIn: config.demo !== null,
     })
+  })
+
+  /**
+   * Signs in as the shared demo account.
+   *
+   * The password stays on the server. Putting demo credentials in the client bundle would publish
+   * them to anyone who reads the JavaScript — harmless for this account and a bad habit to build
+   * into the shape of the app.
+   *
+   * A plain 404 when unconfigured, matching a route that does not exist, because it does not.
+   */
+  fastify.post('/api/demo/sign-in', async (request, reply) => {
+    if (config.demo === null) {
+      return reply.status(404).send({ error: 'Not found' })
+    }
+
+    try {
+      const response = await auth.api.signInEmail({
+        body: { email: config.demo.email, password: config.demo.password },
+        asResponse: true,
+      })
+
+      // Better Auth sets the session cookie on its own response; this forwards it verbatim.
+      for (const [name, value] of response.headers.entries()) {
+        if (name.toLowerCase() === 'set-cookie') reply.header('set-cookie', value)
+      }
+
+      return reply.status(response.status).send(await response.json().catch(() => ({})))
+    } catch {
+      /*
+       * Almost always "the demo account has not been seeded yet". Said plainly, because the person
+       * seeing it is the operator who can run the seeder.
+       */
+      return reply.status(503).send({
+        error: 'The demo account is configured but has not been created yet. Run pnpm demo:seed.',
+      })
+    }
   })
 
   /*

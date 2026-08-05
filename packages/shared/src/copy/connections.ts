@@ -100,6 +100,15 @@ export const CONNECTION_COPY = {
     return parts.length === 0 ? 'Nothing changed' : parts.join(', ')
   },
 
+  /**
+   * Said when the shared demo account tries to connect an institution.
+   *
+   * Framed around the visitor's own risk rather than a permission they lack, because that is the
+   * actual reason: anyone else who signs into the demo would see whatever they connected.
+   */
+  demoConnectBlocked:
+    'This is a shared demo account, so it cannot connect a real institution — anyone else trying the demo would see it. Everything already here is yours to explore.',
+
   /** Provider errors are surfaced, never swallowed — they are the only warning of a silent stall. */
   providerErrors: 'SimpleFIN reported:',
 } as const

@@ -29,7 +29,12 @@ async function fetchSession(): Promise<SessionUser | null> {
   return body?.user ?? null
 }
 
-export type Capabilities = { googleSignIn: boolean; emailSignIn: boolean }
+export type Capabilities = {
+  googleSignIn: boolean
+  emailSignIn: boolean
+  /** Absent unless the deployment configured a demo account. Off is the default everywhere. */
+  demoSignIn: boolean
+}
 
 export function useCapabilities(): Capabilities {
   const query = useQuery({
@@ -45,7 +50,7 @@ export function useCapabilities(): Capabilities {
 
   // Email sign-in is always available; assuming it while the answer is in flight avoids a sign-in
   // form that flickers into existence.
-  return query.data ?? { googleSignIn: false, emailSignIn: true }
+  return query.data ?? { googleSignIn: false, emailSignIn: true, demoSignIn: false }
 }
 
 export function useSession(): {

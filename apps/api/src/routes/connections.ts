@@ -1,8 +1,9 @@
-import { centsToDecimalString } from '@beans/shared'
+import { CONNECTION_COPY, centsToDecimalString } from '@beans/shared'
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import type { Auth } from '../auth/auth.js'
 import { getSession } from '../auth/routes.js'
+import { isDemoUser, type Config } from '../config.js'
 import {
   ConnectionError,
   confirmAccounts,
@@ -28,6 +29,7 @@ import { runSync } from '../sync/sync-service.js'
 
 export type ConnectionRoutesOptions = {
   auth: Auth
+  config: Config
   deps: ContextDependencies
   fetcher?: typeof globalThis.fetch
 }
@@ -65,18 +67,18 @@ export const connectionRoutes: FastifyPluginAsync<ConnectionRoutesOptions> = asy
   fastify,
   options,
 ) => {
-  const { auth, deps, fetcher = globalThis.fetch } = options
+  const { auth, config, deps, fetcher = globalThis.fetch } = options
 
   async function requireUser(
     request: FastifyRequest,
     reply: FastifyReply,
-  ): Promise<{ id: string } | null> {
+  ): Promise<{ id: string; email: string | null } | null> {
     const session = await getSession(auth, request.headers)
     if (session === null) {
       await reply.status(401).send({ error: 'Not signed in' })
       return null
     }
-    return { id: session.user.id }
+    return { id: session.user.id, email: session.user.email ?? null }
   }
 
   /** Translates repository and provider errors into responses without leaking internals. */
@@ -102,6 +104,18 @@ export const connectionRoutes: FastifyPluginAsync<ConnectionRoutesOptions> = asy
   fastify.post('/api/connections', async (request, reply) => {
     const user = await requireUser(request, reply)
     if (user === null) return
+
+    /*
+     * The demo account cannot connect an institution.
+     *
+     * Not about the demo's own safety — about the visitor's. Claiming a token here would attach
+     * somebody's real bank to an account anyone else can sign into, and a stranger who does that
+     * without thinking has published their finances to every future visitor. Refusing is the only
+     * answer; there is no version of this that is fine if they meant it.
+     */
+    if (isDemoUser(config, user.email)) {
+      return reply.status(403).send({ error: CONNECTION_COPY.demoConnectBlocked })
+    }
 
     const body = setupTokenBody.safeParse(request.body)
     if (!body.success) {

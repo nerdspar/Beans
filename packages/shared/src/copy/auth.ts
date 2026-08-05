@@ -81,4 +81,18 @@ export const AUTH_COPY = {
   /** The automatic household step. Neither is a place the user does anything. */
   settingUp: 'Setting things up…',
   retry: 'Try again',
+
+  // ── The shared demo ────────────────────────────────────────────────────────
+  /**
+   * Named for what it is, and honest that it is shared.
+   *
+   * "Try the demo" alone would leave somebody thinking their edits are private; saying it is shared
+   * sets the expectation that other people are in there too, before they type anything they would
+   * not want seen.
+   */
+  demo: 'Explore the demo',
+  demoEntering: 'Opening the demo',
+  demoNote:
+    'A shared account with made-up finances. Change anything you like — it resets, and nothing here is anyone’s real money.',
+  demoFailed: 'The demo could not be opened.',
 } as const

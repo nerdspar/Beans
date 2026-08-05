@@ -680,6 +680,37 @@ its ticker.
 ---
 
 
+## 10.3 The demo account
+
+A shared account anyone can sign into, so the app can be shown to somebody without them connecting
+their own institution. Seeded by `pnpm demo:seed`, which is idempotent and clears the household's
+financial data first — so it can run on a schedule to undo whatever visitors have done.
+
+**Off unless `DEMO_EMAIL` and `DEMO_PASSWORD` are both set.** A demo button is a session handed to
+anyone who can reach the host, which is not a decision Beans makes on an operator's behalf. Nothing
+ships enabled and there is no default password.
+
+Tenant isolation does the heavy lifting: the demo is a household like any other, so RLS keeps it
+away from real data exactly as it keeps any two households apart (§6). **What isolation does not
+cover is a visitor spending the deployment's own resources**, so two things are refused for the demo
+user, both checked on the session's email rather than a stored flag:
+
+- **Invites.** Sending real mail, from the operator's domain, on their key, to any address a
+  stranger types is a spam relay wearing the app's clothes. There is no rate at which that is fine.
+- **Claiming a SimpleFIN connection.** This one protects the *visitor*: attaching their real bank to
+  an account everybody else can sign into would publish their finances to every future guest.
+
+The seed writes transactions and lets `rebuildHouseholdHistory` derive the balances, rather than
+fabricating snapshots — so the demo exercises reconstruction instead of illustrating it, and a bug
+in that path shows up in the demo rather than hiding behind hand-written data. Investments are the
+necessary exception: their value moves with the market and no transaction records it, so their
+history is written as dated observations, which is the shape a real provider supplies (§4).
+
+Deterministic, from a fixed seed. A demo somebody has been shown does not quietly become a different
+one on the next reseed, and anything wrong with it can be reproduced.
+
+---
+
 ## 11. Importing history
 
 A **generic CSV mapper**, not an Empower-specific parser: auto-detect delimiter and header row,

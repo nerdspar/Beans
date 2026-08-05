@@ -20,7 +20,8 @@
     "test:integration": "vitest run .integration.test.",
     "db:generate": "pnpm --filter @beans/api db:generate",
     "db:migrate": "pnpm --filter @beans/api db:migrate",
-    "generate:master-key": "node scripts/generate-master-key.mjs"
+    "generate:master-key": "node scripts/generate-master-key.mjs",
+    "demo:seed": "pnpm --filter @beans/api demo:seed"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

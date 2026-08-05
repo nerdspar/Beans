@@ -1,11 +1,11 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { rebuildHouseholdHistory } from '../balance-history/rebuild.js'
 import { ensureDefaultCategories } from '../repositories/categories.js'
-import { toIsoDate } from '@beans/shared'
+import { HOUSEHOLD_COPY, toIsoDate } from '@beans/shared'
 import { z } from 'zod'
 import type { Auth } from '../auth/auth.js'
 import { getSession } from '../auth/routes.js'
-import type { Config } from '../config.js'
+import { isDemoUser, type Config } from '../config.js'
 import { deliverInvite } from '../mail/deliver-invite.js'
 import type { Mailer } from '../mail/mailer.js'
 import {
@@ -225,6 +225,18 @@ export const householdRoutes: FastifyPluginAsync<HouseholdRoutesOptions> = async
   fastify.post('/api/households/invites', async (request, reply) => {
     const user = await requireUser(request, reply)
     if (user === null) return
+
+    /*
+     * The demo account cannot invite.
+     *
+     * Tenant isolation keeps a visitor out of other households; it says nothing about them using
+     * the deployment's own resources. An invite sends real email, from the operator's domain, on
+     * their Resend key, to any address a stranger types — which is a spam relay wearing the app's
+     * clothes. Refused here rather than rate-limited, because there is no rate at which it is fine.
+     */
+    if (isDemoUser(config, user.email)) {
+      return reply.status(403).send({ error: HOUSEHOLD_COPY.demoInviteBlocked })
+    }
 
     const body = createInviteBody.safeParse(request.body ?? {})
     if (!body.success) {

@@ -26,6 +26,28 @@ export function SignIn(): ReactNode {
 
   const capabilities = useCapabilities()
 
+  /*
+   * A full reload on success rather than a client-side transition.
+   *
+   * Signing in swaps the session cookie, and every cached query — the working set above all — belongs
+   * to whoever was signed in before. Reloading is the same thing sign-in already does, and it is the
+   * only way to be sure nothing survives the change of identity.
+   */
+  const demo = useMutation({
+    mutationFn: async () => {
+      const response = await fetch('/api/demo/sign-in', {
+        method: 'POST',
+        credentials: 'same-origin',
+      })
+
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null
+        throw new Error(body?.error ?? AUTH_COPY.demoFailed)
+      }
+    },
+    onSuccess: () => window.location.assign('/'),
+  })
+
   const submit = useMutation({
     mutationFn: async () => {
       const path = mode === 'sign-in' ? '/api/auth/sign-in/email' : '/api/auth/sign-up/email'
@@ -225,6 +247,46 @@ export function SignIn(): ReactNode {
           >
             {AUTH_COPY.google}
           </a>
+        </>
+      )}
+
+      {/*
+        The demo, below the real ways in.
+        
+        Above them it would read as the primary path and quietly discourage making an account, which
+        is the opposite of what somebody arriving at their own install wants. It is also stated to be
+        shared before anybody types into it.
+      */}
+      {capabilities.demoSignIn && (
+        <>
+          <div className="my-5 flex items-center gap-3" aria-hidden>
+            <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+            <span className="text-xs text-slate-400">{AUTH_COPY.or}</span>
+            <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => demo.mutate()}
+            disabled={demo.isPending}
+            className={cn(
+              'flex min-h-12 w-full items-center justify-center rounded-xl border text-sm font-semibold',
+              'border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800',
+              'focus-visible:outline-2 focus-visible:outline-sky-500 disabled:opacity-50',
+            )}
+          >
+            {demo.isPending ? AUTH_COPY.demoEntering : AUTH_COPY.demo}
+          </button>
+
+          <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">
+            {AUTH_COPY.demoNote}
+          </p>
+
+          {demo.error instanceof Error && (
+            <p role="alert" className="mt-2 text-center text-xs text-rose-600 dark:text-rose-400">
+              {demo.error.message}
+            </p>
+          )}
         </>
       )}
 

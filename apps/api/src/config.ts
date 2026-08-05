@@ -50,6 +50,8 @@ const schema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().trim().optional(),
 
   RESEND_API_KEY: z.string().trim().optional(),
+  DEMO_EMAIL: z.string().trim().email().optional(),
+  DEMO_PASSWORD: z.string().trim().min(12).optional(),
   SMTP_URL: z.string().trim().optional(),
   MAIL_FROM: z.string().trim().optional(),
 })
@@ -73,6 +75,19 @@ export type Config = {
   /** Null when unconfigured, which hides the Google button rather than showing a broken one. */
   google: { clientId: string; clientSecret: string } | null
   mail: MailTransport
+  /**
+   * A shared read-only-ish account anyone can sign into, for showing the app to somebody.
+   *
+   * **Null unless deliberately configured, and that is the guardrail.** A demo button is a session
+   * handed to anyone who can reach the host, so it exists only where the operator has said it
+   * should. Nothing about it is on by default.
+   *
+   * Tenant isolation does the heavy lifting — the demo household is a household like any other, so
+   * RLS keeps it away from real data (§6). What isolation does *not* stop is a visitor using the
+   * deployment's own resources, which is why the demo account is blocked from sending invites and
+   * from claiming a SimpleFIN connection. See `isDemoUser`.
+   */
+  demo: { email: string; password: string } | null
 }
 
 export class ConfigError extends Error {
@@ -130,7 +145,31 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
         ? { clientId: googleClientId, clientSecret: googleClientSecret }
         : null,
     mail: resolveMailTransport(raw),
+    /*
+     * Both or neither. A demo email with no password would produce a button that cannot sign in,
+     * which is worse than no button — it looks like the deployment is broken rather than that the
+     * feature is off.
+     */
+    demo:
+      isSet(raw.DEMO_EMAIL) && isSet(raw.DEMO_PASSWORD)
+        ? { email: raw.DEMO_EMAIL, password: raw.DEMO_PASSWORD }
+        : null,
   })
+}
+
+/**
+ * Whether an acting user is the shared demo account.
+ *
+ * Compared on email rather than id so it needs no lookup and survives the demo being re-seeded.
+ *
+ * Used to refuse the two things tenant isolation cannot: sending an invite, which would put the
+ * deployment's own mail credentials and domain behind a stranger's message, and claiming a
+ * SimpleFIN connection, which would attach a real institution to an account anyone can sign into.
+ * Neither is about protecting data — RLS already does that — they are about the host's resources.
+ */
+export function isDemoUser(config: Config, email: string | null | undefined): boolean {
+  if (config.demo === null || email === null || email === undefined) return false
+  return email.toLowerCase() === config.demo.email.toLowerCase()
 }
 
 /**

@@ -75,4 +75,14 @@ export const HOUSEHOLD_COPY = {
 
   /** Only owners can invite; saying so beats hiding the control and leaving it unexplained. */
   ownerOnly: 'Only the household owner can invite people.',
+
+  /**
+   * Said when the shared demo account tries to invite somebody.
+   *
+   * Plain about what it is rather than vague about a limit: a visitor should understand they are in
+   * a shared demonstration, not that Beans is broken or that they lack a permission they could ask
+   * for.
+   */
+  demoInviteBlocked:
+    'This is a shared demo account, so it cannot send invitations. Everything else is yours to try.',
 } as const
