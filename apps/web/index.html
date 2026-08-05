@@ -9,6 +9,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0b1220" />
 
+    <!--
+      Tells the browser the page has a dark rendering before a single byte of CSS is parsed, so the
+      very first canvas it paints is dark rather than its default white. Without it, resuming the
+      installed app flashes white and then settles into dark.
+    -->
+    <meta name="color-scheme" content="light dark" />
+
+    <!--
+      The background, inline and ahead of the stylesheet.
+
+      It is set on `body` in index.css, which is correct but arrives too late: the stylesheet is a
+      separate request in a build and injected by JavaScript in dev, and the browser has already
+      painted by then. These two values must stay in step with the `bg-slate-50 dark:bg-slate-950`
+      on `body` — they are the same colours, quoted early.
+
+      On `:root` rather than `body` because the canvas takes its colour from `html` first, and only
+      falls back to `body` when `html` has none.
+    -->
+    <style>
+      :root {
+        color-scheme: light dark;
+        background-color: #f8fafc; /* slate-50 */
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          background-color: #020617; /* slate-950 */
+        }
+      }
+    </style>
+
     <!-- Standalone display and the iOS status bar treatment once added to the home screen. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Beans" />
