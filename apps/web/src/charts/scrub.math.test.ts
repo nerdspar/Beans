@@ -68,3 +68,49 @@ describe('indexAtPosition', () => {
     expect(indexAtPosition(0, 0, YEAR)).toBeNull()
   })
 })
+
+/**
+ * Reading a month that has not finished.
+ *
+ * The cumulative chart draws only the days that have happened, but the scrub used to resolve across
+ * the whole series — so dragging into the rest of the month reported a running total for days that
+ * had not occurred, and it read as real because every other position on the chart is.
+ *
+ * The clamp is applied *after* resolving against the full width, deliberately. Mapping the elapsed
+ * days across the whole width instead would slide the reading away from the pointer, which is worse
+ * than a reading that stops.
+ */
+describe('scrubbing a partial month', () => {
+  const clampToElapsed = (
+    offsetX: number,
+    width: number,
+    length: number,
+    elapsed: number,
+  ): number | null => {
+    const index = indexAtPosition(offsetX, width, length)
+    return index === null ? null : Math.min(index, Math.max(0, Math.min(elapsed, length) - 1))
+  }
+
+  it('reads the day under the pointer while inside the elapsed part', () => {
+    // A 31-day month, 10 days elapsed. A fifth of the way across is day 7 (index 6).
+    expect(clampToElapsed(200, 1000, 31, 10)).toBe(6)
+  })
+
+  it('holds at the last elapsed day beyond it', () => {
+    expect(clampToElapsed(900, 1000, 31, 10)).toBe(9)
+    expect(clampToElapsed(1000, 1000, 31, 10)).toBe(9)
+  })
+
+  it('does not clamp a completed month', () => {
+    expect(clampToElapsed(1000, 1000, 31, 31)).toBe(30)
+  })
+
+  /** Day one of a month: the only readable point is the first. */
+  it('holds at the first day when only one has elapsed', () => {
+    expect(clampToElapsed(800, 1000, 31, 1)).toBe(0)
+  })
+
+  it('still reports nothing for an empty series', () => {
+    expect(clampToElapsed(500, 1000, 0, 0)).toBeNull()
+  })
+})

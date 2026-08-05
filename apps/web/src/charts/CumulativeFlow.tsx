@@ -100,9 +100,26 @@ export function CumulativeFlow({
   onSelect,
   selectedIndex = null,
 }: CumulativeFlowProps): ReactNode {
+  /*
+   * Readable up to the last day that has happened, not to the end of the month.
+   *
+   * The line already stops at `elapsedCount` — drawing further would forecast — but the scrub
+   * resolved across the whole series, so dragging into the rest of the month reported a running
+   * total for days that have not occurred. It read as a real figure because every other position
+   * on the chart is one.
+   *
+   * Resolved against the full width so a position still maps to the day under the finger, then
+   * clamped: the alternative, mapping the elapsed days across the whole width, would slide the
+   * reading away from the pointer.
+   */
+  const lastReadable = Math.max(0, Math.min(elapsedCount ?? series.length, series.length) - 1)
+
   const resolveIndex = useCallback(
-    (offsetX: number, width: number) => indexAtPosition(offsetX, width, series.length),
-    [series.length],
+    (offsetX: number, width: number) => {
+      const index = indexAtPosition(offsetX, width, series.length)
+      return index === null ? null : Math.min(index, lastReadable)
+    },
+    [series.length, lastReadable],
   )
 
   const scrub = useChartScrub({
@@ -173,6 +190,13 @@ export function CumulativeFlow({
         ticks.map((tick) => tick.value),
         formatValue,
       ),
+      /*
+       * Where the month stops being real, as a fraction of the width.
+       *
+       * Null on a period with nothing outstanding, so a completed month draws no band at all rather
+       * than a zero-width one.
+       */
+      elapsedFraction: elapsed >= series.length ? null : x(elapsed - 1) / width,
       days: series.map((point, index) => ({
         date: point.date,
         x: x(index),
@@ -210,6 +234,23 @@ export function CumulativeFlow({
         // Decorative: the transaction list beside it is what a screen reader should read.
         aria-hidden
       >
+        {/*
+          The rest of the month, shaded rather than left blank.
+          
+          An empty right-hand side reads as a chart that stops early, or worse as a period with
+          nothing in it. Shading says the days exist and have not happened yet, which is the actual
+          state — the same thing Empower does, and the reason the line's end is not the axis's end.
+        */}
+        {geometry.elapsedFraction !== null && (
+          <rect
+            x={geometry.elapsedFraction * geometry.width}
+            y={0}
+            width={geometry.width - geometry.elapsedFraction * geometry.width}
+            height={geometry.plotHeight}
+            className="fill-slate-200/40 dark:fill-slate-800/40"
+          />
+        )}
+
         {geometry.ticks.map((tick) => (
           <line
             key={`grid-${tick.y}`}
@@ -353,6 +394,23 @@ export function CumulativeFlow({
         style={{ height: geometry.plotHeight }}
         aria-hidden
       >
+        {/*
+          The rest of the month, shaded rather than left blank.
+          
+          An empty right-hand side reads as a chart that stops early, or worse as a period with
+          nothing in it. Shading says the days exist and have not happened yet, which is the actual
+          state — the same thing Empower does, and the reason the line's end is not the axis's end.
+        */}
+        {geometry.elapsedFraction !== null && (
+          <rect
+            x={geometry.elapsedFraction * geometry.width}
+            y={0}
+            width={geometry.width - geometry.elapsedFraction * geometry.width}
+            height={geometry.plotHeight}
+            className="fill-slate-200/40 dark:fill-slate-800/40"
+          />
+        )}
+
         {geometry.ticks.map((tick) => (
           <span
             key={`value-${tick.y}`}

@@ -25,6 +25,19 @@ export const TRANSACTIONS_COPY = {
 
   loading: 'Counting the beans.',
 
+  // ── One transaction, in full ───────────────────────────────────────────────
+  notFound: 'That transaction is no longer here.',
+  detailAccount: 'Account',
+  /**
+   * Named plainly, because the point of showing it is that it is *raw*.
+   *
+   * The payee is the readable half; the description is where an institution puts the reference code
+   * that actually identifies a charge. When a name is ambiguous that string is the answer, and the
+   * list can only ever show a truncated line of it.
+   */
+  detailDescription: 'As your bank sent it',
+  detailCategorize: 'Set category',
+
   empty: 'Nothing here yet',
   emptyDetail:
     'Transactions arrive when an institution syncs. If you have just connected one, the first sync pulls up to a year of history.',

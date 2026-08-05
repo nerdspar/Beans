@@ -1,6 +1,6 @@
 import { ACCOUNT_TYPES, COLUMN_ROLES, IMPORT_COPY, IMPORT_PRESETS } from '@beans/shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createManualAccount, listManagedAccounts } from '../accounts/api.js'
 import {
   commitImport,
@@ -13,6 +13,7 @@ import {
 import { Loader2 } from 'lucide-react'
 import { SETTINGS_COPY } from '@beans/shared'
 import { getHousehold, setTrustImportedHistory } from '../household/api.js'
+import { matchAccountsByMask } from '@beans/shared'
 import { cn } from '../lib/cn.js'
 import { useImportProgress } from '../import/use-import-progress.js'
 import type { ImportProgress } from '../import/api.js'
@@ -96,6 +97,31 @@ export function Import(): ReactNode {
           mapping.find((column) => column.role === 'account')?.columnIndex ?? -1
         ] ?? null)
       : null
+
+  /*
+   * Pre-matched on the last four digits, once per file.
+   *
+   * An export names accounts the way the institution writes them — "Scott Checking - Ending in
+   * 9224" — and the provider already reports that same last four as the account's mask. Most of a
+   * forty-account file decides itself.
+   *
+   * Only fills blanks, so nothing here can overwrite an answer already given, and it runs on the
+   * names rather than on every render — re-running after a manual change would put the guess back.
+   */
+  const autoMatchedFor = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (namedAccounts === null || accounts.data === undefined) return
+
+    const signature = namedAccounts.join('\u0000')
+    if (autoMatchedFor.current === signature) return
+    autoMatchedFor.current = signature
+
+    const guessed = matchAccountsByMask(namedAccounts, openAccounts, accountMap)
+    if (Object.keys(guessed).length > 0) {
+      setAccountMap((current) => ({ ...guessed, ...current }))
+    }
+  }, [namedAccounts, accounts.data, openAccounts, accountMap])
 
   const matchedCount = (namedAccounts ?? []).filter(
     (name) => (accountMap[name] ?? '') !== '',
@@ -291,9 +317,16 @@ export function Import(): ReactNode {
                         label={name}
                         options={[
                           { value: '', label: IMPORT_COPY.accountUnmatched },
-                          ...accountOptions,
-                          // Last, because matching an existing account is the common case.
+                          /*
+                            Second, directly under skip.
+                            
+                            It used to sit last, on the reasoning that matching an existing account
+                            is the common case — true, but the common case is now *pre-selected*,
+                            so a list being opened at all is usually one of the two exceptions.
+                            Scrolling past forty accounts to reach the other one is the wrong shape.
+                          */
                           { value: CREATE_SENTINEL, label: IMPORT_COPY.accountCreate },
+                          ...accountOptions,
                         ]}
                       />
                     </div>

@@ -22,3 +22,9 @@ export {
   type RowParseOptions,
   type RowResult,
 } from './rows.js'
+
+export {
+  matchAccountsByMask,
+  trailingDigits,
+  type MatchableAccount,
+} from './account-match.js'

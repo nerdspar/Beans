@@ -17,8 +17,9 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { CategorySheet } from '../categories/CategorySheet.js'
 import { listCategories } from '../categories/api.js'
+import { Link } from 'wouter'
+import { useHere, withReturn } from '../lib/back.js'
 import { cn } from '../lib/cn.js'
 import { SearchableSelect } from '../lib/SearchableSelect.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
@@ -45,7 +46,6 @@ export function Transactions(): ReactNode {
    * rest of the app needs to *name* a category.
    */
   const categories = useQuery({ queryKey: ['categories'], queryFn: listCategories })
-  const [editing, setEditing] = useState<Entry | null>(null)
 
   const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE)
   /*
@@ -77,6 +77,8 @@ export function Transactions(): ReactNode {
 
   const accounts = workingSet.data?.byId
   const today = localToday()
+  /* This screen as it stands — filters, search and all — so back returns to the same list. */
+  const here = useHere(TRANSACTIONS_COPY.title)
 
   /*
    * The filter block's height, published as a custom property for the date headers to pin below.
@@ -340,7 +342,7 @@ export function Transactions(): ReactNode {
                       ? null
                       : (workingSet.categories.get(transaction.categoryId)?.name ?? null)
                   }
-                  onEdit={() => setEditing(transaction)}
+                  returnTo={here}
                 />
               ))}
             </ul>
@@ -348,19 +350,7 @@ export function Transactions(): ReactNode {
         ))
       )}
 
-      {editing !== null && (
-        <CategorySheet
-          transaction={editing}
-          categories={categories.data ?? []}
-          onClose={() => setEditing(null)}
-          onSaved={async () => {
-            setEditing(null)
-            // The category lives on the transaction, so the working set has to be re-read.
-            await queryClient.invalidateQueries({ queryKey: ['working-set', 'sync'] })
-            await queryClient.invalidateQueries({ queryKey: WORKING_SET_KEY })
-          }}
-        />
-      )}
+      
     </div>
   )
 }
@@ -402,12 +392,13 @@ function Row({
   transaction,
   accountName,
   categoryName,
-  onEdit,
+  returnTo,
 }: {
   transaction: Entry
   accountName: string
   categoryName: string | null
-  onEdit: () => void
+  /** Where the detail page sends the reader back to, filters intact. */
+  returnTo: { href: string; label: string }
 }): ReactNode {
   const voided = transaction.status === 'void'
 
@@ -428,9 +419,15 @@ function Row({
         voided && 'opacity-60',
       )}
     >
-      <button
-        type="button"
-        onClick={onEdit}
+      {/*
+        A link to the whole transaction, not a sheet over the list.
+        
+        The list truncates to a line, and the string that disambiguates an unclear charge is the
+        institution's raw description — which cannot fit and cannot be read half-shown. The sheet
+        remains the way to *change* a category, reached from the detail page.
+      */}
+      <Link
+        href={withReturn(`/transactions/${transaction.id}`, returnTo)}
         className="min-w-0 flex-1 text-left focus-visible:outline-2 focus-visible:outline-sky-500"
       >
         <p className={cn('truncate text-sm font-medium', voided && 'line-through')}>
@@ -452,7 +449,7 @@ function Row({
         >
           {categoryName ?? CATEGORY_COPY.uncategorized}
         </p>
-      </button>
+      </Link>
 
       <span
         className={cn(

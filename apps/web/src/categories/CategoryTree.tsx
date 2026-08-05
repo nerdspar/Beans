@@ -101,7 +101,6 @@ export function CategoryTree({
                   category={parent}
                   onAddChild={() => setEditing({ kind: 'add', parentId: parent.id })}
                   onRename={() => setEditing({ kind: 'rename', category: parent })}
-                  onDelete={() => setEditing({ kind: 'delete', category: parent })}
                 />
               </div>
 
@@ -113,6 +112,7 @@ export function CategoryTree({
                     parentId={null}
                     onDone={done}
                     onCancel={done}
+                    onDelete={() => setEditing({ kind: 'delete', category: parent })}
                   />
                 </div>
               )}
@@ -151,7 +151,6 @@ export function CategoryTree({
                         <Actions
                           category={child}
                           onRename={() => setEditing({ kind: 'rename', category: child })}
-                          onDelete={() => setEditing({ kind: 'delete', category: child })}
                         />
                       </div>
 
@@ -163,6 +162,7 @@ export function CategoryTree({
                             parentId={child.parentId}
                             onDone={done}
                             onCancel={done}
+                            onDelete={() => setEditing({ kind: 'delete', category: child })}
                           />
                         </div>
                       )}
@@ -197,12 +197,10 @@ function Actions({
   category,
   onAddChild,
   onRename,
-  onDelete,
 }: {
   category: Category
   onAddChild?: () => void
   onRename: () => void
-  onDelete: () => void
 }): ReactNode {
   const button = cn(
     'rounded-lg border p-1.5',
@@ -222,6 +220,18 @@ function Actions({
           <Plus className="size-3.5" aria-hidden />
         </button>
       )}
+      {/*
+        Delete lives behind edit rather than beside it.
+        
+        Three controls per row on a list of forty categories is most of the row's width spent on
+        actions, and delete is the rarest of them — so it moves inside the editor, where the
+        category is already open and named. It also puts a step between a mistaken tap and a
+        destructive one, which is a fair place for that step to be.
+        
+        Built-ins included: the defaults are a guess at one household's spending, and one nobody
+        uses is clutter in every picker on every screen. Nothing depends on a particular default
+        surviving — transfer exclusion keys on a category's *kind*, not on its slug.
+      */}
       <button
         type="button"
         onClick={onRename}
@@ -229,19 +239,6 @@ function Actions({
         className={button}
       >
         <Pencil className="size-3.5" aria-hidden />
-      </button>
-      {/*
-        Built-ins included. The defaults are a guess at one household's spending, and one nobody
-        uses is clutter in every category picker on every screen. Nothing depends on a particular
-        default surviving — transfer exclusion keys on a category's *kind*, not on its slug.
-      */}
-      <button
-        type="button"
-        onClick={onDelete}
-        aria-label={`${CATEGORY_COPY.categoryDelete}: ${category.name}`}
-        className={button}
-      >
-        <Trash2 className="size-3.5 text-rose-600 dark:text-rose-400" aria-hidden />
       </button>
     </span>
   )
@@ -253,6 +250,7 @@ function CategoryForm({
   parentId,
   onDone,
   onCancel,
+  onDelete,
 }: {
   categories: readonly Category[]
   /** Present when renaming. Absent when adding. */
@@ -260,6 +258,8 @@ function CategoryForm({
   parentId: string | null
   onDone: () => Promise<void> | void
   onCancel: () => void
+  /** Absent while adding — there is nothing to remove yet. */
+  onDelete?: () => void
 }): ReactNode {
   const [name, setName] = useState(category?.name ?? '')
 
@@ -357,6 +357,23 @@ function CategoryForm({
         >
           {CATEGORY_COPY.categoryCancel}
         </button>
+
+        {/* Pushed to the far end, away from Save — the two are not alternatives. */}
+        {onDelete !== undefined && (
+          <button
+            type="button"
+            onClick={onDelete}
+            className={cn(
+              'ml-auto inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium',
+              'border-slate-300 text-rose-600 hover:bg-rose-50',
+              'dark:border-slate-700 dark:text-rose-400 dark:hover:bg-rose-950/40',
+              'focus-visible:outline-2 focus-visible:outline-rose-600',
+            )}
+          >
+            <Trash2 className="size-3.5" aria-hidden />
+            {CATEGORY_COPY.categoryDelete}
+          </button>
+        )}
       </div>
     </form>
   )

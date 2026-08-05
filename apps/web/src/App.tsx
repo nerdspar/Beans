@@ -9,6 +9,7 @@ import { readPendingInvite } from './auth/pending-invite.js'
 import { useSession } from './auth/use-session.js'
 import { AccountDetail } from './screens/AccountDetail.js'
 import { HoldingDetail } from './screens/HoldingDetail.js'
+import { TransactionDetail } from './screens/TransactionDetail.js'
 import { CATEGORY_COPY, HOUSEHOLD_COPY, IMPORT_COPY } from '@beans/shared'
 import { CategoriesPanel } from './categories/CategoryTree.js'
 import { RulesPanel } from './categories/RulesPanel.js'
@@ -106,6 +107,7 @@ function Routes(): ReactNode {
       <Route path="/" component={NetWorth} />
       <Route path="/accounts/:id" component={AccountDetail} />
       <Route path="/holdings/:key" component={HoldingDetail} />
+      <Route path="/transactions/:id" component={TransactionDetail} />
       <Route path="/accounts" component={Accounts} />
       <Route path="/transactions" component={Transactions} />
       <Route path="/cash-flow" component={CashFlow} />
