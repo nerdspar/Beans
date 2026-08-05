@@ -200,7 +200,7 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
         list scrolls under both.
       */}
       <div
-        className="sticky top-0 z-20 bg-slate-50/95 px-5 pt-5 backdrop-blur dark:bg-slate-950/95"
+        className="sticky top-[env(safe-area-inset-top)] z-20 bg-slate-50/95 px-5 pt-5 backdrop-blur dark:bg-slate-950/95"
         style={{ height: CHART_BLOCK_HEIGHT }}
       >
         <div className="flex items-baseline justify-between gap-3">

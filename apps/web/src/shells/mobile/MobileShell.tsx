@@ -34,10 +34,24 @@ export function MobileShell({ children }: { children: ReactNode }): ReactNode {
   return (
     <div className="flex min-h-[100dvh] flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       {/*
-        Padded by the bar's height plus the home-indicator inset, so the last row of a list is not
-        permanently hidden behind the chrome.
+        An opaque strip behind the status bar and dynamic island.
+        
+        `viewport-fit=cover` puts the page under both, which is what makes the insets non-zero — but
+        nothing was covering that strip, so content scrolled through it and sat behind the island.
+        Fixed rather than sticky: it is chrome, not content, and it must not move at all.
       */}
-      <main className="flex-1 pb-[calc(4rem+env(safe-area-inset-bottom))]">{children}</main>
+      <div
+        aria-hidden
+        className="fixed inset-x-0 top-0 z-50 h-[env(safe-area-inset-top)] bg-slate-50 dark:bg-slate-950"
+      />
+
+      {/*
+        Padded by the status-bar inset above and the bar's height plus the home-indicator inset
+        below, so neither the first nor the last row is hidden behind chrome.
+      */}
+      <main className="flex-1 pt-[env(safe-area-inset-top)] pb-[calc(4rem+env(safe-area-inset-bottom))]">
+        {children}
+      </main>
 
       <nav
         aria-label="Primary"
@@ -45,9 +59,14 @@ export function MobileShell({ children }: { children: ReactNode }): ReactNode {
           'fixed inset-x-0 bottom-0 z-40',
           'border-t border-slate-200 bg-white/95 backdrop-blur',
           'dark:border-slate-800 dark:bg-slate-900/95',
-          // Respects the iPhone home indicator. Without this the bar sits under it and the last
-          // few pixels of every tap target are unreachable.
-          'pb-[env(safe-area-inset-bottom)]',
+          /*
+           * Respects the iPhone home indicator, less a few pixels.
+           *
+           * The full inset is more clearance than the bar needs — it left a visible band of empty
+           * chrome under the labels — so it gives ten of it back, floored at zero for devices with
+           * no inset at all.
+           */
+          'pb-[max(0px,calc(env(safe-area-inset-bottom)-10px))]',
         )}
       >
         <ul className="mx-auto flex h-16 max-w-lg items-stretch">

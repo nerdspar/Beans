@@ -468,7 +468,15 @@ export function CashFlow(): ReactNode {
   )
 
   return (
-    <div className="mx-auto max-w-2xl px-5 pb-16 pt-5">
+    /*
+     * No top padding on the container.
+     *
+     * Sticky cannot pin an element above its containing block's *content* box, so a padded
+     * container means the header slides that padding's worth before it can hold — twenty pixels of
+     * movement that looked like the freeze arriving late. The padding lives inside the pinned block
+     * instead, where it moves with it.
+     */
+    <div className="mx-auto max-w-2xl px-5 pb-16">
       {/*
         The first of two frozen blocks: title, tabs and caveats.
         
@@ -479,7 +487,7 @@ export function CashFlow(): ReactNode {
       */}
       <div
         ref={headerRef}
-        className="sticky top-0 z-20 -mx-5 -mt-5 bg-slate-50 px-5 pt-5 dark:bg-slate-950"
+        className="sticky top-[env(safe-area-inset-top)] z-20 -mx-5 bg-slate-50 px-5 pt-5 dark:bg-slate-950"
       >
       <div className="flex items-baseline justify-between gap-3">
         <h1 className="text-2xl font-semibold">{CASH_FLOW_COPY.title}</h1>
@@ -584,7 +592,11 @@ export function CashFlow(): ReactNode {
               !singleMonth && 'sticky z-10 -mx-5 bg-slate-50 px-5 pb-2 dark:bg-slate-950',
             )}
             /* Directly under the block above, whose height changes when the caveats collapse. */
-            style={singleMonth ? undefined : { top: headerHeight }}
+            style={
+              singleMonth
+                ? undefined
+                : { top: `calc(env(safe-area-inset-top) + ${headerHeight}px)` }
+            }
           >
           <div className="mt-4 grid grid-cols-3 gap-3">
             <Total
@@ -1279,7 +1291,7 @@ function Breakdown({
       */}
       <div
         className="sticky z-10 -mx-5 bg-slate-50 px-5 pb-2 dark:bg-slate-950"
-        style={{ top: headerOffset }}
+        style={{ top: `calc(env(safe-area-inset-top) + ${headerOffset}px)` }}
       >
       <div className="mt-4">
         {/* `exactOptionalPropertyTypes`: an absent tone and an explicit undefined are not the same. */}
