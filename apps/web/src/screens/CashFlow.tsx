@@ -628,18 +628,20 @@ export function CashFlow(): ReactNode {
             />
           )}
 
-          <ReadingSlot
-            reading={
-              monthReading !== null
-                ? formatMonth(monthReading.month)
-                : dailyReading !== null
-                  ? `${formatShortDate(dailyReading.date)} · ${formatCents(dailyReading.cumulativeCents)}`
-                  : heldDay !== null
-                    ? `${formatShortDate(heldDay.date)} · ${formatCents(heldDay.cumulativeCents)}`
-                    : null
-            }
-            held={heldLabel}
-          />
+          {/*
+            Only for the bars.
+            
+            On a single month this said the date and the running total, and both were already on
+            screen — the totals above carry the amount, and the list below is scrolled to the day
+            with its date pinned at the top of it. On the bars there is no such list, so nothing
+            else names the month the figures describe.
+          */}
+          {!singleMonth && (
+            <ReadingSlot
+              reading={monthReading === null ? null : formatMonth(monthReading.month)}
+              held={heldLabel}
+            />
+          )}
 
           {/* Kept below the chart: this is its table fallback as much as it is detail. */}
           {!singleMonth && (
