@@ -50,6 +50,14 @@ import { useWorkingSet } from '../working-set/use-working-set.js'
  * re-implemented here.
  */
 
+/**
+ * How far above the scroll box's edge the date header pins, in pixels.
+ *
+ * Must match the `-top-2` on the header itself — Tailwind's scale puts that at 8px. A scroll that
+ * lands on a date has to overshoot by the same amount, or the header arrives unpinned.
+ */
+const STICKY_DATE_OFFSET_PX = 8
+
 export function CashFlow(): ReactNode {
   const workingSet = useWorkingSet()
   const queryClient = useQueryClient()
@@ -364,8 +372,15 @@ export function CashFlow(): ReactNode {
        * `scrollIntoView` walks every scrollable ancestor, so bringing a row into view inside the
        * list also scrolled the *page* — reading the chart dragged the chart out from under the
        * finger reading it. Setting scrollTop moves the list and nothing else.
+       *
+       * Landed *past* the group's top by the header's sticky offset, not on it. Exactly on it, the
+       * header sits at its natural place in the flow rather than its pinned one, so it covers
+       * nothing above itself and the divider under the previous group's last row shows as a
+       * hairline above the date. Overshooting puts the header in the pinned state it holds at every
+       * other scroll position.
        */
-      list.scrollTop += target.getBoundingClientRect().top - list.getBoundingClientRect().top
+      const offset = target.getBoundingClientRect().top - list.getBoundingClientRect().top
+      list.scrollTop += offset + STICKY_DATE_OFFSET_PX
     },
     [daily],
   )
