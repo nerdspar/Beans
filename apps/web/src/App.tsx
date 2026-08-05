@@ -9,6 +9,12 @@ import { readPendingInvite } from './auth/pending-invite.js'
 import { useSession } from './auth/use-session.js'
 import { AccountDetail } from './screens/AccountDetail.js'
 import { HoldingDetail } from './screens/HoldingDetail.js'
+import { CATEGORY_COPY, HOUSEHOLD_COPY, IMPORT_COPY } from '@beans/shared'
+import { CategoriesPanel } from './categories/CategoryTree.js'
+import { RulesPanel } from './categories/RulesPanel.js'
+import { Household } from './screens/Household.js'
+import { Import } from './screens/Import.js'
+import { ManagementPage } from './navigation/ManagementPage.js'
 import { Accounts } from './screens/Accounts.js'
 import { Portfolio } from './screens/Portfolio.js'
 import { CashFlow } from './screens/CashFlow.js'
@@ -105,6 +111,33 @@ function Routes(): ReactNode {
       <Route path="/cash-flow" component={CashFlow} />
       <Route path="/portfolio" component={Portfolio} />
       <Route path="/settings" component={TabSettings} />
+
+      {/*
+        Destinations in their own right, not sections of settings. See destinations.ts for why.
+        
+        Rendered inline with their page chrome rather than as four near-identical screen files —
+        each is one existing panel plus a title.
+      */}
+      <Route path="/categories">
+        <ManagementPage title={CATEGORY_COPY.categoriesHeading}>
+          <CategoriesPanel />
+        </ManagementPage>
+      </Route>
+      <Route path="/rules">
+        <ManagementPage title={CATEGORY_COPY.rulesHeading}>
+          <RulesPanel />
+        </ManagementPage>
+      </Route>
+      <Route path="/import">
+        <ManagementPage title={IMPORT_COPY.title}>
+          <Import />
+        </ManagementPage>
+      </Route>
+      <Route path="/household">
+        <ManagementPage title={HOUSEHOLD_COPY.title}>
+          <Household />
+        </ManagementPage>
+      </Route>
       {/* Not in the destination registry: a workbench for judging the transition, not a screen. */}
       <Route path="/prototype/transition" component={TransitionPrototype} />
 

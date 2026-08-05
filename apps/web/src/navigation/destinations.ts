@@ -2,8 +2,12 @@ import {
   ArrowLeftRight,
   Banknote,
   ChartLine,
+  Filter,
   PiggyBank,
   Settings,
+  Tags,
+  Upload,
+  Users,
   Wallet,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -23,6 +27,10 @@ export type DestinationKey =
   | 'cash-flow'
   | 'portfolio'
   | 'accounts'
+  | 'categories'
+  | 'rules'
+  | 'import'
+  | 'household'
   | 'settings'
 
 export type Destination = {
@@ -100,6 +108,54 @@ export const DESTINATIONS: readonly Destination[] = [
     label: 'Manage accounts',
     short: 'Accounts',
     icon: Wallet,
+    tabbable: false,
+  },
+  /*
+   * Categories, rules, import and the household are **destinations**, not settings.
+   *
+   * They were folded into the settings page as expanding sections, which was the wrong shape twice
+   * over. Each is a screen's worth of interface stuffed into a list row, so opening one shoved
+   * everything below it down the page; and none of them had a URL, so there was no linking to one,
+   * no back button, and a reload dropped you at the top.
+   *
+   * As destinations they get their own address, the shells route to them for free, and the two
+   * things left in settings — the tab bar and one toggle — are finally the only things in it.
+   *
+   * Categories and rules are `tabbable`: a household deep in cleaning up a year of transactions may
+   * genuinely want one in the bar, and the whole point of configurable tabs is not deciding that on
+   * their behalf. Import and household are not — a one-off task and a setup step do not compete for
+   * a thumb-sized target, which is the same reasoning as `accounts` above.
+   */
+  {
+    key: 'categories',
+    path: '/categories',
+    label: 'Categories',
+    short: 'Categories',
+    icon: Tags,
+    tabbable: true,
+  },
+  {
+    key: 'rules',
+    path: '/rules',
+    label: 'Rules',
+    short: 'Rules',
+    icon: Filter,
+    tabbable: true,
+  },
+  {
+    key: 'import',
+    path: '/import',
+    label: 'Import data',
+    short: 'Import',
+    icon: Upload,
+    tabbable: false,
+  },
+  {
+    key: 'household',
+    path: '/household',
+    label: 'Household',
+    short: 'Household',
+    icon: Users,
     tabbable: false,
   },
   {

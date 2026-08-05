@@ -1,15 +1,17 @@
 import { CATEGORY_COPY } from '@beans/shared'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import {
   createCategory,
   deleteCategory,
+  listCategories,
   updateCategory,
   type Category,
   type CategoryKind,
 } from './api.js'
 import { cn } from '../lib/cn.js'
+import { WORKING_SET_KEY } from '../working-set/use-working-set.js'
 
 /**
  * The category tree, and everything you can do to it.
@@ -443,4 +445,24 @@ function DeleteForm({
       </div>
     </div>
   )
+}
+
+/**
+ * The tree, fetching its own data.
+ *
+ * The tree component takes its categories as a prop because the settings page used to have them
+ * already. As a destination of its own there is nothing above it holding them, so this is the
+ * wrapper that makes it droppable anywhere.
+ */
+export function CategoriesPanel(): ReactNode {
+  const queryClient = useQueryClient()
+  const categories = useQuery({ queryKey: ['categories'], queryFn: listCategories })
+
+  const refresh = async (): Promise<void> => {
+    await queryClient.invalidateQueries({ queryKey: ['categories'] })
+    // Removing a category moves transactions, so the cached working set is stale.
+    await queryClient.invalidateQueries({ queryKey: WORKING_SET_KEY })
+  }
+
+  return <CategoryTree categories={categories.data ?? []} onChanged={refresh} />
 }
