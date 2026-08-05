@@ -395,8 +395,16 @@ export function dayChange(
 export type LatestMove = {
   /** The last day the value was something else. */
   fromDate: IsoDate
+  /**
+   * The day the current value first appeared — not the last day of the series.
+   *
+   * A balance read today can still be Tuesday's close: the provider has not published a new one, so
+   * the series repeats it. Dating the move to the last day of the series would stretch a one-day
+   * move across every day since, and would sweep transactions that the balance does not yet reflect
+   * into a window that subtracts them.
+   */
   toDate: IsoDate
-  /** How far apart they are. One means yesterday to today. */
+  /** How far apart they are. One means one day's move. */
   days: number
   openingCents: bigint
   closingCents: bigint
@@ -424,15 +432,26 @@ export function latestMove(
   const last = series[series.length - 1]
   if (last === undefined) return null
 
+  /*
+   * Where the current value first appeared, tracked while walking back through the days that repeat
+   * it. Those trailing repeats are the series waiting for a new reading, not the market standing
+   * still, so the move ends where the value arrived rather than where the series stops.
+   */
+  let settledOn = last.date
+
   for (let index = series.length - 2; index >= 0; index -= 1) {
     const point = series[index]
     if (point === undefined) continue
-    if (point.value === last.value) continue
+
+    if (point.value === last.value) {
+      settledOn = point.date
+      continue
+    }
 
     return {
       fromDate: point.date,
-      toDate: last.date,
-      days: daysBetween(point.date, last.date),
+      toDate: settledOn,
+      days: daysBetween(point.date, settledOn),
       openingCents: point.value,
       closingCents: last.value,
     }

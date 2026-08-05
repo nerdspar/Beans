@@ -99,7 +99,7 @@ export function Portfolio(): ReactNode {
    */
   const dayChanges = new Map<
     string,
-    { change: ReturnType<typeof dayChange>; days: number; since: string } | null
+    { change: ReturnType<typeof dayChange>; staleSince: string | null } | null
   >()
 
   for (const account of investments) {
@@ -107,8 +107,7 @@ export function Portfolio(): ReactNode {
      * Measured from the last day the value actually differed, not from yesterday.
      *
      * These series hold each reading flat until the next, so the last two days are routinely the
-     * same number and their delta is zero — which is what every account reading $0 was. The span is
-     * carried alongside so the label can name it rather than calling four days "1-day".
+     * same number and their delta is zero — which is what every account reading $0 was.
      */
     const move = latestMove(account.series)
 
@@ -117,7 +116,13 @@ export function Portfolio(): ReactNode {
       continue
     }
 
-    // Everything paid in or taken out over the same span, so the figure is the market alone.
+    /*
+     * Everything paid in or taken out over the move itself, so the figure is the market alone.
+     *
+     * Bounded by the day the value arrived rather than the last day of the series: a contribution
+     * posted since then is not yet in this balance, and subtracting it would carve a hole out of a
+     * move that never included it.
+     */
     const flow = workingSet.transactions
       .filter(
         (transaction) =>
@@ -128,10 +133,18 @@ export function Portfolio(): ReactNode {
       )
       .reduce((sum, transaction) => sum + transaction.amountCents, 0n)
 
+    /*
+     * Dated whenever the move is not the latest day we hold.
+     *
+     * That gap is the provider not having published today's value yet, and an undated figure would
+     * pass yesterday's move off as today's.
+     */
+    const latestDate = account.series.at(-1)?.date
+    const stale = latestDate !== undefined && move.toDate < latestDate
+
     dayChanges.set(account.id, {
       change: dayChange(move.openingCents, move.closingCents, flow),
-      days: move.days,
-      since: formatShortDate(move.toDate),
+      staleSince: stale ? formatShortDate(move.toDate) : null,
     })
   }
 
@@ -350,7 +363,7 @@ function shareOf(cents: bigint, total: bigint): string {
 function DayChangeCell({
   reading,
 }: {
-  reading: { change: ReturnType<typeof dayChange>; days: number; since: string } | null
+  reading: { change: ReturnType<typeof dayChange>; staleSince: string | null } | null
 }): ReactNode {
   if (reading === null) {
     return (
@@ -384,10 +397,10 @@ function DayChangeCell({
         {up ? '+' : ''}
         {formatCents(change.marketCents)}
       </span>
-      {/* The period, whenever it is not the day the column header implies. */}
-      {reading.days !== 1 && (
+      {/* The date, whenever this is not the latest day — a stale figure has to say so. */}
+      {reading.staleSince !== null && (
         <span className="block text-[11px] font-normal text-slate-500 dark:text-slate-400">
-          {PORTFOLIO_COPY.moveSpan(reading.days, reading.since)}
+          {PORTFOLIO_COPY.asOfDay(reading.staleSince)}
         </span>
       )}
     </span>

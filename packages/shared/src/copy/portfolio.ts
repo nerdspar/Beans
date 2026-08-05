@@ -27,17 +27,16 @@ export const PORTFOLIO_COPY = {
    */
   oneDay: '1-day',
   /**
-   * Named by its actual period, not called a day regardless.
+   * The date a figure describes, shown only when it is not the latest day on the chart.
    *
-   * These series are flat between readings — a provider dates a balance to the previous close, a
-   * sync can miss a day, a weekend never moves — so the most recent change often spans more than a
-   * day. Reporting that as "1-day" would be wrong about the period, and reporting the last two days
-   * instead gives zero for nearly every account.
+   * A balance read this morning is often still yesterday's close: the provider has not published a
+   * new one, so the series repeats the old value and there is no move to report for today. Showing
+   * the figure undated would present a stale number as today's. This is the difference between a
+   * quiet day and a day that has not arrived yet.
    */
-  moveSpan: (days: number, since: string): string =>
-    days === 1 ? '1-day' : `since ${since}`,
+  asOfDay: (date: string): string => `as of ${date}`,
   oneDayNote:
-    'Change is the market only — money paid in or taken out over the same period is excluded, so this will differ from your provider after a contribution. Each figure names the period it covers.',
+    'Change is the market only — money paid in or taken out is excluded, so this will differ from your provider after a contribution. A dated figure is the most recent move your provider has published, not today’s.',
   noDayChange: 'No change yet',
 
   taxLabel: {

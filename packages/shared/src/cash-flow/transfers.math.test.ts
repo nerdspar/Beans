@@ -511,8 +511,15 @@ describe('latestMove', () => {
     })
   })
 
-  /** The case that produced zero everywhere: the last two days are a flat fill. */
-  it('reaches back past days the value did not change', () => {
+  /**
+   * The case that produced zero everywhere: the last two days are a flat fill.
+   *
+   * And the move is still **one day**. The value arrived on the 2nd and the series has been
+   * repeating it since, waiting for a reading that has not come — the market did not spend three
+   * days doing this. Dating it to the end of the series would overstate the period and, worse,
+   * widen the window that nets out contributions to cover two days the balance cannot yet reflect.
+   */
+  it('measures to the day the value arrived, not the end of the series', () => {
     const move = latestMove([
       at('2026-08-01', 100n),
       at('2026-08-02', 110n),
@@ -523,8 +530,40 @@ describe('latestMove', () => {
     expect(move?.openingCents).toBe(100n)
     expect(move?.closingCents).toBe(110n)
     expect(move?.fromDate).toBe('2026-08-01')
-    // Stated, so the screen can name the period instead of calling three days "1-day".
-    expect(move?.days).toBe(3)
+    expect(move?.toDate).toBe('2026-08-02')
+    expect(move?.days).toBe(1)
+  })
+
+  /**
+   * A dense series always yields a one-day span, and that is the honest reading of it.
+   *
+   * Every day carries a value, so the day before a change is always the day before. Whether that
+   * previous value was a fresh reading or a fill of an older one is not recoverable here —
+   * `carryForward` marks filled days `observed` exactly like real ones — so the span cannot be
+   * inflated on a guess. What the screen surfaces instead is *when* the move happened, which is
+   * `toDate`, and that is what makes a stale figure visible.
+   */
+  it('yields a one-day span for a series with a value every day', () => {
+    const move = latestMove([
+      at('2026-07-31', 100n),
+      at('2026-08-01', 100n),
+      at('2026-08-02', 110n),
+      at('2026-08-03', 110n),
+      at('2026-08-04', 110n),
+    ])
+
+    expect(move?.fromDate).toBe('2026-08-01')
+    expect(move?.toDate).toBe('2026-08-02')
+    expect(move?.days).toBe(1)
+  })
+
+  /** A sparse series keeps its real gap: nothing here invents the days in between. */
+  it('reports the full span when days are genuinely missing', () => {
+    const move = latestMove([at('2026-07-31', 100n), at('2026-08-04', 110n)])
+
+    expect(move?.fromDate).toBe('2026-07-31')
+    expect(move?.toDate).toBe('2026-08-04')
+    expect(move?.days).toBe(4)
   })
 
   it('reports nothing for a window that never moved', () => {
