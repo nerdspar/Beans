@@ -5,12 +5,41 @@
  */
 @variant dark (&:where(.dark, .dark *), @media (prefers-color-scheme: dark));
 
+@theme {
+  /*
+   * How far chrome sits below the top of the screen.
+   *
+   * The device's own inset less ten pixels: the full inset clears the dynamic island with room to
+   * spare, and that spare read as a gap. Floored at zero so a browser tab — where the inset is
+   * already zero because the chrome reserves that space — gets no negative offset.
+   *
+   * One value because five places depend on it agreeing: the strip that fills it, the padding that
+   * pushes content below it, and the `top` of every pinned header.
+   */
+  --beans-inset-top: max(0px, calc(env(safe-area-inset-top) - 10px));
+}
+
 @layer base {
   html {
     /* Momentum scrolling, so lists feel native rather than web. */
     -webkit-overflow-scrolling: touch;
     /* Stops the whole page rubber-banding under a fixed bottom bar on iOS. */
-    overscroll-behavior-y: none;
+    overscroll-behavior: none;
+  }
+
+  body {
+    /*
+     * Repeated here, not only on `html`.
+     *
+     * iOS applies rubber-band overscroll to the body even when `html` refuses it, and during that
+     * bounce it translates the whole document — pinned headers and fixed chrome included. Scrolling
+     * hard against either end, or sideways along an edge, shifted the frozen block by a few pixels
+     * for exactly that reason.
+     *
+     * Both axes, not just vertical: a drag along the very edge of the screen picks up horizontal
+     * overscroll, which moves everything the same way.
+     */
+    overscroll-behavior: none;
   }
 
   body {

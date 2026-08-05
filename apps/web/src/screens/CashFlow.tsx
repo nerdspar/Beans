@@ -487,7 +487,7 @@ export function CashFlow(): ReactNode {
       */}
       <div
         ref={headerRef}
-        className="sticky top-[env(safe-area-inset-top)] z-20 -mx-5 bg-slate-50 px-5 pt-5 dark:bg-slate-950"
+        className="sticky top-[var(--beans-inset-top)] z-20 -mx-5 bg-slate-50 px-5 pt-5 dark:bg-slate-950"
       >
       <div className="flex items-baseline justify-between gap-3">
         <h1 className="text-2xl font-semibold">{CASH_FLOW_COPY.title}</h1>
@@ -595,7 +595,7 @@ export function CashFlow(): ReactNode {
             style={
               singleMonth
                 ? undefined
-                : { top: `calc(env(safe-area-inset-top) + ${headerHeight}px)` }
+                : { top: `calc(var(--beans-inset-top) + ${headerHeight}px)` }
             }
           >
           <div className="mt-4 grid grid-cols-3 gap-3">
@@ -1291,7 +1291,7 @@ function Breakdown({
       */}
       <div
         className="sticky z-10 -mx-5 bg-slate-50 px-5 pb-2 dark:bg-slate-950"
-        style={{ top: `calc(env(safe-area-inset-top) + ${headerOffset}px)` }}
+        style={{ top: `calc(var(--beans-inset-top) + ${headerOffset}px)` }}
       >
       <div className="mt-4">
         {/* `exactOptionalPropertyTypes`: an absent tone and an explicit undefined are not the same. */}

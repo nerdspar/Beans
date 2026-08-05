@@ -42,14 +42,14 @@ export function MobileShell({ children }: { children: ReactNode }): ReactNode {
       */}
       <div
         aria-hidden
-        className="fixed inset-x-0 top-0 z-50 h-[env(safe-area-inset-top)] bg-slate-50 dark:bg-slate-950"
+        className="fixed inset-x-0 top-0 z-50 h-[var(--beans-inset-top)] bg-slate-50 dark:bg-slate-950"
       />
 
       {/*
         Padded by the status-bar inset above and the bar's height plus the home-indicator inset
         below, so neither the first nor the last row is hidden behind chrome.
       */}
-      <main className="flex-1 pt-[env(safe-area-inset-top)] pb-[calc(4rem+env(safe-area-inset-bottom))]">
+      <main className="flex-1 pt-[var(--beans-inset-top)] pb-[calc(4rem+env(safe-area-inset-bottom))]">
         {children}
       </main>
 
