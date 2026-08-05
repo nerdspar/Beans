@@ -99,7 +99,7 @@ export function Portfolio(): ReactNode {
    */
   const dayChanges = new Map<
     string,
-    { change: ReturnType<typeof dayChange>; staleSince: string | null } | null
+    { change: ReturnType<typeof dayChange>; asOf: string } | null
   >()
 
   for (const account of investments) {
@@ -134,19 +134,23 @@ export function Portfolio(): ReactNode {
       .reduce((sum, transaction) => sum + transaction.amountCents, 0n)
 
     /*
-     * Dated whenever the move did not land today.
+     * Always dated, never conditionally.
      *
-     * Compared against today rather than against the end of the series, because both ways of being
-     * behind matter and this catches them together: the provider may have published nothing since
-     * yesterday, or it may still be repeating a value from days ago.
+     * This is the difference that made a correct figure look wrong beside a broker's app: a
+     * brokerage shows today's session live, while the same account through SimpleFIN reports a
+     * settled balance dated to a completed day. Both are right about different days, and only the
+     * date says which — so an undated percentage is the one thing this column must never be.
      *
-     * This is the difference that made a figure look wrong next to a broker's app. A brokerage
-     * shows today's session live; through SimpleFIN it reports a settled balance dated to a
-     * completed day. Both are right about different days, and only the date says which.
+     * Showing it only when the figure looked stale needed a notion of "today", and `toIsoDate` is
+     * UTC: after 8pm Eastern the browser's today is already tomorrow, so every account would have
+     * been branded stale every evening. Dating all of them is both honest and free of the question.
+     *
+     * Accounts genuinely differ here — institutions publish on their own schedules — so this
+     * belongs on the row and not in one line above the list.
      */
     dayChanges.set(account.id, {
       change: dayChange(move.openingCents, move.closingCents, flow),
-      staleSince: move.toDate < today ? formatShortDate(move.toDate) : null,
+      asOf: formatShortDate(move.toDate),
     })
   }
 
@@ -365,7 +369,7 @@ function shareOf(cents: bigint, total: bigint): string {
 function DayChangeCell({
   reading,
 }: {
-  reading: { change: ReturnType<typeof dayChange>; staleSince: string | null } | null
+  reading: { change: ReturnType<typeof dayChange>; asOf: string } | null
 }): ReactNode {
   if (reading === null) {
     return (
@@ -399,12 +403,10 @@ function DayChangeCell({
         {up ? '+' : ''}
         {formatCents(change.marketCents)}
       </span>
-      {/* The date, whenever this is not the latest day — a stale figure has to say so. */}
-      {reading.staleSince !== null && (
-        <span className="block text-[11px] font-normal text-slate-500 dark:text-slate-400">
-          {PORTFOLIO_COPY.asOfDay(reading.staleSince)}
-        </span>
-      )}
+      {/* The day this figure is about. Never omitted — see the note where it is computed. */}
+      <span className="block text-[11px] font-normal text-slate-500 dark:text-slate-400">
+        {PORTFOLIO_COPY.asOfDay(reading.asOf)}
+      </span>
     </span>
   )
 }
