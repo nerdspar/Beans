@@ -200,7 +200,8 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
         list scrolls under both.
       */}
       <div
-        className="sticky top-[var(--beans-inset-top)] z-20 bg-slate-50/95 px-5 pt-5 backdrop-blur dark:bg-slate-950/95"
+        /* Opaque, no blur: see MobileShell — backdrop-filter lags a scroll on iOS. */
+        className="sticky top-[var(--beans-inset-top)] z-20 bg-slate-50 px-5 pt-5 dark:bg-slate-950"
         style={{ height: CHART_BLOCK_HEIGHT }}
       >
         <div className="flex items-baseline justify-between gap-3">

@@ -22,7 +22,7 @@ export function useMeasuredHeight(): [(node: HTMLElement | null) => void, number
       return
     }
 
-    setHeight(node.getBoundingClientRect().height)
+    setHeight(Math.round(node.getBoundingClientRect().height))
 
     /*
      * Observed rather than measured once. The panel above collapses, the range control rewraps, the
@@ -31,7 +31,16 @@ export function useMeasuredHeight(): [(node: HTMLElement | null) => void, number
      */
     observer.current = new ResizeObserver((entries) => {
       const entry = entries[0]
-      if (entry !== undefined) setHeight(entry.contentRect.height + borderAndPadding(node))
+      /*
+       * Rounded to whole pixels.
+       *
+       * A measured height is fractional — 132.328125 is typical — and a pinned element positioned
+       * on a fraction is rendered on a sub-pixel boundary, which shimmers against a scroll rather
+       * than holding still. The offset only needs to be right to the pixel.
+       */
+      if (entry !== undefined) {
+        setHeight(Math.round(entry.contentRect.height + borderAndPadding(node)))
+      }
     })
     observer.current.observe(node)
   }, [])

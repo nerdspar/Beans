@@ -57,8 +57,16 @@ export function MobileShell({ children }: { children: ReactNode }): ReactNode {
         aria-label="Primary"
         className={cn(
           'fixed inset-x-0 bottom-0 z-40',
-          'border-t border-slate-200 bg-white/95 backdrop-blur',
-          'dark:border-slate-800 dark:bg-slate-900/95',
+          /*
+           * Opaque, with no backdrop blur.
+           *
+           * `backdrop-filter` makes the element re-sample what is behind it every frame, and on iOS
+           * that sampling lags a scroll — so anything pinned over moving content drifts a few pixels
+           * and snaps back. The one pinned surface in the app that never had it was the one screen
+           * that never drifted.
+           */
+          'border-t border-slate-200 bg-white',
+          'dark:border-slate-800 dark:bg-slate-900',
           /*
            * Respects the iPhone home indicator, less a few pixels.
            *

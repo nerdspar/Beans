@@ -137,7 +137,8 @@ export function Transactions(): ReactNode {
 
   return (
     <div className="mx-auto max-w-2xl pb-16">
-      <div className="sticky top-[var(--beans-inset-top)] z-10 bg-slate-50/95 px-5 pb-3 pt-5 backdrop-blur dark:bg-slate-950/95">
+      {/* Opaque, no blur: see MobileShell — backdrop-filter lags a scroll on iOS. */}
+      <div className="sticky top-[var(--beans-inset-top)] z-10 bg-slate-50 px-5 pb-3 pt-5 dark:bg-slate-950">
         <div className="flex items-baseline justify-between gap-3">
           <h1 className="text-2xl font-semibold">{TRANSACTIONS_COPY.title}</h1>
           <RangeControl value={range} onChange={setRange} />
