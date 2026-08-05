@@ -3,6 +3,7 @@ export {
   describeAge,
   CONNECTION_STATUS_LABEL,
   type ConnectionBannerCopy,
+  type SyncMoment,
 } from './connection.js'
 
 export {

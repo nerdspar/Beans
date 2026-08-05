@@ -2,10 +2,13 @@ import {
   ACCOUNT_COPY,
   assessConnection,
   connectionBanner,
+  daysBetween,
   describeAge,
   toIsoDate,
   type ConnectionBannerCopy,
   type HealthAssessment,
+  type IsoDate,
+  type SyncMoment,
 } from '@beans/shared'
 
 /**
@@ -27,12 +30,45 @@ export type SyncableAccount = {
  */
 
 const TIME = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
-const DATE = new Intl.DateTimeFormat(undefined, {
+
+/**
+ * Local, deliberately — unlike the formatter for stored calendar dates.
+ *
+ * A sync time is an *instant*, and rendering an instant in UTC puts a 10pm Eastern sync on the
+ * following day. The `timeZone: 'UTC'` that a `YYYY-MM-DD` needs is exactly wrong here.
+ */
+const LOCAL_DATE = new Intl.DateTimeFormat(undefined, {
   month: 'numeric',
   day: 'numeric',
   year: 'numeric',
-  timeZone: 'UTC',
 })
+
+/**
+ * The reader's calendar date, which is not always UTC's.
+ *
+ * `toIsoDate` gives the UTC date an instant falls on, which is right for a stored date and wrong for
+ * "what day is it here": after 8pm Eastern they differ, and a sync from this afternoon would be
+ * described as yesterday's.
+ */
+function localIsoDate(instant: Date): IsoDate {
+  const year = instant.getFullYear()
+  const month = String(instant.getMonth() + 1).padStart(2, '0')
+  const day = String(instant.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+/** Whole days between a sync and now, both on the reader's calendar. */
+export function localDaysSince(iso: string | null, now: Date): number | null {
+  if (iso === null) return null
+  return daysBetween(localIsoDate(new Date(iso)), localIsoDate(now))
+}
+
+/** A sync instant split into the two parts {@link describeAge} assembles. */
+export function formatSyncMoment(iso: string | null): SyncMoment | null {
+  if (iso === null) return null
+  const instant = new Date(iso)
+  return { date: LOCAL_DATE.format(instant), time: TIME.format(instant) }
+}
 
 /**
  * When this account last reported.
@@ -43,10 +79,12 @@ const DATE = new Intl.DateTimeFormat(undefined, {
  */
 export function formatLastUpdated(account: SyncableAccount): string {
   if (account.isManual) return ACCOUNT_COPY.manualAccount
-  if (account.lastSuccessAt === null) return 'Never'
 
-  const instant = new Date(account.lastSuccessAt)
-  return toIsoDate(instant) === toIsoDate(new Date()) ? TIME.format(instant) : DATE.format(instant)
+  const moment = formatSyncMoment(account.lastSuccessAt)
+  if (moment === null) return 'Never'
+
+  const days = localDaysSince(account.lastSuccessAt, new Date())
+  return days === 0 ? moment.time : moment.date
 }
 
 export type AccountHealth = {
@@ -81,7 +119,10 @@ export function accountHealth(account: SyncableAccount, today: string): AccountH
   const banner = connectionBanner({
     action: assessment.action,
     institution: account.institutionName ?? 'this institution',
-    age: describeAge(assessment.daysSinceSuccess, formatLastUpdated(account)),
+    age: describeAge(
+      localDaysSince(account.lastSuccessAt, new Date()),
+      formatSyncMoment(account.lastSuccessAt),
+    ),
     neverSucceeded: account.lastSuccessAt === null,
   })
 

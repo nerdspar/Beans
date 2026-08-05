@@ -21,19 +21,29 @@ export type ConnectionBannerCopy = {
   actionLabel: string | null
 }
 
+/** A moment to describe, already formatted in the reader's own timezone. */
+export type SyncMoment = {
+  date: string
+  time: string
+}
+
 /**
- * How long ago, in words.
+ * How long ago, in words, and the clock time it happened.
  *
  * Days rather than a date up to a week, because "4 days ago" is instantly legible as staleness where
  * "7/30/2026" requires the reader to do the arithmetic. Past a week the exact date carries more.
+ *
+ * The time is always included, which "today" alone was not. Whether a balance was fetched at 4pm or
+ * at 10pm decides whether it can possibly contain a market close, and a reader comparing Beans
+ * against their broker cannot answer that from the word "today".
  */
-export function describeAge(days: number | null, isoDate: string | null): string {
-  if (days === null || isoDate === null) return 'never'
-  if (days <= 0) return 'today'
-  if (days === 1) return 'yesterday'
-  if (days < 7) return `${days} days ago`
+export function describeAge(days: number | null, moment: SyncMoment | null): string {
+  if (days === null || moment === null) return 'never'
+  if (days <= 0) return `today at ${moment.time}`
+  if (days === 1) return `yesterday at ${moment.time}`
+  if (days < 7) return `${days} days ago, ${moment.date} at ${moment.time}`
 
-  return `on ${isoDate}`
+  return `on ${moment.date} at ${moment.time}`
 }
 
 export function connectionBanner(input: {

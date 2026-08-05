@@ -109,22 +109,38 @@ describe('assessConnection', () => {
 })
 
 describe('describeAge', () => {
+  const MOMENT = { date: '7/30/2026', time: '10:07 PM' }
+
   it.each([
-    [0, 'today'],
-    [1, 'yesterday'],
-    [3, '3 days ago'],
-    [6, '6 days ago'],
+    [0, 'today at 10:07 PM'],
+    [1, 'yesterday at 10:07 PM'],
+    [3, '3 days ago, 7/30/2026 at 10:07 PM'],
+    [6, '6 days ago, 7/30/2026 at 10:07 PM'],
   ])('renders %d days as %s', (days, expected) => {
-    expect(describeAge(days, '7/30/2026')).toBe(expected)
+    expect(describeAge(days, MOMENT)).toBe(expected)
   })
 
   it('falls back to the date once days stop being legible', () => {
-    expect(describeAge(7, '7/27/2026')).toBe('on 7/27/2026')
+    expect(describeAge(7, { date: '7/27/2026', time: '4:12 PM' })).toBe(
+      'on 7/27/2026 at 4:12 PM',
+    )
   })
 
   it('treats a negative age as today rather than emitting a negative count', () => {
     // Clock skew between the server and a client should never produce "-1 days ago".
-    expect(describeAge(-2, '8/5/2026')).toBe('today')
+    expect(describeAge(-2, { date: '8/5/2026', time: '9:00 AM' })).toBe('today at 9:00 AM')
+  })
+
+  /**
+   * The whole reason the time is there.
+   *
+   * A balance fetched before the closing bell cannot contain that day's close, and a reader
+   * comparing Beans against their broker has no way to know that from the word "today".
+   */
+  it('always carries the clock time, whatever the age', () => {
+    for (const days of [0, 1, 3, 6, 7, 90]) {
+      expect(describeAge(days, MOMENT)).toContain('10:07 PM')
+    }
   })
 
   it('says never when there is no successful sync to date', () => {

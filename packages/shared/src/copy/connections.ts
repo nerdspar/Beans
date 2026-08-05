@@ -150,6 +150,14 @@ export const ACCOUNTS_COPY = {
   addAnotherConnection: 'Add another connection',
   addAnotherHelp: 'For a household member with their own SimpleFIN account.',
   accountsBehind: (count: number): string => `${count} account${count === 1 ? '' : 's'}`,
+  /**
+   * The clock time matters, not just the day.
+   *
+   * Whether a fetch happened at 4pm or at 10pm decides whether it could contain that day's market
+   * close — so this is the line that explains a balance trailing a brokerage app, and "today" on
+   * its own could not.
+   */
+  lastSynced: (age: string): string => `last synced ${age}`,
 
   addManual: 'Add manual account',
   addManualTitle: 'Add a manual account',

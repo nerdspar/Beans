@@ -13,6 +13,7 @@ import { Plus, RefreshCw } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { AccountEditor, ManualAccountForm, ManualBalanceForm } from '../accounts/AccountForms.js'
 import { listManagedAccounts, type ManagedAccount } from '../accounts/api.js'
+import { formatSyncMoment, localDaysSince } from '../accounts/display.js'
 import { ConfirmAccounts } from '../connections/ConfirmAccounts.js'
 import { TokenForm } from '../connections/TokenForm.js'
 import {
@@ -379,12 +380,12 @@ function ConnectionCard({
       </div>
 
       <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-        {ACCOUNTS_COPY.accountsBehind(connection.accountCount)} · last synced{' '}
-        {describeAge(
-          assessment.daysSinceSuccess,
-          connection.lastSuccessAt === null
-            ? null
-            : new Date(connection.lastSuccessAt).toLocaleDateString(),
+        {ACCOUNTS_COPY.accountsBehind(connection.accountCount)} ·{' '}
+        {ACCOUNTS_COPY.lastSynced(
+          describeAge(
+            localDaysSince(connection.lastSuccessAt, new Date()),
+            formatSyncMoment(connection.lastSuccessAt),
+          ),
         )}
       </p>
 
