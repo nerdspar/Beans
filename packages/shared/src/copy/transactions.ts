@@ -105,6 +105,21 @@ export const CATEGORY_COPY = {
   ruleCancel: 'Cancel',
   ruleEditAction: 'Edit',
 
+  // ── Suggested rules ────────────────────────────────────────────────────────
+  suggestionsHeading: 'Worth a rule',
+  /**
+   * Says where these come from, because "how did it know that" is the first question.
+   *
+   * They are read off the household's own transactions rather than a merchant list shipped with
+   * Beans — nothing leaves the machine, and the merchants are the ones that actually appear.
+   */
+  suggestionsNote:
+    'Merchants appearing more than once with nothing assigned, read from your own transactions. Tap one to build a rule from it.',
+  suggestionDetail: (count: number, category: string | null): string =>
+    category === null
+      ? `${count} uncategorized`
+      : `${count} uncategorized · you usually call this ${category}`,
+
   categoriesHeading: 'Categories',
   categoriesNote:
     'Rules reference a category’s stable slug rather than its label, so renaming one never breaks them.',

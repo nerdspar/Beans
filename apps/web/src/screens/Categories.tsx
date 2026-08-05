@@ -1,7 +1,7 @@
-import { CATEGORY_COPY } from '@beans/shared'
+import { CATEGORY_COPY, formatCents, suggestRules } from '@beans/shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import {
   applyRules,
   createRule,
@@ -15,7 +15,7 @@ import {
 import { CategoryTree } from '../categories/CategoryTree.js'
 import { RuleBuilder } from '../categories/RuleBuilder.js'
 import { cn } from '../lib/cn.js'
-import { WORKING_SET_KEY } from '../working-set/use-working-set.js'
+import { WORKING_SET_KEY, useWorkingSet } from '../working-set/use-working-set.js'
 
 /**
  * Categories, and the rules that assign them.
@@ -25,12 +25,20 @@ import { WORKING_SET_KEY } from '../working-set/use-working-set.js'
  * undo — worse than having none, because the effects are real and the cause is invisible.
  */
 
-type Editing = { kind: 'none' } | { kind: 'new' } | { kind: 'edit'; rule: Rule }
+type Editing =
+  | { kind: 'none' }
+  /** `seed` pre-fills the builder from a suggestion, so it is approved rather than retyped. */
+  | { kind: 'new'; seed?: { keywords: string[]; categoryId: string | null } }
+  | { kind: 'edit'; rule: Rule }
+
+/** Enough to be worth working through in one sitting. Past this it reads as a backlog. */
+const SUGGESTION_LIMIT = 12
 
 export function Categories(): ReactNode {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState<Editing>({ kind: 'none' })
 
+  const workingSet = useWorkingSet()
   const categories = useQuery({ queryKey: ['categories'], queryFn: listCategories })
   const rules = useQuery({ queryKey: ['rules'], queryFn: listRules })
 
@@ -56,6 +64,30 @@ export function Categories(): ReactNode {
       await refresh()
     },
   })
+
+  /*
+   * Merchants worth a rule, from this household's own transactions.
+   *
+   * Computed here rather than fetched: the working set already holds every transaction, so a round
+   * trip would buy nothing and this stays correct the moment a sync lands.
+   *
+   * Suggestions a rule already covers disappear on their own — a covered transaction gets a
+   * category, and only uncategorized ones are counted.
+   */
+  const suggestions = useMemo(
+    () =>
+      suggestRules(
+        workingSet.transactions
+          .filter((transaction) => transaction.status !== 'void')
+          .map((transaction) => ({
+            payee: transaction.payee,
+            description: transaction.description,
+            amountCents: transaction.amountCents,
+            categoryId: transaction.categoryId,
+          })),
+      ).slice(0, SUGGESTION_LIMIT),
+    [workingSet.transactions],
+  )
 
   const refreshCategories = async (): Promise<void> => {
     await queryClient.invalidateQueries({ queryKey: ['categories'] })
@@ -97,11 +129,72 @@ export function Categories(): ReactNode {
         </div>
       </div>
 
+      {/*
+        The long tail, as a short list.
+        
+        Four hundred uncategorized transactions are usually twenty merchants. Categorizing them one
+        at a time is what nobody does; this is the same work as a handful of decisions.
+        
+        Each one opens the builder pre-filled rather than creating a rule outright — the keyword is
+        a guess at where the merchant name ends, and it is far easier to approve than to undo.
+      */}
+      {editing.kind === 'none' && suggestions.length > 0 && (
+        <div className="mt-4">
+          <h2 className="text-sm font-semibold">{CATEGORY_COPY.suggestionsHeading}</h2>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {CATEGORY_COPY.suggestionsNote}
+          </p>
+
+          <ul className="mt-2 space-y-1.5">
+            {suggestions.map((suggestion) => (
+              <li key={suggestion.keyword}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditing({
+                      kind: 'new',
+                      seed: {
+                        keywords: [suggestion.keyword],
+                        categoryId: suggestion.categoryId,
+                      },
+                    })
+                  }
+                  className={cn(
+                    'flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left',
+                    'border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900',
+                    'focus-visible:outline-2 focus-visible:outline-sky-500',
+                  )}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">
+                      {suggestion.keyword}
+                    </span>
+                    <span className="block text-xs text-slate-500 dark:text-slate-400">
+                      {CATEGORY_COPY.suggestionDetail(
+                        suggestion.count,
+                        categories.data?.find((one) => one.id === suggestion.categoryId)?.name ??
+                          null,
+                      )}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-sm tabular-nums text-slate-500 dark:text-slate-400">
+                    {formatCents(suggestion.totalCents)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {editing.kind !== 'none' && (
         <div className="mt-3">
           <RuleBuilder
             categories={categories.data ?? []}
             {...(editing.kind === 'edit' ? { rule: editing.rule } : {})}
+            {...(editing.kind === 'new' && editing.seed !== undefined
+              ? { seed: editing.seed }
+              : {})}
             isPending={save.isPending}
             error={save.error instanceof Error ? save.error.message : null}
             onSubmit={(input) => save.mutate(input)}

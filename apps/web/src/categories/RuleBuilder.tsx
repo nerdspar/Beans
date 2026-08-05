@@ -20,6 +20,7 @@ import { cn } from '../lib/cn.js'
 export function RuleBuilder({
   categories,
   rule,
+  seed,
   isPending,
   error,
   onSubmit,
@@ -28,16 +29,18 @@ export function RuleBuilder({
   categories: readonly Category[]
   /** Present when editing. Absent when adding. */
   rule?: Rule
+  /** Pre-fills a new rule from a suggestion, so it is approved rather than retyped. */
+  seed?: { keywords: string[]; categoryId: string | null }
   isPending: boolean
   error: string | null
   onSubmit: (input: RuleInput) => void
   onCancel?: () => void
 }): ReactNode {
-  const [keywords, setKeywords] = useState<string[]>(() => rule?.keywords ?? [])
+  const [keywords, setKeywords] = useState<string[]>(() => rule?.keywords ?? seed?.keywords ?? [])
   const [draft, setDraft] = useState('')
   const [mode, setMode] = useState<KeywordMode>(rule?.keywordMode ?? 'any')
   const [matchType, setMatchType] = useState<'contains' | 'regex'>(rule?.matchType ?? 'contains')
-  const [categoryId, setCategoryId] = useState<string>(rule?.categoryId ?? '')
+  const [categoryId, setCategoryId] = useState<string>(rule?.categoryId ?? seed?.categoryId ?? '')
 
   /*
    * Committed on Enter *and* on comma, and again when the field loses focus.

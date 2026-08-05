@@ -14,3 +14,10 @@ export {
   type KeywordMode,
   type RuleMatchType,
 } from './rules.js'
+
+export {
+  merchantKey,
+  suggestRules,
+  type RuleSuggestion,
+  type SuggestableTransaction,
+} from './suggest.js'
