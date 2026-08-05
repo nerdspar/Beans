@@ -147,7 +147,7 @@ export function DevPreview(): ReactNode {
             <li key={group.date} data-on-or-before={group.date}>
               <h3
                 className={cn(
-                  'sticky top-0 z-20 border-b py-2 text-xs font-semibold tabular-nums',
+                  'sticky -top-2 z-20 border-b pb-2 pt-4 text-xs font-semibold tabular-nums',
                   'border-slate-200 bg-slate-50 text-slate-700',
                   'dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300',
                 )}

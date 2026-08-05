@@ -683,15 +683,15 @@ export function CashFlow(): ReactNode {
                       <h3
                         className={cn(
                           /*
-                           * Pinned, opaque, and flush with the top of the scroll box.
+                           * Pinned a few pixels above the scroll box's edge, not flush with it.
                            *
-                           * Subsequent rows need it — scrolling deep into a day with the date gone
-                           * is what it is for. What has to stay true is that nothing shows between
-                           * it and the edge it is pinned to: no top padding on the container, no
-                           * margin above the first group, and a background that matches the page
-                           * rather than a translucent one with rows sliding under it.
+                           * Flush, a strip of the row crossing the top stayed visible above the
+                           * date. `-top-2` pins the header eight pixels higher so those eight
+                           * pixels are clipped away, and `pt-4` puts them back as padding — the
+                           * date sits exactly where it did, and the header's background now covers
+                           * the strip that was showing above it.
                            */
-                          'sticky top-0 z-20 border-b py-2 text-xs font-semibold tabular-nums',
+                          'sticky -top-2 z-20 border-b pb-2 pt-4 text-xs font-semibold tabular-nums',
                           'border-slate-200 bg-slate-50 text-slate-700',
                           'dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300',
                         )}
