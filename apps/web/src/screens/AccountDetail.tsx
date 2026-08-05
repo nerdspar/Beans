@@ -104,18 +104,6 @@ function AccountView({
 }): ReactNode {
   const [sheet, setSheet] = useState<'none' | 'edit' | 'value'>('none')
   const [scrubIndex, setScrubIndex] = useState<number | null>(null)
-  /**
-   * A held reading, kept after the pointer lets go.
-   *
-   * The date used to vanish the moment a drag ended, which made the reading useless for anything
-   * you wanted to look at rather than sweep past. A hover still previews over it; leaving restores
-   * it, and tapping the held point again clears it.
-   */
-  const [heldIndex, setHeldIndex] = useState<number | null>(null)
-
-  const select = useCallback((index: number, viaTap: boolean): void => {
-    setHeldIndex((current) => (viaTap && current === index ? null : index))
-  }, [])
   const queryClient = useQueryClient()
 
   /*
@@ -171,10 +159,15 @@ function AccountView({
    * Clamped rather than trusted — a sync landing mid-read can shorten the series, and an index past
    * the end would read as zero, which is a balance this account never had.
    */
-  /* A hover previews over a held reading; letting go restores what was held. */
-  const readingIndex = scrubIndex ?? heldIndex
+  /*
+   * Clamped rather than trusted, and cleared on release.
+   *
+   * Nothing is filtered by a reading here — the chart is the whole screen — so a date left behind
+   * after the finger lifts is a number frozen at a moment nobody asked to keep. Letting go returns
+   * to the latest, which is what the screen is for.
+   */
   const reading =
-    readingIndex === null ? null : (series[Math.min(readingIndex, series.length - 1)] ?? null)
+    scrubIndex === null ? null : (series[Math.min(scrubIndex, series.length - 1)] ?? null)
 
   const latest = series.at(-1)?.value ?? account.currentBalanceCents ?? 0n
   const total = reading?.value ?? latest
@@ -299,7 +292,6 @@ function AccountView({
           value={range}
           onChange={(next) => {
             setScrubIndex(null)
-            setHeldIndex(null)
             onRange(next)
           }}
         />
@@ -318,8 +310,6 @@ function AccountView({
           height={CHART_HEIGHT}
           scrubIndex={scrubIndex}
           onScrub={setScrubIndex}
-          onSelect={select}
-          selectedIndex={heldIndex}
           describePoint={describePoint}
           scrubLabel={NET_WORTH_SCRUB_COPY.label}
         />

@@ -656,7 +656,12 @@ export function CashFlow(): ReactNode {
                   {CASH_FLOW_COPY.activityEmpty}
                 </p>
               ) : (
-                <ul ref={listRef} onScroll={onListScroll} className="max-h-96 overflow-y-auto">
+                <ul
+                  ref={listRef}
+                  onScroll={onListScroll}
+                  /* No padding: a pinned header sits at the padding edge, and any would show through. */
+                  className="max-h-96 overflow-y-auto p-0"
+                >
                   {/*
                     Grouped under a date, with the category on the row.
                     
@@ -678,22 +683,17 @@ export function CashFlow(): ReactNode {
                       <h3
                         className={cn(
                           /*
-                           * Not sticky.
+                           * Pinned, opaque, and flush with the top of the scroll box.
                            *
-                           * Pinned, it had rows passing behind it — and a row is two lines tall
-                           * while this is one, so the bottom half of a row sat just under it,
-                           * orphaned from its payee and looking for all the world like text
-                           * bleeding into the date. Opacity and a rule made the edge clearer
-                           * without removing the half-row, because the half-row is what a sticky
-                           * header of a different height to its rows always produces.
-                           *
-                           * Scrolling with the group costs the date while deep inside one, which
-                           * with a handful of rows a day is a smaller price than a list that looks
-                           * broken every time it moves.
+                           * Subsequent rows need it — scrolling deep into a day with the date gone
+                           * is what it is for. What has to stay true is that nothing shows between
+                           * it and the edge it is pinned to: no top padding on the container, no
+                           * margin above the first group, and a background that matches the page
+                           * rather than a translucent one with rows sliding under it.
                            */
-                          'pb-1.5 pt-3 text-xs font-semibold tabular-nums',
-                          'border-b border-slate-200 text-slate-700',
-                          'dark:border-slate-800 dark:text-slate-300',
+                          'sticky top-0 z-20 border-b py-2 text-xs font-semibold tabular-nums',
+                          'border-slate-200 bg-slate-50 text-slate-700',
+                          'dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300',
                         )}
                       >
                         {formatShortDate(date)}
@@ -1404,7 +1404,7 @@ function ReadingSlot({
          * describe a month while nothing on screen says which.
          */
         <p role="status" className="truncate text-xs font-medium tabular-nums">
-          {CASH_FLOW_COPY.showingSelection(held)}
+          {held}
         </p>
       ) : null}
     </div>
