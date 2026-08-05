@@ -28,12 +28,21 @@ export type PresetRangeKey =
   | '1-year'
   | 'ytd'
   | 'last-year'
+  | 'all'
 
 export type RangeSelection =
   | { kind: 'preset'; key: PresetRangeKey }
   | { kind: 'custom'; start: IsoDate; end: IsoDate }
 
 export type DateWindow = { start: IsoDate; end: IsoDate }
+
+/**
+ * The floor for "All time".
+ *
+ * Early enough that no household's records precede it, late enough to stay a plausible date rather
+ * than reading as a bug when it surfaces in a URL or a request log.
+ */
+export const EARLIEST_SUPPORTED_DATE: IsoDate = '1970-01-01'
 
 function startOfMonth(date: IsoDate): IsoDate {
   return `${date.slice(0, 7)}-01`
@@ -84,6 +93,21 @@ export function resolveWindow(selection: RangeSelection, today: IsoDate): DateWi
       const year = Number(today.slice(0, 4)) - 1
       return { start: `${year}-01-01`, end: `${year}-12-31` }
     }
+
+    /*
+     * Everything, expressed as a date no financial history reaches behind.
+     *
+     * A sentinel rather than "the earliest date in the data" because this function is pure and knows
+     * nothing about the data — and because the two would behave identically anyway: `sliceToWindow`
+     * keeps what exists, and a series cannot start before its first point.
+     *
+     * The value matters for one caller beyond slicing. The history backfill asks the server for
+     * everything from the window start, and the server echoes that back as how far the cache now
+     * reaches — so after one "All time" the condition that triggers a backfill is false forever
+     * rather than re-fetching on every render.
+     */
+    case 'all':
+      return { start: EARLIEST_SUPPORTED_DATE, end: today }
   }
 }
 

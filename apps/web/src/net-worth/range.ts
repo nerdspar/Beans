@@ -26,6 +26,11 @@ export const PRESETS: ReadonlyArray<{ key: PresetRangeKey; label: string }> = [
   { key: '1-year', label: '1 year' },
   { key: 'ytd', label: 'YTD' },
   { key: 'last-year', label: 'Last year' },
+  /*
+   * Last, because it is the widest and the least often wanted — and because a list read top to
+   * bottom should widen rather than jump.
+   */
+  { key: 'all', label: 'All time' },
 ]
 
 export const DEFAULT_RANGE: RangeSelection = { kind: 'preset', key: '90-days' }

@@ -171,3 +171,51 @@ describe('previousMonthWindow', () => {
     expect(previousMonthWindow('2026-03-05')).toEqual({ start: '2026-02-01', end: '2026-02-28' })
   })
 })
+
+/**
+ * All time.
+ *
+ * Added so a household with years of history can reach it without retyping a custom start every
+ * time. It resolves to a fixed floor rather than to the data's own earliest date, because this
+ * function is pure and has never seen the data — and the two behave identically anyway, since
+ * `sliceToWindow` keeps only what exists.
+ */
+describe('all time', () => {
+  const TODAY = '2026-08-05'
+
+  it('starts before any plausible history and ends today', () => {
+    const window = resolveWindow({ kind: 'preset', key: 'all' }, TODAY)
+
+    expect(window.start).toBe('1970-01-01')
+    expect(window.end).toBe(TODAY)
+  })
+
+  it('keeps every point in the series', () => {
+    const series = [{ date: '2019-01-02' }, { date: '2023-06-06' }, { date: TODAY }]
+    const window = resolveWindow({ kind: 'preset', key: 'all' }, TODAY)
+
+    expect(sliceToWindow(series, window)).toHaveLength(3)
+  })
+
+  /**
+   * The property the history backfill depends on.
+   *
+   * It fetches when the window starts earlier than the cache reaches, and the server echoes the
+   * requested start back as the cache's new reach. A floor that stays put means one fetch settles
+   * it; a start derived from "now" would drift earlier on every render and re-fetch forever.
+   */
+  it('does not move as today moves', () => {
+    expect(resolveWindow({ kind: 'preset', key: 'all' }, '2026-08-05').start).toBe(
+      resolveWindow({ kind: 'preset', key: 'all' }, '2030-01-01').start,
+    )
+  })
+
+  it('is the widest preset', () => {
+    const starts = (['this-month', 'last-month', '90-days', '1-year', 'ytd', 'last-year'] as const)
+      .map((key) => resolveWindow({ kind: 'preset', key }, TODAY).start)
+
+    for (const start of starts) {
+      expect(resolveWindow({ kind: 'preset', key: 'all' }, TODAY).start < start).toBe(true)
+    }
+  })
+})

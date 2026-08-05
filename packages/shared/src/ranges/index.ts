@@ -1,4 +1,5 @@
 export {
+  EARLIEST_SUPPORTED_DATE,
   resolveWindow,
   sliceToWindow,
   validateCustomRange,
