@@ -95,3 +95,135 @@ export function formatShares(shares: string): string {
 
   return negative ? `-${body}` : body
 }
+
+/**
+ * Working precision for summing share counts.
+ *
+ * Eight places is past anything a broker reports — fractional-share programs run to six — and the
+ * arithmetic is exact `bigint` at that scale rather than floating point. Share counts are not money
+ * and are never summed *into* money, but they are still summed, and a sum is exactly where binary
+ * floating point starts producing 98.96999999999998.
+ */
+const SHARE_PRECISION = 8
+
+/** A decimal share string as an integer scaled by {@link SHARE_PRECISION}, or null if unparseable. */
+function sharesToScaled(value: string): bigint | null {
+  const trimmed = value.trim()
+  if (!/^-?\d*\.?\d+$/.test(trimmed)) return null
+
+  const negative = trimmed.startsWith('-')
+  const digits = negative ? trimmed.slice(1) : trimmed
+  const [whole = '', fraction = ''] = digits.split('.')
+
+  const padded = fraction.padEnd(SHARE_PRECISION, '0').slice(0, SHARE_PRECISION)
+  const scaled = BigInt(`${whole === '' ? '0' : whole}${padded}`)
+
+  return negative ? -scaled : scaled
+}
+
+function scaledToShares(scaled: bigint): string {
+  const negative = scaled < 0n
+  const digits = (negative ? -scaled : scaled).toString().padStart(SHARE_PRECISION + 1, '0')
+
+  const whole = digits.slice(0, digits.length - SHARE_PRECISION)
+  const fraction = digits.slice(digits.length - SHARE_PRECISION).replace(/0+$/, '')
+  const body = fraction === '' ? whole : `${whole}.${fraction}`
+
+  return negative ? `-${body}` : body
+}
+
+/**
+ * The same position held in several accounts, added up.
+ *
+ * Null when nothing in the group reported a count — one account reporting shares and another not is
+ * a partial answer, and a total that silently omits the second would understate the position. In
+ * that case the caller shows the value alone rather than a share count that is quietly wrong.
+ */
+export function sumShares(values: readonly (string | null)[]): string | null {
+  const scaled: bigint[] = []
+
+  for (const value of values) {
+    if (value === null) continue
+    const parsed = sharesToScaled(value)
+    // A count that cannot be read is not zero. Refusing the whole sum beats reporting a short one.
+    if (parsed === null) return null
+    scaled.push(parsed)
+  }
+
+  if (scaled.length === 0) return null
+  if (scaled.length !== values.length) return null
+
+  return scaledToShares(scaled.reduce((total, value) => total + value, 0n))
+}
+
+export type GroupableHolding = {
+  symbol: string | null
+  description: string | null
+  shares: string | null
+  marketValueCents: bigint
+  previousMarketValueCents: bigint | null
+}
+
+export type GroupedHolding = {
+  /** The grouping key, uppercased. Falls back to the description where no symbol was reported. */
+  key: string
+  symbol: string | null
+  description: string | null
+  shares: string | null
+  marketValueCents: bigint
+  /** Null when *any* member lacked a prior observation — see below. */
+  previousMarketValueCents: bigint | null
+  /** How many accounts hold it. Above one, the row is a sum rather than a position. */
+  accountCount: number
+}
+
+/**
+ * The same security held across several accounts, collapsed into one row.
+ *
+ * Grouped on the **symbol**, uppercased, because that is the only field that identifies a security
+ * rather than a provider's copy of one: the provider holding id is per-account by construction, and
+ * descriptions differ between institutions for the same fund ("Vanguard FTSE Emerging Markets" and
+ * "VANGUARD FTSE EMERG MKT ETF" are one holding). Positions with no symbol fall back to their
+ * description, which keeps them separate rather than merging every unnamed cash sweep into one row.
+ *
+ * **The prior value is null unless every member has one.** A group where one account is a day behind
+ * would otherwise show the change of a subset against the total of everything, which reads as a
+ * plausible number and is not one.
+ */
+export function groupBySymbol(holdings: readonly GroupableHolding[]): GroupedHolding[] {
+  const groups = new Map<string, GroupableHolding[]>()
+
+  for (const holding of holdings) {
+    const key = (holding.symbol ?? holding.description ?? '').trim().toUpperCase()
+    if (key === '') continue
+    groups.set(key, [...(groups.get(key) ?? []), holding])
+  }
+
+  const grouped = [...groups.entries()].map(([key, members]) => {
+    const marketValueCents = members.reduce((total, member) => total + member.marketValueCents, 0n)
+
+    const everyPrevious = members.every((member) => member.previousMarketValueCents !== null)
+    const previousMarketValueCents = everyPrevious
+      ? members.reduce((total, member) => total + (member.previousMarketValueCents ?? 0n), 0n)
+      : null
+
+    return {
+      key,
+      symbol: members.find((member) => member.symbol !== null)?.symbol ?? null,
+      description: members.find((member) => member.description !== null)?.description ?? null,
+      shares: sumShares(members.map((member) => member.shares)),
+      marketValueCents,
+      previousMarketValueCents,
+      accountCount: members.length,
+    }
+  })
+
+  // Largest first, matching every other value-ordered list in the app.
+  return grouped.sort((left, right) =>
+    right.marketValueCents > left.marketValueCents
+      ? 1
+      : right.marketValueCents < left.marketValueCents
+        ? -1
+        : 0,
+  )
+}

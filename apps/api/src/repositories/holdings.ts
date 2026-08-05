@@ -144,6 +144,95 @@ export async function readHoldings(
   return { asOfDate: latest, checkedAt, holdings, previousAsOfDate: previous, previousMarketValues }
 }
 
+export type HouseholdHolding = Holding & {
+  accountId: string
+  /** What this position was worth at the previous observation. Null when it did not exist then. */
+  previousMarketValue: string | null
+}
+
+export type HouseholdHoldingsReading = {
+  holdings: HouseholdHolding[]
+  /** The newest observation date across accounts, for dating the list once. */
+  asOfDate: IsoDate | null
+  /** Whether any investment account has ever been inspected for positions. */
+  everChecked: boolean
+}
+
+type RankedRow = HoldingRow & { account_id: string; rnk: string }
+
+/**
+ * Every account's latest positions at once, for the portfolio-wide view.
+ *
+ * One query rather than a request per account: a household here has dozens of investment accounts,
+ * and fanning out would make the screen's cost scale with how many institutions somebody uses.
+ *
+ * `dense_rank` over `as_of_date` picks each account's two newest observations independently, which
+ * matters because accounts do not sync together — one may be a day behind another, and forcing a
+ * single date across all of them would silently drop the laggard's positions.
+ */
+export async function readHouseholdHoldings(
+  context: HouseholdContext,
+): Promise<HouseholdHoldingsReading> {
+  const checked = await context.client.query<{ any_checked: boolean }>(
+    `select exists (
+       select 1 from accounts
+        where type = 'investment' and confirmed_at is not null and holdings_checked_at is not null
+     ) as any_checked`,
+  )
+
+  const result = await context.client.query<RankedRow>(
+    `with ranked as (
+       select h.account_id, h.as_of_date, h.provider_holding_id, h.symbol, h.description,
+              h.shares, h.market_value, h.cost_basis, h.purchase_price, h.currency,
+              dense_rank() over (partition by h.account_id order by h.as_of_date desc) as rnk
+         from holdings h
+         join accounts a on a.id = h.account_id
+        where a.confirmed_at is not null
+     )
+     select * from ranked where rnk <= 2`,
+  )
+
+  /*
+   * Split into the newest observation and the one before it, per account.
+   *
+   * Done here rather than in SQL because the join back onto the previous value has to happen on
+   * decrypted amounts anyway — `market_value` is `bytea`, so nothing about it can be compared or
+   * carried in the query.
+   */
+  const previousByKey = new Map<string, bigint>()
+  const currentRows: RankedRow[] = []
+
+  for (const row of result.rows) {
+    if (row.rnk === '1') {
+      currentRows.push(row)
+    } else {
+      previousByKey.set(
+        `${row.account_id}:${row.provider_holding_id}`,
+        context.cipher.decryptMoney(row.market_value),
+      )
+    }
+  }
+
+  const holdings = currentRows
+    .map((row) => ({ cents: context.cipher.decryptMoney(row.market_value), row }))
+    .sort((left, right) => (right.cents > left.cents ? 1 : right.cents < left.cents ? -1 : 0))
+    .map(({ cents, row }) => {
+      const previous = previousByKey.get(`${row.account_id}:${row.provider_holding_id}`)
+      return {
+        ...toHolding(context, row, cents),
+        accountId: row.account_id,
+        previousMarketValue: previous === undefined ? null : centsToDecimalString(previous),
+      }
+    })
+
+  const asOfDate = currentRows.reduce<IsoDate | null>(
+    (latest, row) => (latest === null || row.as_of_date > latest ? row.as_of_date : latest),
+    null,
+  )
+
+  return { holdings, asOfDate, everChecked: checked.rows[0]?.any_checked ?? false }
+}
+
 /**
  * Replaces one account's positions for a single date.
  *

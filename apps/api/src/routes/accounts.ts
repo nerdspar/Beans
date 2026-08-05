@@ -16,7 +16,7 @@ import {
   withHouseholdContext,
   type ContextDependencies,
 } from '../repositories/household-context.js'
-import { readHoldings } from '../repositories/holdings.js'
+import { readHoldings, readHouseholdHoldings } from '../repositories/holdings.js'
 
 /**
  * Editing accounts directly.
@@ -96,6 +96,24 @@ export const accountRoutes: FastifyPluginAsync<AccountRoutesOptions> = async (fa
     try {
       const accounts = await withHouseholdContext(deps, user.id, listManagedAccounts)
       return reply.header('cache-control', 'no-store').send({ accounts })
+    } catch (error) {
+      return handleError(error, reply) ?? Promise.reject(error)
+    }
+  })
+
+  /**
+   * Every investment account's positions at once, for the portfolio-wide breakdown.
+   *
+   * One request rather than one per account: a household here has dozens of investment accounts,
+   * and fanning out would make the screen's cost scale with how many institutions somebody uses.
+   */
+  fastify.get('/api/holdings', async (request, reply) => {
+    const user = await requireUser(request, reply)
+    if (user === null) return
+
+    try {
+      const reading = await withHouseholdContext(deps, user.id, readHouseholdHoldings)
+      return reply.header('cache-control', 'no-store').send(reading)
     } catch (error) {
       return handleError(error, reply) ?? Promise.reject(error)
     }

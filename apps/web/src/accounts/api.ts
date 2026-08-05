@@ -113,3 +113,21 @@ export type HoldingsReading = {
 export function readHoldings(accountId: string): Promise<HoldingsReading> {
   return send<HoldingsReading>(`/api/accounts/${accountId}/holdings`)
 }
+
+export type HouseholdHolding = Holding & {
+  accountId: string
+  /** What it was worth at the previous observation. Null when the position did not exist then. */
+  previousMarketValue: string | null
+}
+
+export type HouseholdHoldingsReading = {
+  holdings: HouseholdHolding[]
+  asOfDate: string | null
+  /** Whether any investment account has ever been inspected for positions. */
+  everChecked: boolean
+}
+
+/** Every investment account's latest positions, for the portfolio-wide breakdown. */
+export function readHouseholdHoldings(): Promise<HouseholdHoldingsReading> {
+  return send<HouseholdHoldingsReading>('/api/holdings')
+}

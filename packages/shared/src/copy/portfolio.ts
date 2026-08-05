@@ -16,7 +16,22 @@ export const PORTFOLIO_COPY = {
     'Anything typed as an investment appears here. Connect an institution, or change an account’s type on the accounts screen.',
 
   byAccount: 'By account',
+  byHolding: 'By holding',
+  /** Names the control rather than repeating the selected option, which the select already shows. */
+  groupingLabel: 'Group by',
   byTax: 'By tax treatment',
+
+  /**
+   * Said on a grouped row held in more than one account.
+   *
+   * Worth flagging because the row is then a sum rather than a position: nothing at any institution
+   * looks like this line, and somebody reconciling against a statement should know that.
+   */
+  heldInAccounts: (count: number): string => `${count} accounts`,
+
+  holdingsEmpty: 'No positions to group',
+  holdingsEmptyDetail:
+    'Positions arrive with a sync, and not every institution reports them. Accounts that do will appear here once they have.',
 
   /** Named because it changes what a projection would mean, not merely how a total is labelled. */
   /*

@@ -2,13 +2,21 @@ import {
   NET_WORTH_STATE_COPY,
   PORTFOLIO_COPY,
   dayChange,
-  latestMove,
   formatCents,
+  formatShares,
+  groupBySymbol,
+  holdingMove,
+  latestMove,
+  parseDecimalToCents,
+  pricePerShare,
   resolveWindow,
   sliceToWindow,
+  type GroupedHolding,
 } from '@beans/shared'
+import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'wouter'
+import { readHouseholdHoldings } from '../accounts/api.js'
 import { StackedArea } from '../charts/StackedArea.js'
 import { cn } from '../lib/cn.js'
 import { SECTION_COLORS } from '../net-worth/colors.js'
@@ -32,7 +40,44 @@ const CHART_HEIGHT = 180
 export function Portfolio(): ReactNode {
   const workingSet = useWorkingSet()
   const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE)
+  const [grouping, setGrouping] = useState<Grouping>('account')
   const today = localToday()
+
+  /*
+   * Fetched only once the reader asks for it.
+   *
+   * The account breakdown needs nothing but the working set, so somebody who never opens this
+   * dropdown never pays for the request — which matters because it decrypts every position in the
+   * household to answer.
+   */
+  const holdings = useQuery({
+    queryKey: ['household-holdings'],
+    queryFn: readHouseholdHoldings,
+    enabled: grouping === 'holding',
+  })
+
+  /*
+   * The same security across accounts, collapsed into one row.
+   *
+   * Grouped on the symbol rather than the provider's holding id, which is per-account by
+   * construction — two accounts holding VWO have two unrelated ids for one security.
+   */
+  const grouped = useMemo(
+    () =>
+      groupBySymbol(
+        (holdings.data?.holdings ?? []).map((holding) => ({
+          symbol: holding.symbol,
+          description: holding.description,
+          shares: holding.shares,
+          marketValueCents: parseDecimalToCents(holding.marketValue),
+          previousMarketValueCents:
+            holding.previousMarketValue === null
+              ? null
+              : parseDecimalToCents(holding.previousMarketValue),
+        })),
+      ),
+    [holdings.data],
+  )
 
   const investments = useMemo(
     () =>
@@ -241,13 +286,44 @@ export function Portfolio(): ReactNode {
       </p>
 
       <div className="mt-6 flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold">{PORTFOLIO_COPY.byAccount}</h2>
-        {newestReading !== null && (
+        <label className="flex items-baseline gap-1.5">
+          <span className="sr-only">{PORTFOLIO_COPY.groupingLabel}</span>
+          {/*
+            A native select, not a custom menu. It is two options on a screen that already has a
+            range control, and the platform's own picker is both smaller and better at being
+            reachable than anything hand-rolled here.
+          */}
+          <select
+            value={grouping}
+            onChange={(event) => setGrouping(event.target.value as Grouping)}
+            className={cn(
+              '-ml-1 cursor-pointer rounded-md bg-transparent px-1 py-0.5 text-sm font-semibold',
+              'focus-visible:outline-2 focus-visible:outline-sky-500',
+            )}
+          >
+            <option value="account">{PORTFOLIO_COPY.byAccount}</option>
+            <option value="holding">{PORTFOLIO_COPY.byHolding}</option>
+          </select>
+        </label>
+        {grouping === 'account' && newestReading !== null && (
           <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
             {PORTFOLIO_COPY.asOfDay(formatShortDate(newestReading))}
           </span>
         )}
+        {grouping === 'holding' && holdings.data?.asOfDate != null && (
+          <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+            {PORTFOLIO_COPY.asOfDay(formatShortDate(holdings.data.asOfDate))}
+          </span>
+        )}
       </div>
+      {grouping === 'holding' ? (
+        <HoldingGroups
+          groups={grouped}
+          total={grouped.reduce((sum, group) => sum + group.marketValueCents, 0n)}
+          isLoading={holdings.isLoading}
+          hasFailed={holdings.error !== null}
+        />
+      ) : (
       <ul className="mt-2 divide-y divide-slate-200 dark:divide-slate-800">
         {ordered.map((account, index) => (
           <li key={account.id}>
@@ -286,10 +362,13 @@ export function Portfolio(): ReactNode {
           </li>
         ))}
       </ul>
+      )}
 
-      <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
-        {reportsFlows ? PORTFOLIO_COPY.oneDayNote : PORTFOLIO_COPY.oneDayNoteWithoutFlows}
-      </p>
+      {grouping === 'account' && (
+        <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+          {reportsFlows ? PORTFOLIO_COPY.oneDayNote : PORTFOLIO_COPY.oneDayNoteWithoutFlows}
+        </p>
+      )}
 
       <h2 className="mt-6 text-sm font-semibold">{PORTFOLIO_COPY.byTax}</h2>
       <ul className="mt-2 space-y-2">
@@ -453,5 +532,112 @@ function DayChangeCell({
         </span>
       )}
     </span>
+  )
+}
+
+/** Which breakdown the list below the chart is showing. */
+type Grouping = 'account' | 'holding'
+
+/**
+ * The same security wherever it is held, as one row.
+ *
+ * The reason to want this: holding VWO in three accounts is one exposure, and the account
+ * breakdown above can only ever show it as three unrelated slivers. This is the view that answers
+ * "how much of this do I actually own".
+ *
+ * A row whose members span several accounts says so, because that row is then a **sum** rather than
+ * a position — nothing at any institution looks like it, and somebody reconciling against a
+ * statement should not have to work that out.
+ */
+function HoldingGroups({
+  groups,
+  total,
+  isLoading,
+  hasFailed,
+}: {
+  groups: readonly GroupedHolding[]
+  total: bigint
+  isLoading: boolean
+  hasFailed: boolean
+}): ReactNode {
+  if (isLoading) {
+    return <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{PORTFOLIO_COPY.loading}</p>
+  }
+
+  if (hasFailed || groups.length === 0) {
+    return (
+      <div className="mt-2">
+        <p className="text-sm font-medium">{PORTFOLIO_COPY.holdingsEmpty}</p>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          {PORTFOLIO_COPY.holdingsEmptyDetail}
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <ul className="mt-2 divide-y divide-slate-200 dark:divide-slate-800">
+      {groups.map((group) => {
+        const move = holdingMove(group.marketValueCents, group.previousMarketValueCents)
+        const price = pricePerShare(group.marketValueCents, group.shares)
+        const up = move !== null && move.changeCents > 0n
+        const down = move !== null && move.changeCents < 0n
+
+        return (
+          <li key={group.key} className="flex items-start gap-3 py-2.5">
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium">
+                {group.symbol ?? group.description ?? '—'}
+              </span>
+              <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+                {group.accountCount > 1
+                  ? PORTFOLIO_COPY.heldInAccounts(group.accountCount)
+                  : (group.symbol === null ? '' : (group.description ?? ''))}
+              </span>
+            </span>
+
+            <span
+              className={cn(
+                'shrink-0 text-right text-xs tabular-nums',
+                up
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : down
+                    ? 'text-rose-600 dark:text-rose-400'
+                    : 'text-slate-500 dark:text-slate-400',
+              )}
+            >
+              {move === null ? (
+                // Either the position is new, or one account in the group is a day behind. Both
+                // mean there is no honest comparison to draw, and a zero would imply a flat day.
+                <span className="block">{PORTFOLIO_COPY.noDayChange}</span>
+              ) : (
+                <>
+                  <span className="block">
+                    {move.fraction === null
+                      ? ''
+                      : `${up ? '+' : ''}${(move.fraction * 100).toFixed(2)}%`}
+                  </span>
+                  <span className="block">
+                    {up ? '+' : ''}
+                    {formatCents(move.changeCents)}
+                  </span>
+                </>
+              )}
+            </span>
+
+            <span className="shrink-0 text-right">
+              <span className="block text-sm tabular-nums">
+                {formatCents(group.marketValueCents)}
+              </span>
+              <span className="block text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                {group.shares === null
+                  ? shareOf(group.marketValueCents, total)
+                  : `${formatShares(group.shares)}${price === null ? '' : ` @ ${formatCents(price)}`}`}
+              </span>
+            </span>
+          </li>
+        )
+      })}
+    </ul>
   )
 }

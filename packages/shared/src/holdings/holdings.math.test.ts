@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { formatShares, holdingMove, pricePerShare } from './holdings.js'
+import {
+  formatShares,
+  groupBySymbol,
+  holdingMove,
+  pricePerShare,
+  sumShares,
+  type GroupableHolding,
+} from './holdings.js'
 
 describe('pricePerShare', () => {
   it('divides a market value by its share count', () => {
@@ -117,5 +124,134 @@ describe('formatShares', () => {
     expect(formatShares('n/a')).toBe('n/a')
     expect(formatShares('')).toBe('')
     expect(formatShares('1,234.5')).toBe('1,234.5')
+  })
+})
+
+describe('sumShares', () => {
+  it('adds counts held in different accounts', () => {
+    expect(sumShares(['255', '164', '62'])).toBe('481')
+  })
+
+  /** The reason this is bigint and not float: 88.47 + 10.5 must not become 98.96999999999998. */
+  it('adds fractional counts exactly', () => {
+    expect(sumShares(['88.47', '10.5'])).toBe('98.97')
+    expect(sumShares(['0.1', '0.2'])).toBe('0.3')
+  })
+
+  it('keeps precision a broker actually reports', () => {
+    expect(sumShares(['13.760104', '1.000001'])).toBe('14.760105')
+  })
+
+  it('handles a single member', () => {
+    expect(sumShares(['21.93'])).toBe('21.93')
+  })
+
+  /**
+   * A partial sum is worse than none: one account reporting a count and another not would produce a
+   * total that silently understates the position.
+   */
+  it('refuses to total a group where a member reported no count', () => {
+    expect(sumShares(['255', null])).toBeNull()
+    expect(sumShares([null, null])).toBeNull()
+  })
+
+  it('refuses to total a group where a count cannot be read', () => {
+    expect(sumShares(['255', 'n/a'])).toBeNull()
+  })
+
+  it('reports nothing for an empty group', () => {
+    expect(sumShares([])).toBeNull()
+  })
+
+  it('nets a short position against a long one', () => {
+    expect(sumShares(['100', '-40.5'])).toBe('59.5')
+  })
+})
+
+describe('groupBySymbol', () => {
+  const holding = (over: Partial<GroupableHolding> = {}): GroupableHolding => ({
+    symbol: 'VWO',
+    description: 'Vanguard FTSE Emerging Markets',
+    shares: '100',
+    marketValueCents: 587_500n,
+    previousMarketValueCents: 580_000n,
+    ...over,
+  })
+
+  it('collapses the same symbol across accounts and sums it', () => {
+    const grouped = groupBySymbol([
+      holding({ shares: '255', marketValueCents: 1_498_125n, previousMarketValueCents: 1_480_000n }),
+      holding({ shares: '164', marketValueCents: 963_500n, previousMarketValueCents: 950_000n }),
+    ])
+
+    expect(grouped).toHaveLength(1)
+    expect(grouped[0]?.marketValueCents).toBe(2_461_625n)
+    expect(grouped[0]?.previousMarketValueCents).toBe(2_430_000n)
+    expect(grouped[0]?.shares).toBe('419')
+    expect(grouped[0]?.accountCount).toBe(2)
+  })
+
+  /** Institutions write the same fund differently; the symbol is the only reliable identity. */
+  it('groups on the symbol even when descriptions differ', () => {
+    const grouped = groupBySymbol([
+      holding({ description: 'Vanguard FTSE Emerging Markets' }),
+      holding({ description: 'VANGUARD FTSE EMERG MKT ETF' }),
+    ])
+
+    expect(grouped).toHaveLength(1)
+    expect(grouped[0]?.accountCount).toBe(2)
+  })
+
+  it('is not confused by case in the symbol', () => {
+    const grouped = groupBySymbol([holding({ symbol: 'vwo' }), holding({ symbol: 'VWO' })])
+    expect(grouped).toHaveLength(1)
+  })
+
+  it('keeps different securities apart', () => {
+    const grouped = groupBySymbol([
+      holding({ symbol: 'VWO', marketValueCents: 100n }),
+      holding({ symbol: 'CDW', marketValueCents: 200n }),
+    ])
+    expect(grouped.map((group) => group.symbol)).toEqual(['CDW', 'VWO'])
+  })
+
+  it('orders by value, largest first', () => {
+    const grouped = groupBySymbol([
+      holding({ symbol: 'A', marketValueCents: 100n }),
+      holding({ symbol: 'B', marketValueCents: 900n }),
+      holding({ symbol: 'C', marketValueCents: 500n }),
+    ])
+    expect(grouped.map((group) => group.symbol)).toEqual(['B', 'C', 'A'])
+  })
+
+  /**
+   * The subtle one. If one account is a day behind, totalling only the members that have a prior
+   * value would compare part of the group against all of it — a plausible-looking wrong number.
+   */
+  it('declines a prior total when any member lacks one', () => {
+    const grouped = groupBySymbol([
+      holding({ previousMarketValueCents: 580_000n }),
+      holding({ previousMarketValueCents: null }),
+    ])
+
+    expect(grouped[0]?.previousMarketValueCents).toBeNull()
+    expect(grouped[0]?.marketValueCents).toBe(1_175_000n)
+  })
+
+  /** Unnamed cash sweeps must not all merge into one row. */
+  it('falls back to the description when there is no symbol', () => {
+    const grouped = groupBySymbol([
+      holding({ symbol: null, description: 'Cash sweep' }),
+      holding({ symbol: null, description: 'Money market' }),
+    ])
+    expect(grouped).toHaveLength(2)
+  })
+
+  it('drops a position that identifies itself with neither', () => {
+    expect(groupBySymbol([holding({ symbol: null, description: null })])).toEqual([])
+  })
+
+  it('returns nothing for no holdings', () => {
+    expect(groupBySymbol([])).toEqual([])
   })
 })
