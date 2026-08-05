@@ -53,10 +53,10 @@ import { useWorkingSet } from '../working-set/use-working-set.js'
 /**
  * How far above the scroll box's edge the date header pins, in pixels.
  *
- * Must match the `-top-2` on the header itself — Tailwind's scale puts that at 8px. A scroll that
+ * Must match the `-top-4` on the header itself — Tailwind's scale puts that at 16px. A scroll that
  * lands on a date has to overshoot by the same amount, or the header arrives unpinned.
  */
-const STICKY_DATE_OFFSET_PX = 8
+const STICKY_DATE_OFFSET_PX = 16
 
 export function CashFlow(): ReactNode {
   const workingSet = useWorkingSet()
@@ -710,12 +710,15 @@ export function CashFlow(): ReactNode {
                            * Pinned a few pixels above the scroll box's edge, not flush with it.
                            *
                            * Flush, a strip of the row crossing the top stayed visible above the
-                           * date. `-top-2` pins the header eight pixels higher so those eight
-                           * pixels are clipped away, and `pt-4` puts them back as padding — the
-                           * date sits exactly where it did, and the header's background now covers
-                           * the strip that was showing above it.
+                           * date. `-top-4` pins the header sixteen pixels higher so those pixels
+                           * are clipped away, and `pt-6` puts them back as padding — the date sits
+                           * where it did, and the header's background covers the strip.
+                           *
+                           * Sixteen rather than eight because eight left it reappearing. The extra
+                           * is clipped in the pinned state and costs nothing; it only shows as a
+                           * little more space above the very first date in the list.
                            */
-                          'sticky -top-2 z-20 border-b pb-2 pt-4 text-xs font-semibold tabular-nums',
+                          'sticky -top-4 z-20 border-b pb-2 pt-6 text-xs font-semibold tabular-nums',
                           'border-slate-200 bg-slate-50 text-slate-700',
                           'dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300',
                         )}
