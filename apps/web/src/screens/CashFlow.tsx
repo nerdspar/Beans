@@ -613,8 +613,21 @@ export function CashFlow(): ReactNode {
           )}
 
           {summary.periods.length > 1 && (
+            <div
+              className={cn(
+                /*
+                 * Pinned, so the chart stays put while the detail under it scrolls — reading a bar
+                 * and then scrolling to the rows it stands for is the whole motion of this screen,
+                 * and losing the chart on the way makes it two screens.
+                 *
+                 * The negative margin and matching padding push its background out to the container
+                 * edges. Without them the page's own side padding would be uncovered, and rows would
+                 * be visible sliding past in two strips either side of the chart.
+                 */
+                'sticky top-0 z-10 -mx-5 mt-4 bg-slate-50 px-5 pb-2 pt-2 dark:bg-slate-950',
+              )}
+            >
             <MonthlyBars
-              className="mt-6"
               periods={summary.periods}
               mode="net"
               formatValue={formatCents}
@@ -626,21 +639,13 @@ export function CashFlow(): ReactNode {
               describePoint={(index) => describeMonth(summary.periods, index, 'net')}
               scrubLabel={CASH_FLOW_COPY.byMonthReading}
             />
-          )}
 
-          {/*
-            Only for the bars.
-            
-            On a single month this said the date and the running total, and both were already on
-            screen — the totals above carry the amount, and the list below is scrolled to the day
-            with its date pinned at the top of it. On the bars there is no such list, so nothing
-            else names the month the figures describe.
-          */}
-          {!singleMonth && (
+            {/* Inside the pinned block: the label belongs to the chart, not to what scrolls past. */}
             <ReadingSlot
               reading={monthReading === null ? null : formatMonth(monthReading.month)}
               held={heldLabel}
             />
+            </div>
           )}
 
           {/* Kept below the chart: this is its table fallback as much as it is detail. */}
@@ -1254,7 +1259,18 @@ function Breakdown({
         that showed only bars would answer "which month" while the other two answered "which day".
       */}
       {singleMonth && daily.length > 1 && (
-        <section className="mt-6">
+        <section
+        className={cn(
+          /*
+           * Pinned, like the combined tab's. Scrolling a category list while the chart it came from
+           * has left the screen is reading two things that are meant to be one.
+           *
+           * The negative margin and matching padding carry its background out to the container
+           * edges, so nothing slides past in the strips either side of it.
+           */
+          'sticky top-0 z-10 -mx-5 mt-4 bg-slate-50 px-5 pb-2 pt-2 dark:bg-slate-950',
+        )}
+        >
           <CumulativeFlow
             series={daily}
             comparison={dailyBefore}
@@ -1282,12 +1298,24 @@ function Breakdown({
             }}
             scrubLabel={CASH_FLOW_COPY.runningTotal}
           />
+          <ReadingSlot reading={reading} held={heldLabel} />
         </section>
       )}
 
       {!singleMonth && (
+        <div
+        className={cn(
+          /*
+           * Pinned, like the combined tab's. Scrolling a category list while the chart it came from
+           * has left the screen is reading two things that are meant to be one.
+           *
+           * The negative margin and matching padding carry its background out to the container
+           * edges, so nothing slides past in the strips either side of it.
+           */
+          'sticky top-0 z-10 -mx-5 mt-4 bg-slate-50 px-5 pb-2 pt-2 dark:bg-slate-950',
+        )}
+        >
         <MonthlyBars
-          className="mt-6"
           periods={periods}
           mode={mode}
           scrubIndex={monthIndex}
@@ -1304,9 +1332,11 @@ function Breakdown({
           formatValue={(cents) => formatCents(mode === 'spending' ? -cents : cents)}
           averageLabel={CASH_FLOW_COPY.average}
         />
-      )}
 
-      <ReadingSlot reading={reading} held={heldLabel} />
+        {/* Inside the pinned block: the label belongs to the chart, not to what scrolls past. */}
+        <ReadingSlot reading={reading} held={heldLabel} />
+        </div>
+      )}
 
       {totals.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
