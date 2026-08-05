@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 import { labelPrecision, niceTicks } from './axis.js'
+import { useChartScrub } from './use-chart-scrub.js'
 import { cn } from '../lib/cn.js'
 
 /**
@@ -60,6 +61,10 @@ export type AreaChartProps = {
   describePoint?: ((index: number) => string) | undefined
   /** Labels the scrubber for assistive technology. */
   scrubLabel?: string
+  /** A committed reading: a tap, or the end of a drag. See use-chart-scrub. */
+  onSelect?: ((index: number, viaTap: boolean) => void) | undefined
+  /** The held reading, kept after the pointer lets go. */
+  selectedIndex?: number | null
 
   /**
    * Index from which the series is a complete total. Null when the whole of it is.
@@ -139,79 +144,23 @@ export function AreaChart({
   describePoint,
   scrubLabel,
   completeFromIndex = null,
+  onSelect,
+  selectedIndex = null,
 }: AreaChartProps): ReactNode {
-  const plotRef = useRef<HTMLDivElement>(null)
-
-  const scrubTo = useCallback(
-    (clientX: number): void => {
-      const box = plotRef.current?.getBoundingClientRect()
-      if (box === undefined) return
-
-      const index = indexAtPosition(clientX - box.left, box.width, series.length)
-      if (index !== null) onScrub?.(index)
-    },
-    [series.length, onScrub],
+  const resolveIndex = useCallback(
+    (offsetX: number, width: number) => indexAtPosition(offsetX, width, series.length),
+    [series.length],
   )
 
-  /**
-   * One handler for mouse, pen and touch.
-   *
-   * A mouse reports movement without any button held, which is the hover the desktop wants. Touch
-   * reports movement only while the finger is down, which is the drag the phone wants. Pointer
-   * events give both without branching on a breakpoint, and without the synthetic-mouse-event
-   * duplication that comes from handling touch and mouse separately.
-   */
-  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    // Captured so a finger that slides off the chart keeps scrubbing rather than dropping the
-    // reading mid-gesture.
-    event.currentTarget.setPointerCapture(event.pointerId)
-    scrubTo(event.clientX)
-  }
+  const scrub = useChartScrub({
+    count: series.length,
+    resolveIndex,
+    onScrub,
+    onSelect,
+    scrubIndex,
+    pageStep: 7,
+  })
 
-  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    const isDragging = event.currentTarget.hasPointerCapture(event.pointerId)
-    if (event.pointerType === 'mouse' || isDragging) scrubTo(event.clientX)
-  }
-
-  const endScrub = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
-    onScrub?.(null)
-  }
-
-  /**
-   * The same interaction from the keyboard, which is the only way it exists for anyone not using a
-   * pointer. Arrow keys move a day at a time — the literal unit the chart is drawn in — and the
-   * larger jumps exist because stepping through a year one day at a time is not a real option.
-   */
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (series.length === 0 || onScrub === undefined) return
-
-    const last = series.length - 1
-    const from = scrubIndex ?? last
-
-    const absolute: Record<string, number | null> = { Escape: null, Home: 0, End: last }
-    const step: Record<string, number> = {
-      ArrowLeft: -1,
-      ArrowRight: 1,
-      // A week, because stepping through a year one day at a time is not a real option.
-      PageUp: -7,
-      PageDown: 7,
-    }
-
-    if (event.key in absolute) {
-      onScrub(absolute[event.key] ?? null)
-    } else if (event.key in step) {
-      onScrub(Math.min(last, Math.max(0, from + (step[event.key] ?? 0))))
-    } else {
-      // Not ours — leave it to the browser.
-      return
-    }
-
-    // Stops arrow keys scrolling the page out from under a chart being read.
-    event.preventDefault()
-  }
   const geometry = useMemo(() => {
     if (series.length === 0) {
       return null
@@ -318,7 +267,9 @@ export function AreaChart({
     )
   }
 
-  const marker = scrubIndex === null ? null : geometry.at(scrubIndex)
+  /* A hover previews over a held reading; leaving the chart restores what was held. */
+  const activeIndex = scrubIndex ?? selectedIndex
+  const marker = activeIndex === null ? null : geometry.at(activeIndex)
 
   /*
    * Where the partial region ends, as a fraction of the width. Zero-width regions are dropped: a
@@ -329,7 +280,7 @@ export function AreaChart({
     completeFromIndex === null || completeFromIndex <= 0 || series.length < 2
       ? 0
       : Math.min(completeFromIndex / (series.length - 1), 1)
-  const scrubbedDate = scrubIndex === null ? undefined : series[scrubIndex]?.date
+  const scrubbedDate = activeIndex === null ? undefined : series[activeIndex]?.date
 
   return (
     <div className={cn('relative', className)}>
@@ -461,27 +412,31 @@ export function AreaChart({
       */}
       {onScrub !== undefined && (
         <div
-          ref={plotRef}
+          ref={scrub.plotRef}
           role="slider"
           tabIndex={0}
           aria-label={scrubLabel ?? 'Read the chart by date'}
           aria-valuemin={0}
           aria-valuemax={Math.max(0, series.length - 1)}
-          aria-valuenow={scrubIndex ?? Math.max(0, series.length - 1)}
-          aria-valuetext={describePoint?.(scrubIndex ?? series.length - 1) ?? scrubbedDate}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={endScrub}
-          onPointerCancel={endScrub}
+          aria-valuenow={activeIndex ?? Math.max(0, series.length - 1)}
+          aria-valuetext={describePoint?.(activeIndex ?? series.length - 1) ?? scrubbedDate}
+          onPointerDown={scrub.onPointerDown}
+          onPointerMove={scrub.onPointerMove}
+          onPointerUp={scrub.onPointerUp}
+          onPointerCancel={scrub.onPointerCancel}
           // Only meaningful for a mouse: a captured touch never fires this, and a mouse leaving
           // the chart has stopped reading it.
-          onPointerLeave={endScrub}
-          onKeyDown={onKeyDown}
+          onPointerLeave={scrub.onPointerLeave}
+          onKeyDown={scrub.onKeyDown}
           onBlur={() => onScrub(null)}
           className={cn(
             'absolute inset-x-0 top-0 cursor-crosshair',
-            // Stops a vertical page scroll from stealing a horizontal drag on touch.
-            'touch-pan-y',
+            /*
+             * The chart claims the gesture outright. `touch-pan-y` left the browser free to pan
+             * vertically on the same drag, so reading a chart scrolled the page under it — the
+             * reading moved and so did the thing being read.
+             */
+            'touch-none',
             'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500',
           )}
           style={{ height: geometry.plotHeight }}

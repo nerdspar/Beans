@@ -300,7 +300,12 @@ export function CumulativeFlow({
           onKeyDown={scrub.onKeyDown}
           onBlur={() => onScrub(null)}
           className={cn(
-            'absolute inset-x-0 top-0 cursor-crosshair touch-pan-y',
+            /*
+             * The chart claims the gesture outright. `touch-pan-y` left the browser free to pan
+             * vertically on the same drag, so reading a chart scrolled the page under it — the
+             * reading moved and so did the thing being read.
+             */
+            'absolute inset-x-0 top-0 cursor-crosshair touch-none',
             'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500',
           )}
           style={{ height: geometry.plotHeight }}

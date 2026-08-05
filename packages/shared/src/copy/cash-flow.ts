@@ -69,6 +69,8 @@ export const CASH_FLOW_COPY = {
    * The strip disappears entirely when there is nothing to say, so its presence means something.
    */
   caveatsHeading: 'Worth checking',
+  /** The count carries while collapsed, so folding it away does not hide that anything is wrong. */
+  caveatsCount: (count: number): string => `${count}`,
   caveatTransfers: (count: number, amount: string): string =>
     `${count} possible transfer${count === 1 ? '' : 's'} not confirmed — ${amount} is counted as both income and spending.`,
   caveatTransfersAction: 'Review',

@@ -25,6 +25,7 @@ import { Link } from 'wouter'
 import { CumulativeFlow } from '../charts/CumulativeFlow.js'
 import { MonthlyBars } from '../charts/MonthlyBars.js'
 import { nextSelection, type ChartSelection } from '../charts/selection.js'
+import { useSessionFlag } from '../lib/use-session-flag.js'
 import { SECTION_COLORS } from '../net-worth/colors.js'
 import { formatAxisValue, formatShortDate } from '../net-worth/display.js'
 import { cn } from '../lib/cn.js'
@@ -74,6 +75,9 @@ export function CashFlow(): ReactNode {
    * three tabs be three views of the same selected month.
    */
   const [pinned, setPinned] = useState<ChartSelection | null>(null)
+
+  /** Open by default; folded away it holds for this visit and returns on the next one. */
+  const [caveatsOpen, setCaveatsOpen] = useSessionFlag('beans.cash-flow.caveats', true)
   const listRef = useRef<HTMLUListElement>(null)
   /*
    * Which side is driving.
@@ -331,8 +335,18 @@ export function CashFlow(): ReactNode {
        * The first row on or before the scrubbed day. Exact-date lookup would find nothing on the
        * many days with no transactions, and the list would sit still while the line moved.
        */
-      const target = listRef.current?.querySelector<HTMLElement>(`[data-on-or-before="${date}"]`)
-      target?.scrollIntoView({ block: 'nearest' })
+      const list = listRef.current
+      const target = list?.querySelector<HTMLElement>(`[data-on-or-before="${date}"]`)
+      if (list === null || target == null) return
+
+      /*
+       * The list's own scrollTop, never `scrollIntoView`.
+       *
+       * `scrollIntoView` walks every scrollable ancestor, so bringing a row into view inside the
+       * list also scrolled the *page* — reading the chart dragged the chart out from under the
+       * finger reading it. Setting scrollTop moves the list and nothing else.
+       */
+      list.scrollTop += target.getBoundingClientRect().top - list.getBoundingClientRect().top
     },
     [daily],
   )
@@ -461,30 +475,6 @@ export function CashFlow(): ReactNode {
         ))}
       </div>
 
-      {/*
-        The only visible statement that the figures below describe a selection rather than the
-        range, and the only way out that always works — tapping the same bar clears it, but hitting
-        the same day twice on a 31-day line is not a thing anyone should have to do.
-      */}
-      {selection !== null && (
-        <div className="mt-3 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setPinned(null)}
-            className={cn(
-              'inline-flex min-h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium',
-              'bg-sky-100 text-sky-900 hover:bg-sky-200',
-              'dark:bg-sky-950 dark:text-sky-200 dark:hover:bg-sky-900',
-              'focus-visible:outline-2 focus-visible:outline-sky-500',
-            )}
-          >
-            {CASH_FLOW_COPY.showingSelection(selection.label)}
-            <X className="size-3.5" aria-hidden />
-            <span className="sr-only">{CASH_FLOW_COPY.clearSelection}</span>
-          </button>
-        </div>
-      )}
-
       <Caveats
         pendingCount={pending.length}
         pendingCents={pendingCents}
@@ -495,6 +485,8 @@ export function CashFlow(): ReactNode {
         }
         direction={tab === 'income' ? 'income' : 'spending'}
         onReview={() => setShowProposals(true)}
+        open={caveatsOpen}
+        onToggle={setCaveatsOpen}
       />
 
       {summary.periods.length === 0 ? (
@@ -531,16 +523,6 @@ export function CashFlow(): ReactNode {
             Swapping would not have fixed it either: the note wraps to two lines on a phone and the
             reading never does, so the block would still change height.
           */}
-          <p
-            role="status"
-            className="mt-2 min-h-4 truncate text-xs font-medium tabular-nums"
-          >
-            {monthReading !== null
-              ? formatMonth(monthReading.month)
-              : dailyReading !== null
-                ? `${formatShortDate(dailyReading.date)} · ${formatCents(dailyReading.cumulativeCents)}`
-                : ''}
-          </p>
 
           {/* Said out loud: a total that quietly ignored transactions would be unaccountable. */}
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -595,6 +577,18 @@ export function CashFlow(): ReactNode {
               scrubLabel={CASH_FLOW_COPY.byMonthReading}
             />
           )}
+
+          <ReadingSlot
+            reading={
+              monthReading !== null
+                ? formatMonth(monthReading.month)
+                : dailyReading !== null
+                  ? `${formatShortDate(dailyReading.date)} · ${formatCents(dailyReading.cumulativeCents)}`
+                  : null
+            }
+            held={selection?.label ?? null}
+            onClear={() => setPinned(null)}
+          />
 
           {/* Kept below the chart: this is its table fallback as much as it is detail. */}
           {!singleMonth && (
@@ -704,6 +698,8 @@ export function CashFlow(): ReactNode {
           onSelectMonth={selectMonth}
           selectedDayIndex={pinnedDayIndex === -1 ? null : pinnedDayIndex}
           selectedMonthIndex={pinnedMonthIndex === -1 ? null : pinnedMonthIndex}
+          heldLabel={selection?.label ?? null}
+          onClear={() => setPinned(null)}
           reading={
             monthReading !== null
               ? {
@@ -1029,12 +1025,16 @@ function Caveats({
   uncategorizedCents,
   direction,
   onReview,
+  open,
+  onToggle,
 }: {
   pendingCount: number
   pendingCents: bigint
   uncategorizedCents: bigint
   direction: 'income' | 'spending'
   onReview: () => void
+  open: boolean
+  onToggle: (next: boolean) => void
 }): ReactNode {
   const entries: Array<{ key: string; text: string; action?: { label: string; href?: string; onClick?: () => void } }> = []
 
@@ -1063,14 +1063,34 @@ function Caveats({
     <section
       aria-label={CASH_FLOW_COPY.caveatsHeading}
       className={cn(
-        'mt-3 rounded-xl border p-3',
+        'mt-3 rounded-xl border px-3 py-2',
         'border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30',
       )}
     >
-      <h2 className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+      {/*
+        Collapsible, because on a phone three lines of caveat above the chart is most of the screen
+        — and a warning that costs you the thing you came to look at gets dismissed rather than read.
+
+        The count stays visible while collapsed. Folding it away is meant to reclaim space, not to
+        hide that anything is wrong.
+      */}
+      <button
+        type="button"
+        onClick={() => onToggle(!open)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-1.5 text-xs font-semibold text-amber-900 focus-visible:outline-2 focus-visible:outline-amber-600 dark:text-amber-200"
+      >
+        <ChevronRight
+          className={cn('size-3.5 shrink-0 transition-transform', open && 'rotate-90')}
+          aria-hidden
+        />
         {CASH_FLOW_COPY.caveatsHeading}
-      </h2>
-      <ul className="mt-1.5 space-y-1.5">
+        <span className="rounded-full bg-amber-200 px-1.5 text-[11px] font-medium text-amber-900 dark:bg-amber-900 dark:text-amber-100">
+          {entries.length}
+        </span>
+      </button>
+
+      <ul className={cn('mt-1.5 space-y-1.5', !open && 'hidden')}>
         {entries.map((entry) => (
           <li
             key={entry.key}
@@ -1122,6 +1142,8 @@ function Breakdown({
   selectedDayIndex,
   selectedMonthIndex,
   reading,
+  heldLabel,
+  onClear,
   totals,
   totalCents,
   label,
@@ -1144,6 +1166,9 @@ function Breakdown({
   selectedMonthIndex: number | null
   /** What is being pointed at, if anything. Replaces the range total while it is. */
   reading: { label: string; cents: bigint } | null
+  /** What is held, if anything. Rendered as the chip once the pointer lets go. */
+  heldLabel: string | null
+  onClear: () => void
   totals: readonly { categoryId: string | null; cents: bigint }[]
   totalCents: bigint
   label: string
@@ -1164,10 +1189,6 @@ function Breakdown({
           <Total label={label} cents={reading?.cents ?? totalCents} />
         )}
 
-        {/* Reserved, for the same reason as the combined tab: the chart must not move under a pointer. */}
-        <p role="status" className="mt-1 min-h-4 truncate text-xs font-medium tabular-nums">
-          {reading?.label ?? ''}
-        </p>
       </div>
 
       {/*
@@ -1229,6 +1250,8 @@ function Breakdown({
           averageLabel={CASH_FLOW_COPY.average}
         />
       )}
+
+      <ReadingSlot reading={reading?.label ?? null} held={heldLabel} onClear={onClear} />
 
       {totals.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
@@ -1307,4 +1330,50 @@ function describeMonth(
         : period.netCents
 
   return `${formatMonth(period.month)}: ${formatCents(cents)}`
+}
+
+/**
+ * One slot under the chart for what is being read.
+ *
+ * The date and the chip are the same thing at two moments: while a finger is down it is a live
+ * reading, and when it lets go on a point that reading becomes what is held. Two separate places
+ * would mean the label jumping across the screen at the end of every drag.
+ *
+ * Always rendered, at a fixed height. It sat above the chart before, where appearing and
+ * disappearing pushed the chart up and down — and a chart that moves as you point at it is one you
+ * cannot point at twice.
+ */
+function ReadingSlot({
+  reading,
+  held,
+  onClear,
+}: {
+  reading: string | null
+  held: string | null
+  onClear: () => void
+}): ReactNode {
+  return (
+    <div className="mt-2 flex min-h-7 items-center">
+      {reading !== null ? (
+        <p role="status" className="truncate text-xs font-medium tabular-nums">
+          {reading}
+        </p>
+      ) : held !== null ? (
+        <button
+          type="button"
+          onClick={onClear}
+          className={cn(
+            'inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-full px-2.5 text-xs font-medium',
+            'bg-sky-100 text-sky-900 hover:bg-sky-200',
+            'dark:bg-sky-950 dark:text-sky-200 dark:hover:bg-sky-900',
+            'focus-visible:outline-2 focus-visible:outline-sky-500',
+          )}
+        >
+          <span className="truncate">{CASH_FLOW_COPY.showingSelection(held)}</span>
+          <X className="size-3.5 shrink-0" aria-hidden />
+          <span className="sr-only">{CASH_FLOW_COPY.clearSelection}</span>
+        </button>
+      ) : null}
+    </div>
+  )
 }
