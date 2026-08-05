@@ -58,10 +58,18 @@ export const IMPORT_COPY = {
 
   previewHeading: 'Check these rows',
   previewBlurb: 'Nothing has been added yet. This is what would be.',
+  /**
+   * The headline count only. The reasons are listed beneath it.
+   *
+   * It used to say the rest "could not be parsed", which is true of only one of the two ways a row
+   * gets set aside — a row naming an unmapped account parses perfectly and was skipped for having
+   * nowhere to go. Telling somebody their file is malformed when the fix is to add an account sends
+   * them to rewrite a mapping that was never wrong.
+   */
   rowsParsed: (parsed: number, total: number): string =>
     parsed === total
-      ? `${total} row${total === 1 ? '' : 's'} read.`
-      : `${parsed} of ${total} rows read. The rest could not be parsed and will be skipped.`,
+      ? `${total.toLocaleString()} row${total === 1 ? '' : 's'} read.`
+      : `${parsed.toLocaleString()} of ${total.toLocaleString()} rows read. The rest will be skipped:`,
 
   commit: 'Add these transactions',
   committing: 'Adding',

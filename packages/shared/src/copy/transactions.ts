@@ -145,9 +145,6 @@ export const CATEGORY_COPY = {
   categoryCancel: 'Cancel',
   categoryRename: 'Rename',
   categoryDelete: 'Delete',
-  /** A built-in cannot go: rules and import presets reference the defaults by slug. */
-  categorySystem: 'Built in',
-  categorySystemNote: 'Built-in categories can be renamed but not removed.',
 
   /**
    * Deleting asks where things go, rather than telling you afterwards.

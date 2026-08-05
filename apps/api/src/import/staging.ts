@@ -68,6 +68,15 @@ export type StageOptions = {
 }
 
 /** Case- and whitespace-insensitive, matching how the values were collected at inspect time. */
+/**
+ * Rows per insert statement.
+ *
+ * Postgres caps a statement at 65535 bound parameters and each row binds eight, so the hard ceiling
+ * is around 8,000. Five hundred sits well inside it, keeps any one statement unremarkable in a log,
+ * and already collapses a fourteen-thousand-row file from fourteen thousand round trips to twenty-nine.
+ */
+const INSERT_BATCH = 500
+
 function accountKey(value: string): string {
   return value.trim().toLowerCase()
 }
@@ -77,6 +86,16 @@ export type StageResult = {
   rowCount: number
   parsedCount: number
   failedCount: number
+  /**
+   * Failures split by cause, because they need different things from the reader.
+   *
+   * A row that would not parse is a mapping or date-format problem — go back and fix the mapping. A
+   * row naming an unmapped account is nothing of the sort: it parsed perfectly and was set aside
+   * because there was nowhere to put it, and the fix is to add the account and import again.
+   * Reporting one number called "could not be parsed" told the second reader the wrong thing.
+   */
+  unparsedCount: number
+  unroutedCount: number
   dateFormat: DateFormat
   /** Blocking problems, if any. When present nothing was staged. */
   problems: ReturnType<typeof validateMapping>
@@ -120,6 +139,8 @@ export async function stageImport(
       rowCount: 0,
       parsedCount: 0,
       failedCount: 0,
+      unparsedCount: 0,
+      unroutedCount: 0,
       dateFormat: 'unrecognized',
       problems,
     }
@@ -137,6 +158,8 @@ export async function stageImport(
       rowCount: csv.rows.length,
       parsedCount: 0,
       failedCount: 0,
+      unparsedCount: 0,
+      unroutedCount: 0,
       dateFormat,
       problems: [
         {
@@ -175,6 +198,8 @@ export async function stageImport(
 
   let parsedCount = 0
   let failedCount = 0
+  let unparsedCount = 0
+  let unroutedCount = 0
 
   /*
    * Published as the loop runs, so a fourteen-thousand-row file is not a frozen button.
@@ -182,6 +207,40 @@ export async function stageImport(
    * `beginProgress` after the import row exists, so a failure before this point never registers a
    * run that is not happening.
    */
+  /*
+   * Rows are inserted in batches rather than one statement each.
+   *
+   * A fourteen-thousand-row file meant fourteen thousand sequential round trips, which is nearly
+   * all of what made staging take minutes — parsing and encryption are microseconds beside a
+   * network hop each way.
+   *
+   * **Identical semantics.** Same rows, same values, same order, same single transaction; only the
+   * number of statements changes. Nothing can partially succeed that could not before, because a
+   * failure still rolls the whole transaction back.
+   */
+  const pending: unknown[][] = []
+
+  const flush = async (): Promise<void> => {
+    if (pending.length === 0) return
+
+    const columns = 8
+    const values = pending
+      .map(
+        (_, row) =>
+          `(${Array.from({ length: columns }, (__, column) => `$${row * columns + column + 1}`).join(',')})`,
+      )
+      .join(',')
+
+    await context.client.query(
+      `insert into import_rows (
+         household_id, import_id, row_number, raw, parsed, target_account_id, status, status_reason
+       ) values ${values}`,
+      pending.flat(),
+    )
+
+    pending.length = 0
+  }
+
   beginProgress(context.householdId, 'reading', csv.rows.length)
 
   try {
@@ -216,32 +275,33 @@ export async function stageImport(
         failedCount += 1
       }
 
-      await context.client.query(
-        `insert into import_rows (
-         household_id, import_id, row_number, raw, parsed, target_account_id, status, status_reason
-       ) values ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [
-          context.householdId,
-          importId,
-          index + 1,
-          // Both encrypted: staged rows are transaction data in every respect except that they have
-          // not been committed yet.
-          context.cipher.encryptJson(cells),
-          result.ok ? context.cipher.encryptJson(toStored(result.row)) : null,
-          rowAccountId,
-          failedReason === null ? 'pending' : 'failed',
-          failedReason,
-        ],
-      )
+      pending.push([
+        context.householdId,
+        importId,
+        index + 1,
+        // Both encrypted: staged rows are transaction data in every respect except that they have
+        // not been committed yet.
+        context.cipher.encryptJson(cells),
+        result.ok ? context.cipher.encryptJson(toStored(result.row)) : null,
+        rowAccountId,
+        failedReason === null ? 'pending' : 'failed',
+        failedReason,
+      ])
+
+      if (pending.length >= INSERT_BATCH) await flush()
 
       advanceProgress(context.householdId, index + 1, csv.rows.length)
     }
+
+    await flush()
 
     return {
       importId,
       rowCount: csv.rows.length,
       parsedCount,
       failedCount,
+      unparsedCount,
+      unroutedCount,
       dateFormat,
       problems,
     }
@@ -260,12 +320,22 @@ export type PreviewRow = {
   raw: string[]
 }
 
+export type ReasonCount = {
+  reason: string
+  count: number
+}
+
 /** The preview. Shows what will happen, including the rows that will not. */
 export async function previewImport(
   context: HouseholdContext,
   importId: string,
   limit = 50,
-): Promise<{ rows: PreviewRow[]; totalRows: number; failedRows: number }> {
+): Promise<{
+  rows: PreviewRow[]
+  totalRows: number
+  failedRows: number
+  reasons: ReasonCount[]
+}> {
   const rows = await context.client.query<{
     row_number: number
     status: string
@@ -285,6 +355,26 @@ export async function previewImport(
     [importId],
   )
 
+  /*
+   * Every failure reason with a count, across the whole file rather than the previewed rows.
+   *
+   * The row list stops at fifty, so an account skipped halfway down a fourteen-thousand-row export
+   * produced no visible sign of itself at all — the preview looked clean and the only evidence was
+   * a total that did not add up.
+   *
+   * Grouped in SQL, which is possible only because `status_reason` is plaintext. It has to stay
+   * that way: the reasons quote an account *name* from the file, which is why they are capped in
+   * length at the point they are written rather than being free-form.
+   */
+  const reasons = await context.client.query<{ reason: string; count: string }>(
+    `select coalesce(status_reason, 'Unknown') as reason, count(*)::text as count
+       from import_rows
+      where import_id = $1 and status = 'failed'
+      group by 1
+      order by count(*) desc, 1`,
+    [importId],
+  )
+
   return {
     rows: rows.rows.map((row) => ({
       rowNumber: row.row_number,
@@ -296,6 +386,7 @@ export async function previewImport(
     })),
     totalRows: Number(counts.rows[0]?.total ?? 0),
     failedRows: Number(counts.rows[0]?.failed ?? 0),
+    reasons: reasons.rows.map((row) => ({ reason: row.reason, count: Number(row.count) })),
   }
 }
 

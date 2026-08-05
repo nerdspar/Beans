@@ -211,8 +211,11 @@ export async function updateCategory(
  * quietly meaning "and un-categorized four hundred transactions" is the kind of thing somebody
  * discovers a month later in a cash flow chart.
  *
- * A system category cannot be deleted: the defaults are what rules and import presets reference by
- * slug, and a household that removed "Transfers" would break transfer exclusion entirely.
+ * **Built-ins are removable too.** They were not, on the theory that transfer exclusion depended on
+ * the "Transfers" category surviving. It does not: exclusion keys on a category's `kind`, not on any
+ * slug (`isExcludedFromCashFlow`), so any transfer-kind category serves, and confirmed transfer
+ * pairs are excluded by transaction id regardless. A default nobody uses is clutter in every picker
+ * on every screen, and the set shipped can only ever be a guess at one household's spending.
  */
 export async function deleteCategory(
   context: HouseholdContext,
@@ -221,7 +224,6 @@ export async function deleteCategory(
 ): Promise<{ transactionsMoved: number; rulesMoved: number }> {
   const category = await loadCategory(context, categoryId)
   if (category === null) throw new CategoryError('That category no longer exists')
-  if (category.isSystem) throw new CategoryError('Built-in categories cannot be removed.')
   if (reassignTo === categoryId) throw new CategoryError('Pick a different category to move these to')
 
   const children = await context.client.query<{ count: string }>(

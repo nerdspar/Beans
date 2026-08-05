@@ -189,6 +189,7 @@ export const importRoutes: FastifyPluginAsync<ImportRoutesOptions> = async (fast
       return reply.header('cache-control', 'no-store').send({
         totalRows: preview.totalRows,
         failedRows: preview.failedRows,
+        reasons: preview.reasons,
         rows: preview.rows.map((row) => ({
           rowNumber: row.rowNumber,
           status: row.status,

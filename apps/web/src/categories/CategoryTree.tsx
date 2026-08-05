@@ -189,9 +189,6 @@ export function CategoryTree({
         })}
       </ul>
 
-      <p className="mt-3 text-[11px] text-slate-500 dark:text-slate-400">
-        {CATEGORY_COPY.categorySystemNote}
-      </p>
     </div>
   )
 }
@@ -234,20 +231,18 @@ function Actions({
         <Pencil className="size-3.5" aria-hidden />
       </button>
       {/*
-        A built-in has no delete control at all, rather than one that fails when pressed. The
-        defaults are what rules and import presets reference by slug — a household that removed
-        "Transfers" would break transfer exclusion entirely.
+        Built-ins included. The defaults are a guess at one household's spending, and one nobody
+        uses is clutter in every category picker on every screen. Nothing depends on a particular
+        default surviving — transfer exclusion keys on a category's *kind*, not on its slug.
       */}
-      {!category.isSystem && (
-        <button
-          type="button"
-          onClick={onDelete}
-          aria-label={`${CATEGORY_COPY.categoryDelete}: ${category.name}`}
-          className={button}
-        >
-          <Trash2 className="size-3.5 text-rose-600 dark:text-rose-400" aria-hidden />
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={onDelete}
+        aria-label={`${CATEGORY_COPY.categoryDelete}: ${category.name}`}
+        className={button}
+      >
+        <Trash2 className="size-3.5 text-rose-600 dark:text-rose-400" aria-hidden />
+      </button>
     </span>
   )
 }

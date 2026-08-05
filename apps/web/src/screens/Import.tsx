@@ -447,6 +447,27 @@ export function Import(): ReactNode {
             </p>
           )}
 
+          {/*
+            Why rows were set aside, counted over the whole file.
+            
+            The list below stops at fifty rows, so an account skipped halfway down a fourteen-thousand
+            row export left no visible trace — the preview looked clean and the only evidence was a
+            total that did not add up.
+          */}
+          {(preview.data?.reasons.length ?? 0) > 0 && (
+            <ul className="mt-2 space-y-1">
+              {preview.data?.reasons.map((entry) => (
+                <li
+                  key={entry.reason}
+                  className="flex items-baseline justify-between gap-3 text-xs text-rose-700 dark:text-rose-400"
+                >
+                  <span className="min-w-0 truncate">{entry.reason}</span>
+                  <span className="shrink-0 tabular-nums">{entry.count.toLocaleString()}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
           <ul className="mt-3 divide-y divide-slate-200 dark:divide-slate-800">
             {(preview.data?.rows ?? []).map((row) => (
               <li key={row.rowNumber} className="flex items-center justify-between gap-3 py-2">

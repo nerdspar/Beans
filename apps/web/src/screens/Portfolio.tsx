@@ -107,7 +107,15 @@ export function Portfolio(): ReactNode {
   const investments = useMemo(
     () =>
       [...(workingSet.data?.byId.values() ?? [])].filter(
-        (account) => account.section === 'investment',
+        /*
+         * Closed accounts are left out entirely.
+         *
+         * Net worth keeps them, and should: they held real money on real dates and dropping them
+         * would make every past total fall. The portfolio asks a different question — what is
+         * invested *now* — and an account worth nothing since March contributes a zero row, a dead
+         * band on the chart, and a share of a total it is no longer part of.
+         */
+        (account) => account.section === 'investment' && !account.isClosed,
       ),
     [workingSet.data],
   )

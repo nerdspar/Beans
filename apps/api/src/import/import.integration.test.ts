@@ -198,6 +198,68 @@ describeIntegration('csv import', () => {
       expect(failed[1]?.status_reason).toContain('Joint Cash Account')
     })
 
+    /**
+     * The batch boundary, which every small fixture above steps straight over.
+     *
+     * Rows are inserted in batches of {@link INSERT_BATCH}, and the statement is built by numbering
+     * placeholders `$1..$n` across the whole batch. An off-by-one in that arithmetic would not
+     * fail — it would shift every value one position, filing rows against the wrong account with a
+     * `row_number` from its neighbour, and no small fixture would ever notice because a single
+     * batch flushes only at the end.
+     *
+     * So this stages more rows than a batch holds and asserts the boring things: all of them
+     * arrived, numbered 1..n in order, each against the account its own row named.
+     */
+    it('keeps every row, in order, across an insert batch boundary', async () => {
+      const ROWS = 1201
+
+      const result = await withHouseholdContext(deps, USER, async (ctx) => {
+        const card = await makeAccount(ctx)
+        const checking = await makeAccount(ctx)
+
+        // Alternating accounts, so a shifted value lands on the wrong one rather than by luck.
+        const lines = Array.from({ length: ROWS }, (_, index) => {
+          const account = index % 2 === 0 ? 'Amazon Card' : 'Rental Checking'
+          return `2026-07-21,Row ${index},General Merchandise,Chase,${account},-$1.00,`
+        })
+
+        const csv = parseCsv(
+          `Date,Description,Category,Institution,Account Name,Amount,Tags\n${lines.join('\n')}\n`,
+        )
+
+        const staged = await stageImport(ctx, {
+          csv,
+          mapping: guessMapping(csv.headers),
+          preset: findPreset('empower')!,
+          kind: 'transactions',
+          accountMap: [
+            { value: 'Amazon Card', accountId: card },
+            { value: 'Rental Checking', accountId: checking },
+          ],
+          originalFilename: 'big.csv',
+        })
+
+        return { staged, rows: await stagedRows(ctx, staged.importId), card, checking }
+      })
+
+      expect(result.staged.rowCount).toBe(ROWS)
+      expect(result.staged.parsedCount).toBe(ROWS)
+      expect(result.rows).toHaveLength(ROWS)
+
+      // Contiguous and in order: a batch written out of sequence would show up here.
+      expect(result.rows.map((row) => row.row_number)).toEqual(
+        Array.from({ length: ROWS }, (_, index) => index + 1),
+      )
+
+      // Every row against the account it named, including across every flush.
+      const misfiled = result.rows.filter(
+        (row, index) =>
+          row.target_account_id !== (index % 2 === 0 ? result.card : result.checking),
+      )
+      expect(misfiled).toHaveLength(0)
+      expect(result.rows.every((row) => row.status === 'pending')).toBe(true)
+    })
+
     it('matches account names case-insensitively', async () => {
       const rows = await withHouseholdContext(deps, USER, async (ctx) => {
         const card = await makeAccount(ctx)

@@ -10,7 +10,15 @@ export type Inspection = {
   distinct: Array<string[] | null>
 }
 
-export type StageResult = { importId: string; rowCount: number; parsedCount: number }
+export type StageResult = {
+  importId: string
+  rowCount: number
+  parsedCount: number
+  /** Rows whose own contents could not be read — a mapping or date-format problem. */
+  unparsedCount: number
+  /** Rows that parsed cleanly but named an account nothing is mapped to. A different fix entirely. */
+  unroutedCount: number
+}
 
 export type PreviewRow = {
   rowNumber: number
@@ -20,7 +28,13 @@ export type PreviewRow = {
   error: string | null
 }
 
-export type Preview = { rows: PreviewRow[]; totalRows: number; failedRows: number }
+export type Preview = {
+  rows: PreviewRow[]
+  totalRows: number
+  failedRows: number
+  /** Every failure reason with a count, over the whole file rather than the previewed rows. */
+  reasons: Array<{ reason: string; count: number }>
+}
 
 async function send<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { credentials: 'same-origin', ...init })
