@@ -66,3 +66,14 @@ export function commitImport(importId: string): Promise<{ committed: number; ski
 export function reverseImport(importId: string): Promise<{ reversed: number }> {
   return send(`/api/imports/${importId}/reverse`, { method: 'POST' })
 }
+
+export type ImportProgress = {
+  phase: 'reading' | 'committing'
+  done: number
+  total: number
+}
+
+/** Null when nothing is running. Polled only while a stage or commit is in flight. */
+export function readImportProgress(): Promise<{ progress: ImportProgress | null }> {
+  return send<{ progress: ImportProgress | null }>('/api/imports/progress')
+}

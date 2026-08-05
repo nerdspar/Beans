@@ -78,4 +78,14 @@ export const IMPORT_COPY = {
   reverseNote: 'Removes only what this import added. Anything synced or entered by hand is untouched.',
 
   startOver: 'Import another file',
+  /**
+   * Counted, not estimated.
+   *
+   * "Reading" rather than "importing": nothing has been imported at this stage, and a count that
+   * implies otherwise makes the later commit look like it ran twice.
+   */
+  progressReading: (done: number, total: number): string =>
+    `Reading ${done.toLocaleString()} of ${total.toLocaleString()} rows`,
+  progressCommitting: (done: number, total: number): string =>
+    `Adding ${done.toLocaleString()} of ${total.toLocaleString()} transactions`,
 } as const

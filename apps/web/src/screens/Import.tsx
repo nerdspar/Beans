@@ -10,7 +10,10 @@ import {
   stageImport,
   type Inspection,
 } from '../import/api.js'
+import { Loader2 } from 'lucide-react'
 import { cn } from '../lib/cn.js'
+import { useImportProgress } from '../import/use-import-progress.js'
+import type { ImportProgress } from '../import/api.js'
 import { SearchableSelect } from '../lib/SearchableSelect.js'
 import { WORKING_SET_KEY } from '../working-set/use-working-set.js'
 
@@ -184,6 +187,14 @@ export function Import(): ReactNode {
       })
     },
   })
+
+  /*
+   * Polled only while one of the two long calls is in flight.
+   *
+   * Both are minutes long on a large file and neither says anything until it returns, which is
+   * exactly how a working import gets killed by somebody assuming it had hung.
+   */
+  const progress = useImportProgress(stageRows.isPending || commit.isPending)
 
   const reverse = useMutation({
     mutationFn: () => reverseImport((stage as { importId: string }).importId),
@@ -409,8 +420,11 @@ export function Import(): ReactNode {
             onClick={() => stageRows.mutate({ content: stage.content, filename: stage.filename })}
             className={primaryClass}
           >
+            {stageRows.isPending && <Loader2 className="size-4 animate-spin" aria-hidden />}
             {stageRows.isPending ? IMPORT_COPY.staging : IMPORT_COPY.stage}
           </button>
+
+          <RunningCount progress={progress} />
         </div>
       )}
 
@@ -460,8 +474,11 @@ export function Import(): ReactNode {
             onClick={() => commit.mutate()}
             className={primaryClass}
           >
+            {commit.isPending && <Loader2 className="size-4 animate-spin" aria-hidden />}
             {commit.isPending ? IMPORT_COPY.committing : IMPORT_COPY.commit}
           </button>
+
+          <RunningCount progress={progress} />
         </div>
       )}
 
@@ -510,7 +527,7 @@ const selectClass = cn(
 )
 
 const primaryClass = cn(
-  'mt-3 min-h-12 w-full rounded-xl text-sm font-semibold',
+  'mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold',
   'bg-sky-600 text-white hover:bg-sky-500 disabled:opacity-50',
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500',
 )
@@ -545,6 +562,32 @@ function Problem({ error, fallback }: { error: unknown; fallback: string }): Rea
   return (
     <p role="alert" className="mt-2 min-h-4 text-xs text-rose-600 dark:text-rose-400">
       {message}
+    </p>
+  )
+}
+
+/**
+ * The live count, while a stage or commit runs.
+ *
+ * A number rather than a bar. "8,412 of 14,411" answers both questions somebody staring at a frozen
+ * screen actually has — is it moving, and how much is left — where a bar answers only the second and
+ * a spinner alone answers only the first.
+ *
+ * Renders nothing between the request leaving and the first poll arriving, which is right: an
+ * invented "0 of 0" would be the one reading guaranteed to be wrong.
+ */
+function RunningCount({ progress }: { progress: ImportProgress | null }): ReactNode {
+  if (progress === null || progress.total === 0) return null
+
+  return (
+    <p
+      // Polite: it updates twice a second, and interrupting a screen reader that often is unusable.
+      aria-live="polite"
+      className="mt-2 text-center text-xs tabular-nums text-slate-500 dark:text-slate-400"
+    >
+      {progress.phase === 'reading'
+        ? IMPORT_COPY.progressReading(progress.done, progress.total)
+        : IMPORT_COPY.progressCommitting(progress.done, progress.total)}
     </p>
   )
 }

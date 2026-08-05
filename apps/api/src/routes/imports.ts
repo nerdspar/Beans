@@ -4,6 +4,7 @@ import { z } from 'zod'
 import type { Auth } from '../auth/auth.js'
 import { getSession } from '../auth/routes.js'
 import { columnSamples, distinctColumnValues, parseCsv } from '../import/csv.js'
+import { readProgress } from '../import/progress.js'
 import { commitImport, previewImport, reverseImport, stageImport } from '../import/staging.js'
 import {
   NoHouseholdError,
@@ -197,6 +198,28 @@ export const importRoutes: FastifyPluginAsync<ImportRoutesOptions> = async (fast
           amount: row.parsed === null ? null : centsToDecimalString(row.parsed.amountCents),
         })),
       })
+    } catch (error) {
+      return handleError(error, reply) ?? Promise.reject(error)
+    }
+  })
+
+  /**
+   * How far the running import has got.
+   *
+   * Polled while a stage or commit is in flight. Deliberately cheap and deliberately not a database
+   * read: those rows are inside an open transaction and invisible until it lands, so counting them
+   * would report zero for the whole run and then the total — the one shape indistinguishable from a
+   * hang. See `import/progress.ts`.
+   */
+  fastify.get('/api/imports/progress', async (request, reply) => {
+    const user = await requireUser(request, reply)
+    if (user === null) return
+
+    try {
+      const progress = await withHouseholdContext(deps, user.id, async (context) =>
+        readProgress(context.householdId),
+      )
+      return reply.header('cache-control', 'no-store').send({ progress })
     } catch (error) {
       return handleError(error, reply) ?? Promise.reject(error)
     }

@@ -13,6 +13,7 @@ import {
   type ParsedRow,
 } from '@beans/shared'
 import { rebuildAccountHistory } from '../balance-history/rebuild.js'
+import { advanceProgress, beginProgress, endProgress } from './progress.js'
 import type { HouseholdContext } from '../repositories/household-context.js'
 import { columnSamples, type ParsedCsv } from './csv.js'
 
@@ -175,60 +176,79 @@ export async function stageImport(
   let parsedCount = 0
   let failedCount = 0
 
-  for (const [index, cells] of csv.rows.entries()) {
-    const result = parseImportRow(cells, { mapping, preset, dateFormat })
+  /*
+   * Published as the loop runs, so a fourteen-thousand-row file is not a frozen button.
+   *
+   * `beginProgress` after the import row exists, so a failure before this point never registers a
+   * run that is not happening.
+   */
+  beginProgress(context.householdId, 'reading', csv.rows.length)
 
-    let rowAccountId: string | null = targetAccountId ?? null
-    let unmappedAccount: string | null = null
+  try {
+    for (const [index, cells] of csv.rows.entries()) {
+      const result = parseImportRow(cells, { mapping, preset, dateFormat })
 
-    if (routeByAccountColumn) {
-      const named = result.ok ? result.row.account : (cells[accountColumn.columnIndex]?.trim() ?? '')
-      rowAccountId = named === null || named === '' ? null : (accountMap.get(accountKey(named)) ?? null)
-      if (rowAccountId === null) unmappedAccount = named === '' ? null : named
-    }
+      let rowAccountId: string | null = targetAccountId ?? null
+      let unmappedAccount: string | null = null
 
-    // An unroutable row fails loudly here rather than being dropped at commit, where the only trace
-    // would have been a count that did not add up.
-    const failedReason = !result.ok
-      ? result.reason
-      : rowAccountId === null
-        ? unmappedAccount === null
-          ? 'No account named in this row'
-          : `No account is mapped to “${unmappedAccount}”`
-        : null
+      if (routeByAccountColumn) {
+        const named = result.ok
+          ? result.row.account
+          : (cells[accountColumn.columnIndex]?.trim() ?? '')
+        rowAccountId =
+          named === null || named === '' ? null : (accountMap.get(accountKey(named)) ?? null)
+        if (rowAccountId === null) unmappedAccount = named === '' ? null : named
+      }
 
-    if (failedReason === null) {
-      parsedCount += 1
-    } else {
-      failedCount += 1
-    }
+      // An unroutable row fails loudly here rather than being dropped at commit, where the only trace
+      // would have been a count that did not add up.
+      const failedReason = !result.ok
+        ? result.reason
+        : rowAccountId === null
+          ? unmappedAccount === null
+            ? 'No account named in this row'
+            : `No account is mapped to “${unmappedAccount}”`
+          : null
 
-    await context.client.query(
-      `insert into import_rows (
+      if (failedReason === null) {
+        parsedCount += 1
+      } else {
+        failedCount += 1
+      }
+
+      await context.client.query(
+        `insert into import_rows (
          household_id, import_id, row_number, raw, parsed, target_account_id, status, status_reason
        ) values ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [
-        context.householdId,
-        importId,
-        index + 1,
-        // Both encrypted: staged rows are transaction data in every respect except that they have
-        // not been committed yet.
-        context.cipher.encryptJson(cells),
-        result.ok ? context.cipher.encryptJson(toStored(result.row)) : null,
-        rowAccountId,
-        failedReason === null ? 'pending' : 'failed',
-        failedReason,
-      ],
-    )
-  }
+        [
+          context.householdId,
+          importId,
+          index + 1,
+          // Both encrypted: staged rows are transaction data in every respect except that they have
+          // not been committed yet.
+          context.cipher.encryptJson(cells),
+          result.ok ? context.cipher.encryptJson(toStored(result.row)) : null,
+          rowAccountId,
+          failedReason === null ? 'pending' : 'failed',
+          failedReason,
+        ],
+      )
 
-  return {
-    importId,
-    rowCount: csv.rows.length,
-    parsedCount,
-    failedCount,
-    dateFormat,
-    problems,
+      advanceProgress(context.householdId, index + 1, csv.rows.length)
+    }
+
+    return {
+      importId,
+      rowCount: csv.rows.length,
+      parsedCount,
+      failedCount,
+      dateFormat,
+      problems,
+    }
+  } finally {
+    // Always. A throw that left its progress behind would have the next poll report a run that
+    // ended as still going, which is worse than reporting nothing.
+    endProgress(context.householdId)
   }
 }
 
@@ -314,65 +334,75 @@ export async function commitImport(
     [importId],
   )
 
-  let committed = 0
-  let skipped = 0
-  const touchedAccounts = new Set<string>()
+  beginProgress(context.householdId, 'committing', rows.rows.length)
 
-  for (const row of rows.rows) {
-    if (row.target_account_id === null) {
-      skipped += 1
-      continue
-    }
+  try {
+    let committed = 0
+    let skipped = 0
+    const touchedAccounts = new Set<string>()
 
-    if (row.match_transaction_id !== null) {
-      // A confirmed duplicate of a synced transaction. Importing it would double-count.
-      await context.client.query(
-        `update import_rows set status = 'skipped', status_reason = 'Matched an existing transaction' where id = $1`,
-        [row.id],
-      )
-      skipped += 1
-      continue
-    }
+    for (const row of rows.rows) {
+      // Advanced once per row regardless of outcome. Counting only inserts would stall the bar on a
+      // re-import, where nearly every row is a duplicate and skipping is the expected result.
+      advanceProgress(context.householdId, committed + skipped + 1, rows.rows.length)
 
-    const parsed = fromStored(context.cipher.decryptJson<StoredRow>(row.parsed))
+      if (row.target_account_id === null) {
+        skipped += 1
+        continue
+      }
 
-    const inserted = await context.client.query<{ id: string }>(
-      `insert into transactions (
+      if (row.match_transaction_id !== null) {
+        // A confirmed duplicate of a synced transaction. Importing it would double-count.
+        await context.client.query(
+          `update import_rows set status = 'skipped', status_reason = 'Matched an existing transaction' where id = $1`,
+          [row.id],
+        )
+        skipped += 1
+        continue
+      }
+
+      const parsed = fromStored(context.cipher.decryptJson<StoredRow>(row.parsed))
+
+      const inserted = await context.client.query<{ id: string }>(
+        `insert into transactions (
          household_id, account_id, posted_date, amount, description, payee, memo,
          status, source, import_id
        ) values ($1,$2,$3,$4,$5,$6,$7,'active','imported',$8) returning id`,
-      [
-        context.householdId,
-        row.target_account_id,
-        parsed.date,
-        context.cipher.encryptMoney(parsed.amountCents),
-        context.cipher.encryptText(parsed.description),
-        context.cipher.encryptTextOrNull(parsed.payee),
-        context.cipher.encryptTextOrNull(parsed.memo),
-        importId,
-      ],
-    )
+        [
+          context.householdId,
+          row.target_account_id,
+          parsed.date,
+          context.cipher.encryptMoney(parsed.amountCents),
+          context.cipher.encryptText(parsed.description),
+          context.cipher.encryptTextOrNull(parsed.payee),
+          context.cipher.encryptTextOrNull(parsed.memo),
+          importId,
+        ],
+      )
+
+      await context.client.query(
+        `update import_rows set status = 'imported', result_transaction_id = $1 where id = $2`,
+        [inserted.rows[0]?.id ?? null, row.id],
+      )
+      touchedAccounts.add(row.target_account_id)
+      committed += 1
+    }
+
+    const reversibleUntil = new Date(now.getTime() + REVERSIBLE_DAYS * 24 * 60 * 60 * 1000)
 
     await context.client.query(
-      `update import_rows set status = 'imported', result_transaction_id = $1 where id = $2`,
-      [inserted.rows[0]?.id ?? null, row.id],
-    )
-    touchedAccounts.add(row.target_account_id)
-    committed += 1
-  }
-
-  const reversibleUntil = new Date(now.getTime() + REVERSIBLE_DAYS * 24 * 60 * 60 * 1000)
-
-  await context.client.query(
-    `update imports
+      `update imports
         set status = 'committed', committed_at = $1, committed_row_count = $2, reversible_until = $3
       where id = $4`,
-    [now, committed, reversibleUntil, importId],
-  )
+      [now, committed, reversibleUntil, importId],
+    )
 
-  await rebuildTouchedAccounts(context, touchedAccounts, now)
+    await rebuildTouchedAccounts(context, touchedAccounts, now)
 
-  return { committed, skipped }
+    return { committed, skipped }
+  } finally {
+    endProgress(context.householdId)
+  }
 }
 
 /**
@@ -427,11 +457,7 @@ export async function reverseImport(
     [importId],
   )
 
-  await rebuildTouchedAccounts(
-    context,
-    new Set(deleted.rows.map((row) => row.account_id)),
-    now,
-  )
+  await rebuildTouchedAccounts(context, new Set(deleted.rows.map((row) => row.account_id)), now)
 
   return { reversed: deleted.rowCount ?? 0 }
 }
