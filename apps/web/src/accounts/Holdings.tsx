@@ -8,7 +8,9 @@ import {
 } from '@beans/shared'
 import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
+import { Link } from 'wouter'
 import { readHoldings, type Holding } from './api.js'
+import { withReturn } from '../lib/back.js'
 import { cn } from '../lib/cn.js'
 import { formatShortDate } from '../net-worth/display.js'
 
@@ -27,9 +29,12 @@ import { formatShortDate } from '../net-worth/display.js'
 
 export function Holdings({
   accountId,
+  accountName,
   headingDate,
 }: {
   accountId: string
+  /** Names this account on the back control of the holding page a row opens. */
+  accountName: string
   /**
    * The date already shown beside the heading, so this does not repeat it.
    *
@@ -112,6 +117,7 @@ export function Holdings({
             holding={holding}
             previous={reading.previousMarketValues[holding.providerHoldingId]}
             total={total}
+            returnTo={{ href: `/accounts/${accountId}`, label: accountName }}
           />
         ))}
       </ul>
@@ -127,10 +133,13 @@ function Row({
   holding,
   previous,
   total,
+  returnTo,
 }: {
   holding: Holding
   previous: string | undefined
   total: bigint
+  /** Where the holding page should send the reader back to. */
+  returnTo: { href: string; label: string }
 }): ReactNode {
   const valueCents = parseDecimalToCents(holding.marketValue)
   const move = holdingMove(
@@ -142,8 +151,16 @@ function Row({
   const up = move !== null && move.changeCents > 0n
   const down = move !== null && move.changeCents < 0n
 
-  return (
-    <li className="flex items-start gap-3 px-5 py-2.5">
+  /*
+   * The same key the portfolio's grouped view uses, so both routes land on one page.
+   *
+   * A position with neither a symbol nor a description cannot be looked up — there is nothing to
+   * match it by — so that row stays inert rather than linking somewhere that will find nothing.
+   */
+  const key = (holding.symbol ?? holding.description ?? '').trim()
+
+  const body = (
+    <>
       <span className="min-w-0 flex-1">
         {/* Symbol first: it is what somebody scans for, and the description is often truncated. */}
         <span className="block truncate text-sm font-medium">
@@ -194,6 +211,21 @@ function Row({
               )}
         </span>
       </span>
+    </>
+  )
+
+  if (key === '') {
+    return <li className="flex items-start gap-3 px-5 py-2.5">{body}</li>
+  }
+
+  return (
+    <li>
+      <Link
+        href={withReturn(`/holdings/${encodeURIComponent(key)}`, returnTo)}
+        className="flex items-start gap-3 px-5 py-2.5 focus-visible:outline-2 focus-visible:outline-sky-500"
+      >
+        {body}
+      </Link>
     </li>
   )
 }

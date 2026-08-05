@@ -18,6 +18,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'wouter'
 import { readHouseholdHoldings } from '../accounts/api.js'
+import { withReturn } from '../lib/back.js'
 import { AreaChart } from '../charts/AreaChart.js'
 import { StackedArea } from '../charts/StackedArea.js'
 import { cn } from '../lib/cn.js'
@@ -639,7 +640,10 @@ function HoldingGroups({
           <li key={group.key}>
             {/* Links through, like an account row — the row is the way into where it is held. */}
             <Link
-              href={`/holdings/${encodeURIComponent(group.key)}`}
+              href={withReturn(`/holdings/${encodeURIComponent(group.key)}`, {
+                href: '/portfolio',
+                label: PORTFOLIO_COPY.title,
+              })}
               className="flex items-start gap-3 py-2.5 focus-visible:outline-2 focus-visible:outline-sky-500"
             >
             <span className="min-w-0 flex-1">

@@ -22,6 +22,7 @@ import { AccountEditor, ManualBalanceForm } from '../accounts/AccountForms.js'
 import { listManagedAccounts, type ManagedAccount } from '../accounts/api.js'
 import { accountHealth, formatLastUpdated } from '../accounts/display.js'
 import { Holdings } from '../accounts/Holdings.js'
+import { useBackTarget } from '../lib/back.js'
 import { CategoryChart } from '../charts/CategoryChart.js'
 import { cn } from '../lib/cn.js'
 import { SECTION_COLORS, SECTION_LABELS } from '../net-worth/colors.js'
@@ -143,6 +144,7 @@ function AccountView({
   /** Null for anything that is not an investment, or that has never moved. */
   accountMove: { change: ReturnType<typeof dayChange>; asOf: string } | null
 }): ReactNode {
+  const back = useBackTarget({ href: '/', label: ACCOUNT_COPY.backToNetWorth })
   const [sheet, setSheet] = useState<'none' | 'edit' | 'value'>('none')
   const [scrubIndex, setScrubIndex] = useState<number | null>(null)
   const queryClient = useQueryClient()
@@ -229,7 +231,7 @@ function AccountView({
     <div className="mx-auto max-w-2xl pb-10">
       <div className="flex items-center gap-1 px-3 pt-3">
         <Link
-          href="/"
+          href={back.href}
           className={cn(
             'inline-flex items-center gap-1 rounded-lg py-1.5 pl-1 pr-2.5 text-sm font-medium',
             'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900',
@@ -237,7 +239,7 @@ function AccountView({
           )}
         >
           <ChevronLeft className="size-5" aria-hidden />
-          {ACCOUNT_COPY.backToNetWorth}
+          {back.label}
         </Link>
       </div>
 
@@ -432,7 +434,11 @@ function AccountView({
               </span>
             )}
           </div>
-          <Holdings accountId={account.id} headingDate={accountMove?.asOf ?? null} />
+          <Holdings
+            accountId={account.id}
+            accountName={account.name}
+            headingDate={accountMove?.asOf ?? null}
+          />
         </>
       )}
 

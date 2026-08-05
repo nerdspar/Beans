@@ -530,6 +530,32 @@ percent change** — the note under the chart says which of the two the reader i
 Benchmarking it against a real index (Empower charts the S&P 500 beside theirs) is backlogged with
 §10.2: it needs market data, and therefore the same decision about what leaves the machine.
 
+### 10.1c Back navigation between two screens that link to each other
+
+Account detail lists the positions inside an account; a holding page lists the accounts holding a
+position. Each is the other's natural next question, so either can be arrived at from the other,
+from the portfolio, or from a cold deep link.
+
+A hardcoded back link cannot serve that, and the failure is not cosmetic: holding detail sending you
+to the portfolio when you arrived from an account drops you somewhere you never were, and the only
+route back to the account is to navigate down through it again. Two screens linking to each other,
+each with a fixed exit, is how a person ends up circling.
+
+So a link carries where it was opened from — `?from=<path>&fromLabel=<text>` — and the back control
+reads it, falling back to its own default for a deep link or a bookmark. **One level per link**, so
+chains unwind a step at a time and terminate at the fallback; there is no stack to grow and nothing
+to get stuck in.
+
+`history.back()` was the alternative and is wrong here. Installed as a PWA there is no browser
+chrome, so this control is the only way back and has to name its destination — an unlabelled arrow
+in a two-screen cycle says nothing about which of them you are about to land on. A path in the query
+string also survives a reload and a cold start, which `history` state does not.
+
+**`from` is validated, not trusted.** It arrives in a URL, so it can be handed to somebody in a
+link, and it renders as the app's own navigation wearing the app's own label. Only same-origin
+absolute paths are honoured; `//host` is rejected alongside schemes, because protocol-relative URLs
+pass a naive "starts with a slash" check and still leave the origin.
+
 ### 10.2 Allocation and sectors — backlogged, and why
 
 Asset-class and sector breakdowns need something SimpleFIN does not send. A holding arrives as
