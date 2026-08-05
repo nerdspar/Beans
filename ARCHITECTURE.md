@@ -542,9 +542,21 @@ route back to the account is to navigate down through it again. Two screens link
 each with a fixed exit, is how a person ends up circling.
 
 So a link carries where it was opened from — `?from=<path>&fromLabel=<text>` — and the back control
-reads it, falling back to its own default for a deep link or a bookmark. **One level per link**, so
-chains unwind a step at a time and terminate at the fallback; there is no stack to grow and nothing
-to get stuck in.
+reads it, falling back to its own default for a deep link or a bookmark.
+
+**It carries the whole path, nested, not just the immediate parent.** Carrying one level was the
+first attempt and it loses the case worth having: portfolio → account → holding, back twice, and you
+land on the account's generic fallback rather than the portfolio you actually came through. The
+screen you passed *through* is the one you least want to be dropped from. Nesting encodes each URL
+inside the next, so a bound on the finished link's length drops the ancestry rather than emitting a
+URL a browser refuses — a length bound rather than a depth count, because length is what breaks.
+
+**Do not read the query with wouter's `useSearch()`.** It runs the search through `unescape()`, so
+what it returns is percent-*decoded*: a nested `from` chain splits at the first `&` inside it, and a
+label containing an ampersand — an account named "Stocks & Shares" — loses everything after it. Both
+truncate silently. `useSearch()` is still called for its subscription, since the portfolio's grouping
+toggle changes the query without touching the path; the value itself is read from
+`window.location.search`.
 
 **Which view a screen is showing belongs in the URL for the same reason.** The portfolio's
 account/holding grouping was component state, so opening a holding from the grouped list and coming

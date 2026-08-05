@@ -12,7 +12,7 @@ import { ChevronLeft } from 'lucide-react'
 import { useCallback, useState, type ReactNode } from 'react'
 import { Link } from 'wouter'
 import { readHoldingDetail } from '../accounts/api.js'
-import { useBackTarget, withReturn } from '../lib/back.js'
+import { useBackTarget, useHere, withReturn } from '../lib/back.js'
 import { AreaChart } from '../charts/AreaChart.js'
 import { cn } from '../lib/cn.js'
 import { SECTION_COLORS } from '../net-worth/colors.js'
@@ -39,6 +39,11 @@ export function HoldingDetail({ params }: { params: { key: string } }): ReactNod
   const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE)
   const symbol = decodeURIComponent(params.key)
   const back = useBackTarget({ href: '/portfolio', label: HOLDINGS_COPY.backToPortfolio })
+  /*
+   * This holding *including how it was reached*. Without the ancestry, going portfolio → holding →
+   * account and back twice landed on the portfolio's default view rather than the grouped one.
+   */
+  const here = useHere(symbol)
   const window = resolveWindow(range, todayIso())
 
   const query = useQuery({
@@ -161,10 +166,7 @@ export function HoldingDetail({ params }: { params: { key: string } }): ReactNod
               return (
                 <li key={slice.accountId}>
                   <Link
-                    href={withReturn(`/accounts/${slice.accountId}`, {
-                      href: `/holdings/${encodeURIComponent(symbol)}`,
-                      label: detail?.symbol ?? symbol,
-                    })}
+                    href={withReturn(`/accounts/${slice.accountId}`, here)}
                     className="flex items-center gap-3 px-5 py-2.5 focus-visible:outline-2 focus-visible:outline-sky-500"
                   >
                     <span className="min-w-0 flex-1">

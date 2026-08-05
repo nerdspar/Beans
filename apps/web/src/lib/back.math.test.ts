@@ -70,3 +70,76 @@ describe('resolveBackTarget', () => {
     expect(resolveBackTarget(toAccount.split('?')[1] ?? '', FALLBACK).href).toBe('/holdings/VWO')
   })
 })
+
+/**
+ * The chain, which is the whole point of nesting rather than carrying one level.
+ *
+ * Portfolio → account → holding → back → account → back must land on the portfolio, in the view it
+ * was left in. Carrying only the immediate parent loses exactly that: the screen you came *through*
+ * is the one you least want to be dropped from.
+ */
+describe('carrying the whole path', () => {
+  const PORTFOLIO: BackTarget = { href: '/portfolio?group=holding', label: 'Portfolio' }
+
+  it('unwinds two levels back to where the walk started', () => {
+    const toAccount = withReturn('/accounts/abc', PORTFOLIO)
+    const account = resolveBackTarget(searchOf(toAccount), FALLBACK)
+    expect(account).toEqual(PORTFOLIO)
+
+    const toHolding = withReturn('/holdings/VWO', { href: toAccount, label: 'Brokerage' })
+    const holding = resolveBackTarget(searchOf(toHolding), FALLBACK)
+    expect(holding.label).toBe('Brokerage')
+
+    // And the account it lands on still knows about the portfolio behind it.
+    expect(resolveBackTarget(searchOf(holding.href), FALLBACK)).toEqual(PORTFOLIO)
+  })
+
+  it('keeps the grouped view rather than the portfolio default', () => {
+    const toHolding = withReturn('/holdings/VWO', PORTFOLIO)
+    expect(resolveBackTarget(searchOf(toHolding), FALLBACK).href).toBe('/portfolio?group=holding')
+  })
+
+  /** An ampersand in a name must not truncate the chain that follows it. */
+  it('survives a label containing a query separator', () => {
+    const link = withReturn('/holdings/VWO', { href: '/accounts/a', label: 'Stocks & Shares' })
+    const target = resolveBackTarget(searchOf(link), FALLBACK)
+
+    expect(target.label).toBe('Stocks & Shares')
+    expect(target.href).toBe('/accounts/a')
+  })
+
+  /**
+   * The bound. Nesting encodes each URL inside the next, so a long enough walk would produce a URL
+   * a browser refuses — past the limit the ancestry is dropped and only the parent is kept.
+   */
+  it('stops growing once the link would get unreasonable', () => {
+    let href = '/portfolio'
+    for (let step = 0; step < 40; step += 1) {
+      href = withReturn(step % 2 === 0 ? '/accounts/abc' : '/holdings/VWO', {
+        href,
+        label: 'Somewhere',
+      })
+    }
+
+    expect(href.length).toBeLessThanOrEqual(1500)
+    // Still a usable link, not a truncated one.
+    expect(resolveBackTarget(searchOf(href), FALLBACK).href.startsWith('/')).toBe(true)
+  })
+})
+
+function searchOf(href: string): string {
+  const index = href.indexOf('?')
+  return index === -1 ? '' : href.slice(index + 1)
+}
+
+describe('a link that already carries a query', () => {
+  it('keeps it rather than appending a second question mark', () => {
+    const link = withReturn('/portfolio?group=holding', { href: '/accounts/a', label: 'Brokerage' })
+
+    expect(link.split('?')).toHaveLength(2)
+
+    const params = new URLSearchParams(searchOf(link))
+    expect(params.get('group')).toBe('holding')
+    expect(params.get('from')).toBe('/accounts/a')
+  })
+})

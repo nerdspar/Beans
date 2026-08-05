@@ -18,7 +18,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useLocation, useSearch } from 'wouter'
 import { readHouseholdHoldings } from '../accounts/api.js'
-import { withReturn } from '../lib/back.js'
+import { useHere, withReturn } from '../lib/back.js'
 import { AreaChart } from '../charts/AreaChart.js'
 import { StackedArea } from '../charts/StackedArea.js'
 import { cn } from '../lib/cn.js'
@@ -59,7 +59,8 @@ export function Portfolio(): ReactNode {
   const grouping: Grouping =
     new URLSearchParams(useSearch()).get('group') === 'holding' ? 'holding' : 'account'
 
-  const here = grouping === 'holding' ? `${PORTFOLIO_PATH}?group=holding` : PORTFOLIO_PATH
+  // This screen as it currently stands, so anything opened from it comes back to the same view.
+  const here = useHere(PORTFOLIO_COPY.title)
 
   const setGrouping = (next: Grouping): void => {
     navigate(next === 'holding' ? `${PORTFOLIO_PATH}?group=holding` : PORTFOLIO_PATH, {
@@ -396,17 +397,14 @@ export function Portfolio(): ReactNode {
           total={grouped.reduce((sum, group) => sum + group.marketValueCents, 0n)}
           isLoading={holdings.isLoading}
           hasFailed={holdings.error !== null}
-          returnTo={{ href: here, label: PORTFOLIO_COPY.title }}
+          returnTo={here}
         />
       ) : (
       <ul className="mt-2 divide-y divide-slate-200 dark:divide-slate-800">
         {ordered.map((account, index) => (
           <li key={account.id}>
             <Link
-              href={withReturn(`/accounts/${account.id}`, {
-                href: here,
-                label: PORTFOLIO_COPY.title,
-              })}
+              href={withReturn(`/accounts/${account.id}`, here)}
               className="flex items-center gap-3 py-2.5 focus-visible:outline-2 focus-visible:outline-sky-500"
             >
               {/* Ties the row to its band, which is the only thing naming the colours. */}
@@ -670,10 +668,7 @@ function HoldingGroups({
           <li key={group.key}>
             {/* Links through, like an account row — the row is the way into where it is held. */}
             <Link
-              href={withReturn(`/holdings/${encodeURIComponent(group.key)}`, {
-                href: returnTo.href,
-                label: returnTo.label,
-              })}
+              href={withReturn(`/holdings/${encodeURIComponent(group.key)}`, returnTo)}
               className="flex items-start gap-3 py-2.5 focus-visible:outline-2 focus-visible:outline-sky-500"
             >
             <span className="min-w-0 flex-1">

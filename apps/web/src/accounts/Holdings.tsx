@@ -10,7 +10,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { Link } from 'wouter'
 import { readHoldings, type Holding } from './api.js'
-import { withReturn } from '../lib/back.js'
+import { withReturn, type BackTarget } from '../lib/back.js'
 import { cn } from '../lib/cn.js'
 import { formatShortDate } from '../net-worth/display.js'
 
@@ -29,12 +29,12 @@ import { formatShortDate } from '../net-worth/display.js'
 
 export function Holdings({
   accountId,
-  accountName,
+  returnTo,
   headingDate,
 }: {
   accountId: string
-  /** Names this account on the back control of the holding page a row opens. */
-  accountName: string
+  /** This account as it was reached, so a holding's back control continues the chain. */
+  returnTo: BackTarget
   /**
    * The date already shown beside the heading, so this does not repeat it.
    *
@@ -117,7 +117,7 @@ export function Holdings({
             holding={holding}
             previous={reading.previousMarketValues[holding.providerHoldingId]}
             total={total}
-            returnTo={{ href: `/accounts/${accountId}`, label: accountName }}
+            returnTo={returnTo}
           />
         ))}
       </ul>
@@ -139,7 +139,7 @@ function Row({
   previous: string | undefined
   total: bigint
   /** Where the holding page should send the reader back to. */
-  returnTo: { href: string; label: string }
+  returnTo: BackTarget
 }): ReactNode {
   const valueCents = parseDecimalToCents(holding.marketValue)
   const move = holdingMove(

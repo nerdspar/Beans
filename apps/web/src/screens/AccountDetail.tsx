@@ -22,7 +22,7 @@ import { AccountEditor, ManualBalanceForm } from '../accounts/AccountForms.js'
 import { listManagedAccounts, type ManagedAccount } from '../accounts/api.js'
 import { accountHealth, formatLastUpdated } from '../accounts/display.js'
 import { Holdings } from '../accounts/Holdings.js'
-import { useBackTarget } from '../lib/back.js'
+import { useBackTarget, useHere } from '../lib/back.js'
 import { CategoryChart } from '../charts/CategoryChart.js'
 import { cn } from '../lib/cn.js'
 import { SECTION_COLORS, SECTION_LABELS } from '../net-worth/colors.js'
@@ -145,6 +145,11 @@ function AccountView({
   accountMove: { change: ReturnType<typeof dayChange>; asOf: string } | null
 }): ReactNode {
   const back = useBackTarget({ href: '/', label: ACCOUNT_COPY.backToNetWorth })
+  /*
+   * This account *including how it was reached*, so a holding opened from here comes back to it and
+   * then continues back to wherever the account itself was opened from.
+   */
+  const here = useHere(account.name)
   const [sheet, setSheet] = useState<'none' | 'edit' | 'value'>('none')
   const [scrubIndex, setScrubIndex] = useState<number | null>(null)
   const queryClient = useQueryClient()
@@ -436,7 +441,7 @@ function AccountView({
           </div>
           <Holdings
             accountId={account.id}
-            accountName={account.name}
+            returnTo={here}
             headingDate={accountMove?.asOf ?? null}
           />
         </>
