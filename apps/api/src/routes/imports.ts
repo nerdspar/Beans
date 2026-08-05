@@ -110,7 +110,8 @@ export const importRoutes: FastifyPluginAsync<ImportRoutesOptions> = async (fast
       const imports = await withHouseholdContext(deps, user.id, async (context) => {
         const rows = await context.client.query<{
           id: string
-          original_filename: string
+          /** Encrypted, like every other user-supplied string. A filename names a person's bank. */
+          original_filename: Buffer | null
           status: string
           row_count: number
           committed_row_count: number | null
@@ -127,7 +128,15 @@ export const importRoutes: FastifyPluginAsync<ImportRoutesOptions> = async (fast
 
         return rows.rows.map((row) => ({
           id: row.id,
-          originalFilename: row.original_filename,
+          /*
+             Decrypted here, at the repository boundary, like every other bytea column.
+             
+             Returned raw it serializes as `{type:'Buffer',data:[…]}` — which React refuses to
+             render, taking the screen with it. Worth stating plainly: the failure was loud, but a
+             column that reaches a response undecrypted is a leak of ciphertext, and the only reason
+             this one was harmless is that nothing could read it.
+          */
+          originalFilename: context.cipher.decryptTextOrNull(row.original_filename) ?? '',
           status: row.status,
           rowCount: row.row_count,
           committedRowCount: row.committed_row_count,

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { type ReactNode } from 'react'
-import { Route, Switch } from 'wouter'
+import { Route, Switch, useLocation } from 'wouter'
 import { DesktopShell } from './shells/desktop/DesktopShell.js'
 import { MobileShell } from './shells/mobile/MobileShell.js'
 import { useIsDesktop } from './shells/use-shell.js'
@@ -16,6 +16,7 @@ import { RulesPanel } from './categories/RulesPanel.js'
 import { Household } from './screens/Household.js'
 import { Import } from './screens/Import.js'
 import { ManagementPage } from './navigation/ManagementPage.js'
+import { ScreenBoundary } from './lib/ScreenBoundary.js'
 import { Accounts } from './screens/Accounts.js'
 import { Portfolio } from './screens/Portfolio.js'
 import { CashFlow } from './screens/CashFlow.js'
@@ -64,6 +65,7 @@ export function App(): ReactNode {
 function Gate(): ReactNode {
   const session = useSession()
   const workingSet = useWorkingSet()
+  const [location] = useLocation()
 
   // Nothing at all while the session is unknown. A flash of the sign-in screen for an already
   // signed-in user is worse than a blank moment, and this resolves in one request.
@@ -84,7 +86,16 @@ function Gate(): ReactNode {
 
   return (
     <Shell>
-      <Routes />
+      {/*
+        Inside the shell, deliberately.
+        
+        A screen that throws should cost the reader that screen, not the navigation they need to
+        leave it — an unguarded throw unmounts the whole tree, which is a black page with no tabs
+        and no way back.
+      */}
+      <ScreenBoundary resetKey={location}>
+        <Routes />
+      </ScreenBoundary>
     </Shell>
   )
 }
