@@ -19,7 +19,7 @@ import {
   type CashFlowPeriod,
 } from '@beans/shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronRight, Search, X } from 'lucide-react'
+import { ChevronRight, Search } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'wouter'
 import { CumulativeFlow } from '../charts/CumulativeFlow.js'
@@ -594,9 +594,6 @@ export function CashFlow(): ReactNode {
                 scrubLabel={CASH_FLOW_COPY.runningTotal}
                 elapsedCount={elapsedDays}
               />
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                {CASH_FLOW_COPY.comparedWith}
-              </p>
             </section>
           )}
 
@@ -627,7 +624,6 @@ export function CashFlow(): ReactNode {
                     : null
             }
             held={heldLabel}
-            onClear={() => setPinned(null)}
           />
 
           {/* Kept below the chart: this is its table fallback as much as it is detail. */}
@@ -681,14 +677,23 @@ export function CashFlow(): ReactNode {
                     <li key={date} data-on-or-before={date}>
                       <h3
                         className={cn(
-                          'sticky top-0 z-10 py-1.5 text-xs font-medium tabular-nums',
                           /*
-                           * Fully opaque, not 95%. Rows pass *behind* this as the list scrolls, and
-                           * at 95% they showed through it as a faint moving smear — the one place in
-                           * the app where a translucent surface has something sliding under it.
+                           * Not sticky.
+                           *
+                           * Pinned, it had rows passing behind it — and a row is two lines tall
+                           * while this is one, so the bottom half of a row sat just under it,
+                           * orphaned from its payee and looking for all the world like text
+                           * bleeding into the date. Opacity and a rule made the edge clearer
+                           * without removing the half-row, because the half-row is what a sticky
+                           * header of a different height to its rows always produces.
+                           *
+                           * Scrolling with the group costs the date while deep inside one, which
+                           * with a handful of rows a day is a smaller price than a list that looks
+                           * broken every time it moves.
                            */
-                          'bg-slate-50 text-slate-500',
-                          'dark:bg-slate-950 dark:text-slate-400',
+                          'pb-1.5 pt-3 text-xs font-semibold tabular-nums',
+                          'border-b border-slate-200 text-slate-700',
+                          'dark:border-slate-800 dark:text-slate-300',
                         )}
                       >
                         {formatShortDate(date)}
@@ -746,7 +751,6 @@ export function CashFlow(): ReactNode {
           selectedDayIndex={pinnedDayIndex === -1 ? null : pinnedDayIndex}
           selectedMonthIndex={pinnedMonthIndex === -1 ? null : pinnedMonthIndex}
           heldLabel={heldLabel}
-          onClear={() => setPinned(null)}
           reading={
             monthReading !== null
               ? formatMonth(monthReading.month)
@@ -1182,7 +1186,6 @@ function Breakdown({
   selectedMonthIndex,
   reading,
   heldLabel,
-  onClear,
   totals,
   totalCents,
   label,
@@ -1207,7 +1210,6 @@ function Breakdown({
   reading: string | null
   /** What is held, if anything. Rendered as the chip once the pointer lets go. */
   heldLabel: string | null
-  onClear: () => void
   totals: readonly { categoryId: string | null; cents: bigint }[]
   totalCents: bigint
   label: string
@@ -1263,9 +1265,6 @@ function Breakdown({
             }}
             scrubLabel={CASH_FLOW_COPY.runningTotal}
           />
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            {CASH_FLOW_COPY.comparedWith}
-          </p>
         </section>
       )}
 
@@ -1290,7 +1289,7 @@ function Breakdown({
         />
       )}
 
-      <ReadingSlot reading={reading} held={heldLabel} onClear={onClear} />
+      <ReadingSlot reading={reading} held={heldLabel} />
 
       {totals.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
@@ -1385,11 +1384,9 @@ function describeMonth(
 function ReadingSlot({
   reading,
   held,
-  onClear,
 }: {
   reading: string | null
   held: string | null
-  onClear: () => void
 }): ReactNode {
   return (
     <div className="mt-2 flex min-h-7 items-center">
@@ -1398,20 +1395,17 @@ function ReadingSlot({
           {reading}
         </p>
       ) : held !== null ? (
-        <button
-          type="button"
-          onClick={onClear}
-          className={cn(
-            'inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-full px-2.5 text-xs font-medium',
-            'bg-sky-100 text-sky-900 hover:bg-sky-200',
-            'dark:bg-sky-950 dark:text-sky-200 dark:hover:bg-sky-900',
-            'focus-visible:outline-2 focus-visible:outline-sky-500',
-          )}
-        >
-          <span className="truncate">{CASH_FLOW_COPY.showingSelection(held)}</span>
-          <X className="size-3.5 shrink-0" aria-hidden />
-          <span className="sr-only">{CASH_FLOW_COPY.clearSelection}</span>
-        </button>
+        /*
+         * A sentence, not a chip.
+         *
+         * Tapping the bar again clears it, so a button to do the same thing was a second control
+         * for one action — and a bordered pill reads as something you must dismiss rather than
+         * something you did. What is worth keeping is the statement: without it the totals below
+         * describe a month while nothing on screen says which.
+         */
+        <p role="status" className="truncate text-xs font-medium tabular-nums">
+          {CASH_FLOW_COPY.showingSelection(held)}
+        </p>
       ) : null}
     </div>
   )

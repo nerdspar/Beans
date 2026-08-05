@@ -44,7 +44,6 @@ export const CASH_FLOW_COPY = {
    * The single-month view. "Compared with" rather than "vs" because the dotted line is doing real
    * work — without naming it, a second line on a chart is decoration nobody can interpret.
    */
-  comparedWith: 'Dotted: the period before, day by day.',
   runningTotal: 'Running total',
   byMonthReading: 'Month',
 
@@ -56,7 +55,6 @@ export const CASH_FLOW_COPY = {
    * the figures below describe a selection rather than the range.
    */
   showingSelection: (label: string): string => `Showing ${label}`,
-  clearSelection: 'Clear',
   throughDay: (label: string): string => `Through ${label}`,
   activityEmpty: 'Nothing posted in this period.',
 
