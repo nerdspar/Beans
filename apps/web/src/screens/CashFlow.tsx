@@ -25,7 +25,6 @@ import { Link } from 'wouter'
 import { CumulativeFlow } from '../charts/CumulativeFlow.js'
 import { MonthlyBars } from '../charts/MonthlyBars.js'
 import { nextSelection, type ChartSelection } from '../charts/selection.js'
-import { useMeasuredHeight } from '../lib/use-measured-height.js'
 import { useSessionFlag } from '../lib/use-session-flag.js'
 import { SECTION_COLORS } from '../net-worth/colors.js'
 import { formatAxisValue, formatShortDate } from '../net-worth/display.js'
@@ -88,8 +87,6 @@ export function CashFlow(): ReactNode {
   /** Open by default; folded away it holds for this visit and returns on the next one. */
   const [caveatsOpen, setCaveatsOpen] = useSessionFlag('beans.cash-flow.caveats', true)
 
-  /** How tall the pinned header is, so the chart's block can sit exactly under it. */
-  const [headerRef, headerHeight] = useMeasuredHeight()
   const listRef = useRef<HTMLUListElement>(null)
   /*
    * Which side is driving.
@@ -468,27 +465,7 @@ export function CashFlow(): ReactNode {
   )
 
   return (
-    /*
-     * No top padding on the container.
-     *
-     * Sticky cannot pin an element above its containing block's *content* box, so a padded
-     * container means the header slides that padding's worth before it can hold — twenty pixels of
-     * movement that looked like the freeze arriving late. The padding lives inside the pinned block
-     * instead, where it moves with it.
-     */
-    <div className="mx-auto max-w-2xl px-5 pb-16">
-      {/*
-        The first of two frozen blocks: title, tabs and caveats.
-        
-        Pinning the chart alone meant the detail could not begin moving until all of this had
-        scrolled away — and there is rarely that much page beneath the chart, so it arrived at the
-        top exactly as the last row left the bottom. Freezing from the first pixel instead, with the
-        chart's block pinned directly under this one, leaves only the detail scrolling.
-      */}
-      <div
-        ref={headerRef}
-        className="sticky top-[var(--beans-inset-top)] z-20 -mx-5 bg-slate-50 px-5 pt-5 dark:bg-slate-950"
-      >
+    <div className="mx-auto max-w-2xl px-5 pb-16 pt-5">
       <div className="flex items-baseline justify-between gap-3">
         <h1 className="text-2xl font-semibold">{CASH_FLOW_COPY.title}</h1>
         <RangeControl
@@ -565,7 +542,6 @@ export function CashFlow(): ReactNode {
         open={caveatsOpen}
         onToggle={setCaveatsOpen}
       />
-      </div>
 
       {summary.periods.length === 0 ? (
         <Message title={CASH_FLOW_COPY.empty} detail={CASH_FLOW_COPY.emptyDetail} />
@@ -587,17 +563,7 @@ export function CashFlow(): ReactNode {
             own scroll box, so the page barely moves and a pinned block would cost height for
             nothing.
           */}
-          <div
-            className={cn(
-              !singleMonth && 'sticky z-10 -mx-5 bg-slate-50 px-5 pb-2 dark:bg-slate-950',
-            )}
-            /* Directly under the block above, whose height changes when the caveats collapse. */
-            style={
-              singleMonth
-                ? undefined
-                : { top: `calc(var(--beans-inset-top) + ${headerHeight}px)` }
-            }
-          >
+          <div>
           <div className="mt-4 grid grid-cols-3 gap-3">
             <Total
               label={CASH_FLOW_COPY.income}
@@ -809,7 +775,6 @@ export function CashFlow(): ReactNode {
           selectedDayIndex={pinnedDayIndex === -1 ? null : pinnedDayIndex}
           selectedMonthIndex={pinnedMonthIndex === -1 ? null : pinnedMonthIndex}
           heldLabel={heldLabel}
-          headerOffset={headerHeight}
           reading={
             monthReading !== null
               ? formatMonth(monthReading.month)
@@ -1245,7 +1210,6 @@ function Breakdown({
   selectedMonthIndex,
   reading,
   heldLabel,
-  headerOffset,
   totals,
   totalCents,
   label,
@@ -1270,8 +1234,6 @@ function Breakdown({
   reading: string | null
   /** What is held, if anything. Rendered as the chip once the pointer lets go. */
   heldLabel: string | null
-  /** Where the block above ends, so this one pins directly beneath it rather than over it. */
-  headerOffset: number
   totals: readonly { categoryId: string | null; cents: bigint }[]
   totalCents: bigint
   label: string
@@ -1284,15 +1246,7 @@ function Breakdown({
 
   return (
     <>
-      {/*
-        The total and the chart pin together, for the same reason as the combined tab: pinning the
-        chart alone means it only reaches the top after everything above it has gone, and the
-        category list rarely leaves that much page.
-      */}
-      <div
-        className="sticky z-10 -mx-5 bg-slate-50 px-5 pb-2 dark:bg-slate-950"
-        style={{ top: `calc(var(--beans-inset-top) + ${headerOffset}px)` }}
-      >
+      <div>
       <div className="mt-4">
         {/* `exactOptionalPropertyTypes`: an absent tone and an explicit undefined are not the same. */}
         {label === CASH_FLOW_COPY.income ? (
