@@ -1,11 +1,5 @@
-import {
-  useCallback,
-  useMemo,
-  useRef,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
-  type ReactNode,
-} from 'react'
+import { useCallback, useMemo, type ReactNode } from 'react'
+import { useChartScrub } from './use-chart-scrub.js'
 import { cn } from '../lib/cn.js'
 
 /**
@@ -47,6 +41,10 @@ export type MonthlyBarsProps = {
   onScrub?: ((index: number | null) => void) | undefined
   describePoint?: ((index: number) => string) | undefined
   scrubLabel?: string
+  /** A committed reading: a tap, or the end of a drag. See use-chart-scrub. */
+  onSelect?: ((index: number, viaTap: boolean) => void) | undefined
+  /** The pinned month, drawn as held rather than as hovered. */
+  selectedIndex?: number | null
 }
 
 /**
@@ -90,55 +88,22 @@ export function MonthlyBars({
   onScrub,
   describePoint,
   scrubLabel,
+  onSelect,
+  selectedIndex = null,
 }: MonthlyBarsProps): ReactNode {
-  const plotRef = useRef<HTMLDivElement>(null)
-
-  const scrubTo = useCallback(
-    (clientX: number): void => {
-      const box = plotRef.current?.getBoundingClientRect()
-      if (box === undefined) return
-      const index = monthAtPosition(clientX - box.left, box.width, periods.length)
-      if (index !== null) onScrub?.(index)
-    },
-    [periods.length, onScrub],
+  const resolveIndex = useCallback(
+    (offsetX: number, width: number) => monthAtPosition(offsetX, width, periods.length),
+    [periods.length],
   )
 
-  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    event.currentTarget.setPointerCapture(event.pointerId)
-    scrubTo(event.clientX)
-  }
+  const scrub = useChartScrub({
+    count: periods.length,
+    resolveIndex,
+    onScrub,
+    onSelect,
+    scrubIndex,
+  })
 
-  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    const dragging = event.currentTarget.hasPointerCapture(event.pointerId)
-    if (event.pointerType === 'mouse' || dragging) scrubTo(event.clientX)
-  }
-
-  const endScrub = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
-    onScrub?.(null)
-  }
-
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (periods.length === 0 || onScrub === undefined) return
-
-    const last = periods.length - 1
-    const from = scrubIndex ?? last
-    const absolute: Record<string, number | null> = { Escape: null, Home: 0, End: last }
-    // A month at a time; there is no larger unit worth jumping by on a chart of twelve.
-    const step: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1 }
-
-    if (event.key in absolute) {
-      onScrub(absolute[event.key] ?? null)
-    } else if (event.key in step) {
-      onScrub(Math.min(last, Math.max(0, from + (step[event.key] ?? 0))))
-    } else {
-      return
-    }
-
-    event.preventDefault()
-  }
   const geometry = useMemo(() => {
     if (periods.length === 0) return null
 
@@ -214,6 +179,9 @@ export function MonthlyBars({
 
   if (geometry === null) return null
 
+  /* A hover previews over a pin; leaving the chart restores what was pinned. */
+  const activeIndex = scrubIndex ?? selectedIndex
+
   const showIncome = mode !== 'spending'
   const showSpending = mode !== 'income'
 
@@ -234,13 +202,18 @@ export function MonthlyBars({
           middle of it would be pointing at a coordinate the data does not have. Drawn first, so the
           bars stay legible on top of it.
         */}
-        {scrubIndex !== null && geometry.bars[scrubIndex] !== undefined && (
+        {activeIndex !== null && geometry.bars[activeIndex] !== undefined && (
           <rect
-            x={(geometry.bars[scrubIndex]?.centre ?? 0) - geometry.slot / 2}
+            x={(geometry.bars[activeIndex]?.centre ?? 0) - geometry.slot / 2}
             y={0}
             width={geometry.slot}
             height={geometry.plotHeight}
-            className="fill-slate-400/15 dark:fill-slate-400/10"
+            className={cn(
+              // A pin is held, a hover is passing. The held one reads stronger.
+              selectedIndex !== null && scrubIndex === null
+                ? 'fill-slate-400/25 dark:fill-slate-400/20'
+                : 'fill-slate-400/15 dark:fill-slate-400/10',
+            )}
           />
         )}
 
@@ -322,7 +295,7 @@ export function MonthlyBars({
               'pointer-events-none absolute rounded-full border bg-slate-500',
               'border-white dark:border-slate-950 dark:bg-slate-300',
               // The month being read gets the bigger dot, so the reading has a definite place.
-              index === scrubIndex ? 'size-3 border-2' : 'size-2',
+              index === activeIndex ? 'size-3 border-2' : 'size-2',
             )}
             style={{
               left: `${(bar.centre / geometry.width) * 100}%`,
@@ -346,20 +319,20 @@ export function MonthlyBars({
 
       {onScrub !== undefined && (
         <div
-          ref={plotRef}
+          ref={scrub.plotRef}
           role="slider"
           tabIndex={0}
           aria-label={scrubLabel ?? 'Read by month'}
           aria-valuemin={0}
           aria-valuemax={Math.max(0, periods.length - 1)}
-          aria-valuenow={scrubIndex ?? Math.max(0, periods.length - 1)}
-          aria-valuetext={describePoint?.(scrubIndex ?? periods.length - 1)}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={endScrub}
-          onPointerCancel={endScrub}
-          onPointerLeave={endScrub}
-          onKeyDown={onKeyDown}
+          aria-valuenow={scrubIndex ?? selectedIndex ?? Math.max(0, periods.length - 1)}
+          aria-valuetext={describePoint?.(scrubIndex ?? selectedIndex ?? periods.length - 1)}
+          onPointerDown={scrub.onPointerDown}
+          onPointerMove={scrub.onPointerMove}
+          onPointerUp={scrub.onPointerUp}
+          onPointerCancel={scrub.onPointerCancel}
+          onPointerLeave={scrub.onPointerLeave}
+          onKeyDown={scrub.onKeyDown}
           onBlur={() => onScrub(null)}
           className={cn(
             'absolute inset-x-0 top-0 cursor-crosshair touch-pan-y',

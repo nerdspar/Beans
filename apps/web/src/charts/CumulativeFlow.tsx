@@ -1,12 +1,6 @@
-import {
-  useCallback,
-  useMemo,
-  useRef,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
-  type ReactNode,
-} from 'react'
+import { useCallback, useMemo, type ReactNode } from 'react'
 import { indexAtPosition } from './AreaChart.js'
+import { useChartScrub } from './use-chart-scrub.js'
 import { labelPrecision, niceTicks } from './axis.js'
 import { cn } from '../lib/cn.js'
 
@@ -47,6 +41,10 @@ export type CumulativeFlowProps = {
   onScrub?: ((index: number | null) => void) | undefined
   describePoint?: ((index: number) => string) | undefined
   scrubLabel?: string
+  /** A committed reading: a tap, or the end of a drag. See use-chart-scrub. */
+  onSelect?: ((index: number, viaTap: boolean) => void) | undefined
+  /** The pinned day, held after the pointer leaves. */
+  selectedIndex?: number | null
 
   /**
    * How many points are real rather than future.
@@ -99,8 +97,23 @@ export function CumulativeFlow({
   describePoint,
   scrubLabel,
   elapsedCount,
+  onSelect,
+  selectedIndex = null,
 }: CumulativeFlowProps): ReactNode {
-  const plotRef = useRef<HTMLDivElement>(null)
+  const resolveIndex = useCallback(
+    (offsetX: number, width: number) => indexAtPosition(offsetX, width, series.length),
+    [series.length],
+  )
+
+  const scrub = useChartScrub({
+    count: series.length,
+    resolveIndex,
+    onScrub,
+    onSelect,
+    scrubIndex,
+    // A week, because stepping through a month one day at a time is not a real option.
+    pageStep: 7,
+  })
 
   const geometry = useMemo(() => {
     if (series.length === 0) return null
@@ -181,60 +194,11 @@ export function CumulativeFlow({
     }
   }, [series, comparison, height, elapsedCount, formatValue])
 
-  const scrubTo = useCallback(
-    (clientX: number): void => {
-      const box = plotRef.current?.getBoundingClientRect()
-      if (box === undefined) return
-      const index = indexAtPosition(clientX - box.left, box.width, series.length)
-      if (index !== null) onScrub?.(index)
-    },
-    [series.length, onScrub],
-  )
-
-  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    event.currentTarget.setPointerCapture(event.pointerId)
-    scrubTo(event.clientX)
-  }
-
-  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    const dragging = event.currentTarget.hasPointerCapture(event.pointerId)
-    if (event.pointerType === 'mouse' || dragging) scrubTo(event.clientX)
-  }
-
-  const endScrub = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
-    onScrub?.(null)
-  }
-
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (series.length === 0 || onScrub === undefined) return
-
-    const last = series.length - 1
-    const from = scrubIndex ?? last
-    const absolute: Record<string, number | null> = { Escape: null, Home: 0, End: last }
-    const step: Record<string, number> = {
-      ArrowLeft: -1,
-      ArrowRight: 1,
-      PageUp: -7,
-      PageDown: 7,
-    }
-
-    if (event.key in absolute) {
-      onScrub(absolute[event.key] ?? null)
-    } else if (event.key in step) {
-      onScrub(Math.min(last, Math.max(0, from + (step[event.key] ?? 0))))
-    } else {
-      return
-    }
-
-    event.preventDefault()
-  }
-
   if (geometry === null) return null
 
-  const marker = scrubIndex === null ? null : geometry.at(scrubIndex)
+  /* A hover previews over a pin; leaving the chart restores what was pinned. */
+  const activeIndex = scrubIndex ?? selectedIndex
+  const marker = activeIndex === null ? null : geometry.at(activeIndex)
 
   return (
     <div className={cn('relative', className)}>
@@ -320,20 +284,20 @@ export function CumulativeFlow({
 
       {onScrub !== undefined && (
         <div
-          ref={plotRef}
+          ref={scrub.plotRef}
           role="slider"
           tabIndex={0}
           aria-label={scrubLabel ?? 'Read by date'}
           aria-valuemin={0}
           aria-valuemax={Math.max(0, series.length - 1)}
-          aria-valuenow={scrubIndex ?? Math.max(0, series.length - 1)}
-          aria-valuetext={describePoint?.(scrubIndex ?? series.length - 1)}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={endScrub}
-          onPointerCancel={endScrub}
-          onPointerLeave={endScrub}
-          onKeyDown={onKeyDown}
+          aria-valuenow={activeIndex ?? Math.max(0, series.length - 1)}
+          aria-valuetext={describePoint?.(activeIndex ?? series.length - 1)}
+          onPointerDown={scrub.onPointerDown}
+          onPointerMove={scrub.onPointerMove}
+          onPointerUp={scrub.onPointerUp}
+          onPointerCancel={scrub.onPointerCancel}
+          onPointerLeave={scrub.onPointerLeave}
+          onKeyDown={scrub.onKeyDown}
           onBlur={() => onScrub(null)}
           className={cn(
             'absolute inset-x-0 top-0 cursor-crosshair touch-pan-y',

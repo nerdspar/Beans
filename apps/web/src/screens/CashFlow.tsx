@@ -19,11 +19,12 @@ import {
   type CashFlowPeriod,
 } from '@beans/shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronRight, Search } from 'lucide-react'
+import { ChevronRight, Search, X } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'wouter'
 import { CumulativeFlow } from '../charts/CumulativeFlow.js'
 import { MonthlyBars } from '../charts/MonthlyBars.js'
+import { nextSelection, type ChartSelection } from '../charts/selection.js'
 import { SECTION_COLORS } from '../net-worth/colors.js'
 import { formatAxisValue, formatShortDate } from '../net-worth/display.js'
 import { cn } from '../lib/cn.js'
@@ -64,6 +65,15 @@ export function CashFlow(): ReactNode {
   const [scrubIndex, setScrubIndex] = useState<number | null>(null)
   /** The month being read off the bars. Separate from the daily reading — different charts. */
   const [monthIndex, setMonthIndex] = useState<number | null>(null)
+
+  /**
+   * The held selection, stored as a date rather than an index.
+   *
+   * An index means a different thing under a different series — index 9 is a different month once
+   * the tab changes the direction being accumulated. A date survives that, which is what lets the
+   * three tabs be three views of the same selected month.
+   */
+  const [pinned, setPinned] = useState<ChartSelection | null>(null)
   const listRef = useRef<HTMLUListElement>(null)
   /*
    * Which side is driving.
@@ -222,6 +232,58 @@ export function CashFlow(): ReactNode {
    * The month under the pointer, clamped. A sync landing mid-read can shorten the list, and an
    * index past the end would read as zero — a month the household never had.
    */
+  /**
+   * What a selection narrows the figures below to.
+   *
+   * A pinned month is that month. A pinned day is **everything up to and including it**, because
+   * that is what the line says at that point — it is a running total, and a breakdown of the single
+   * day would disagree with the number the chart is showing above it.
+   */
+  const selection = useMemo(() => {
+    if (pinned === null) return null
+
+    const rows =
+      pinned.kind === 'month'
+        ? entries.filter((entry) => entry.postedDate.slice(0, 7) === pinned.month)
+        : entries.filter((entry) => entry.postedDate <= pinned.date)
+
+    const cashFlow = rows.map((entry) => ({
+      id: entry.id,
+      postedDate: entry.postedDate,
+      amountCents: entry.amountCents,
+      status: entry.status,
+      categoryId: entry.categoryId,
+      categoryKind:
+        entry.categoryId === null
+          ? undefined
+          : workingSet.categories.get(entry.categoryId)?.kind,
+    }))
+
+    const spending = spendingByCategory(cashFlow, workingSet.confirmedTransferIds)
+    const income = incomeByCategory(cashFlow, workingSet.confirmedTransferIds)
+
+    return {
+      label:
+        pinned.kind === 'month'
+          ? formatMonth(pinned.month)
+          : CASH_FLOW_COPY.throughDay(formatShortDate(pinned.date)),
+      summary: summarizeCashFlow(cashFlow, workingSet.confirmedTransferIds),
+      byCategory: spending,
+      byIncomeCategory: income,
+      uncategorizedSpending: uncategorizedTotal(spending),
+      uncategorizedIncome: uncategorizedTotal(income),
+      rows,
+    }
+  }, [pinned, entries, workingSet.categories, workingSet.confirmedTransferIds])
+
+  /** The index of the pinned point in the current series, for the chart to hold. */
+  const pinnedDayIndex =
+    pinned?.kind === 'day' ? daily.findIndex((point) => point.date === pinned.date) : -1
+  const pinnedMonthIndex =
+    pinned?.kind === 'month'
+      ? summary.periods.findIndex((period) => period.month === pinned.month)
+      : -1
+
   const dailyReading =
     scrubIndex === null ? null : (daily[Math.min(scrubIndex, daily.length - 1)] ?? null)
 
@@ -229,6 +291,33 @@ export function CashFlow(): ReactNode {
     monthIndex === null
       ? null
       : (summary.periods[Math.min(monthIndex, summary.periods.length - 1)] ?? null)
+
+  /**
+   * A committed reading.
+   *
+   * Only a tap toggles. A drag ends on the index it was already reading, so treating release as a
+   * toggle would clear the selection the instant a finger lifted — which is the whole interaction
+   * on a phone.
+   */
+  const selectDay = useCallback(
+    (index: number, viaTap: boolean): void => {
+      const date = daily[index]?.date
+      if (date === undefined) return
+
+      setPinned((current) => nextSelection(current, { kind: 'day', date }, viaTap))
+    },
+    [daily],
+  )
+
+  const selectMonth = useCallback(
+    (index: number, viaTap: boolean): void => {
+      const month = summary.periods[index]?.month
+      if (month === undefined) return
+
+      setPinned((current) => nextSelection(current, { kind: 'month', month }, viaTap))
+    },
+    [summary.periods],
+  )
 
   const onScrub = useCallback(
     (index: number | null): void => {
@@ -291,6 +380,11 @@ export function CashFlow(): ReactNode {
 
   const pending = proposals.data ?? []
 
+  /* Everything below the chart reads from the selection when there is one. */
+  const shownSummary = selection?.summary ?? summary
+  const shownSpending = selection?.byCategory ?? byCategory
+  const shownIncome = selection?.byIncomeCategory ?? byIncomeCategory
+
   /*
    * What the unconfirmed proposals are worth.
    *
@@ -311,6 +405,8 @@ export function CashFlow(): ReactNode {
           onChange={(next) => {
             setScrubIndex(null)
             setMonthIndex(null)
+            // A new range rewrites which months and days exist, so a held one may no longer be in it.
+            setPinned(null)
             setRange(next)
           }}
         />
@@ -342,7 +438,12 @@ export function CashFlow(): ReactNode {
             role="tab"
             aria-selected={tab === value}
             onClick={() => {
-              // The index would point at a different day or month under the next tab's series.
+              /*
+               * Transient readings are indexes and would point somewhere else under the next tab's
+               * series. The pin is a date, so it survives — the three tabs are three views of the
+               * same selected month, and losing it on every switch would make comparing them a
+               * chore.
+               */
               setScrubIndex(null)
               setMonthIndex(null)
               setTab(value)
@@ -360,10 +461,38 @@ export function CashFlow(): ReactNode {
         ))}
       </div>
 
+      {/*
+        The only visible statement that the figures below describe a selection rather than the
+        range, and the only way out that always works — tapping the same bar clears it, but hitting
+        the same day twice on a 31-day line is not a thing anyone should have to do.
+      */}
+      {selection !== null && (
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPinned(null)}
+            className={cn(
+              'inline-flex min-h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium',
+              'bg-sky-100 text-sky-900 hover:bg-sky-200',
+              'dark:bg-sky-950 dark:text-sky-200 dark:hover:bg-sky-900',
+              'focus-visible:outline-2 focus-visible:outline-sky-500',
+            )}
+          >
+            {CASH_FLOW_COPY.showingSelection(selection.label)}
+            <X className="size-3.5" aria-hidden />
+            <span className="sr-only">{CASH_FLOW_COPY.clearSelection}</span>
+          </button>
+        </div>
+      )}
+
       <Caveats
         pendingCount={pending.length}
         pendingCents={pendingCents}
-        uncategorizedCents={tab === 'income' ? uncategorizedIncome : uncategorizedSpending}
+        uncategorizedCents={
+          tab === 'income'
+            ? (selection?.uncategorizedIncome ?? uncategorizedIncome)
+            : (selection?.uncategorizedSpending ?? uncategorizedSpending)
+        }
         direction={tab === 'income' ? 'income' : 'spending'}
         onReview={() => setShowProposals(true)}
       />
@@ -379,17 +508,17 @@ export function CashFlow(): ReactNode {
           <div className="mt-4 grid grid-cols-3 gap-3">
             <Total
               label={CASH_FLOW_COPY.income}
-              cents={monthReading?.incomeCents ?? summary.incomeCents}
+              cents={monthReading?.incomeCents ?? shownSummary.incomeCents}
               tone="income"
             />
             {/* Negated for display only. It stays negative everywhere else so it adds directly. */}
             <Total
               label={CASH_FLOW_COPY.spending}
-              cents={-(monthReading?.spendingCents ?? summary.spendingCents)}
+              cents={-(monthReading?.spendingCents ?? shownSummary.spendingCents)}
             />
             <Total
               label={CASH_FLOW_COPY.net}
-              cents={monthReading?.netCents ?? summary.netCents}
+              cents={monthReading?.netCents ?? shownSummary.netCents}
               tone="net"
             />
           </div>
@@ -434,6 +563,8 @@ export function CashFlow(): ReactNode {
                 formatValue={(cents, digits) => formatAxisValue(cents, 'household', digits)}
                 scrubIndex={scrubIndex}
                 onScrub={onScrub}
+                onSelect={selectDay}
+                selectedIndex={pinnedDayIndex === -1 ? null : pinnedDayIndex}
                 describePoint={(index) => {
                   const point = daily[Math.min(Math.max(index, 0), daily.length - 1)]
                   return point === undefined
@@ -458,6 +589,8 @@ export function CashFlow(): ReactNode {
               averageLabel={CASH_FLOW_COPY.average}
               scrubIndex={monthIndex}
               onScrub={setMonthIndex}
+              onSelect={selectMonth}
+              selectedIndex={pinnedMonthIndex === -1 ? null : pinnedMonthIndex}
               describePoint={(index) => describeMonth(summary.periods, index, 'net')}
               scrubLabel={CASH_FLOW_COPY.byMonthReading}
             />
@@ -468,11 +601,13 @@ export function CashFlow(): ReactNode {
             <>
               <h2 className="mt-6 text-sm font-semibold">{CASH_FLOW_COPY.byMonth}</h2>
               <ul className="mt-2 space-y-3">
-                {[...summary.periods].reverse().map((period) => (
+                {[...(selection === null ? summary.periods : shownSummary.periods)]
+                  .reverse()
+                  .map((period) => (
                   <li key={period.month}>
-                    <MonthRow period={period} scale={largestMonth(summary.periods)} />
-                  </li>
-                ))}
+                      <MonthRow period={period} scale={largestMonth(summary.periods)} />
+                    </li>
+                  ))}
               </ul>
             </>
           )}
@@ -506,7 +641,7 @@ export function CashFlow(): ReactNode {
                     category. A heading says it once for the group, and the row spends its second
                     line on the thing that actually differs.
                   */}
-                  {groupByDate(entries).map(([date, rows]) => (
+                  {groupByDate(selection?.rows ?? entries).map(([date, rows]) => (
                     <li key={date} data-on-or-before={date}>
                       <h3
                         className={cn(
@@ -565,6 +700,10 @@ export function CashFlow(): ReactNode {
           onScrub={onScrub}
           monthIndex={monthIndex}
           onMonthScrub={setMonthIndex}
+          onSelectDay={selectDay}
+          onSelectMonth={selectMonth}
+          selectedDayIndex={pinnedDayIndex === -1 ? null : pinnedDayIndex}
+          selectedMonthIndex={pinnedMonthIndex === -1 ? null : pinnedMonthIndex}
           reading={
             monthReading !== null
               ? {
@@ -582,8 +721,10 @@ export function CashFlow(): ReactNode {
                   }
                 : null
           }
-          totals={tab === 'income' ? byIncomeCategory : byCategory}
-          totalCents={tab === 'income' ? summary.incomeCents : -summary.spendingCents}
+          totals={tab === 'income' ? shownIncome : shownSpending}
+          totalCents={
+            tab === 'income' ? shownSummary.incomeCents : -shownSummary.spendingCents
+          }
           label={tab === 'income' ? CASH_FLOW_COPY.income : CASH_FLOW_COPY.spending}
           heading={
             tab === 'income' ? CASH_FLOW_COPY.byCategoryIncome : CASH_FLOW_COPY.byCategory
@@ -976,6 +1117,10 @@ function Breakdown({
   onScrub,
   monthIndex,
   onMonthScrub,
+  onSelectDay,
+  onSelectMonth,
+  selectedDayIndex,
+  selectedMonthIndex,
   reading,
   totals,
   totalCents,
@@ -993,6 +1138,10 @@ function Breakdown({
   onScrub: (index: number | null) => void
   monthIndex: number | null
   onMonthScrub: (index: number | null) => void
+  onSelectDay: (index: number, viaTap: boolean) => void
+  onSelectMonth: (index: number, viaTap: boolean) => void
+  selectedDayIndex: number | null
+  selectedMonthIndex: number | null
   /** What is being pointed at, if anything. Replaces the range total while it is. */
   reading: { label: string; cents: bigint } | null
   totals: readonly { categoryId: string | null; cents: bigint }[]
@@ -1042,6 +1191,8 @@ function Breakdown({
             elapsedCount={elapsedCount}
             scrubIndex={scrubIndex}
             onScrub={onScrub}
+            onSelect={onSelectDay}
+            selectedIndex={selectedDayIndex}
             describePoint={(index) => {
               const point = daily[Math.min(Math.max(index, 0), daily.length - 1)]
               return point === undefined
@@ -1065,6 +1216,8 @@ function Breakdown({
           mode={mode}
           scrubIndex={monthIndex}
           onScrub={onMonthScrub}
+          onSelect={onSelectMonth}
+          selectedIndex={selectedMonthIndex}
           describePoint={(index) => describeMonth(periods, index, mode)}
           scrubLabel={CASH_FLOW_COPY.byMonthReading}
           /*

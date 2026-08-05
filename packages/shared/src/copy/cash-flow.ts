@@ -47,6 +47,17 @@ export const CASH_FLOW_COPY = {
   comparedWith: 'Dotted: the period before, day by day.',
   runningTotal: 'Running total',
   byMonthReading: 'Month',
+
+  /*
+   * A pinned selection needs a way out that is not "hit the same pixel again".
+   *
+   * Tapping the same bar clears it, which is fine on a bar and impossible on a 31-day line — so the
+   * chip is the escape hatch that always works, and it doubles as the only visible statement that
+   * the figures below describe a selection rather than the range.
+   */
+  showingSelection: (label: string): string => `Showing ${label}`,
+  clearSelection: 'Clear',
+  throughDay: (label: string): string => `Through ${label}`,
   activityHeading: 'What happened',
   activityEmpty: 'Nothing posted in this period.',
 

@@ -87,6 +87,7 @@ export function DevPreview(): ReactNode {
   const [categoryScrub, setCategoryScrub] = useState<number | null>(null)
   const [flowScrub, setFlowScrub] = useState<number | null>(null)
   const [monthScrub, setMonthScrub] = useState<number | null>(null)
+  const [pinnedMonth, setPinnedMonth] = useState<number | null>(null)
 
   const scrubbed = scrub === null ? undefined : SERIES[scrub]
   const category = categoryScrub === null ? undefined : SERIES[categoryScrub]
@@ -157,9 +158,18 @@ export function DevPreview(): ReactNode {
           averageLabel={(amount) => `Avg ${amount}`}
           scrubIndex={monthScrub}
           onScrub={setMonthScrub}
+          onSelect={(index, viaTap) =>
+            setPinnedMonth((current) =>
+              viaTap && current === index ? null : index,
+            )
+          }
+          selectedIndex={pinnedMonth}
           describePoint={(index) => MONTHS[index]?.month ?? ''}
           scrubLabel="Read by month"
         />
+        <p className="text-xs text-slate-500">
+          Pinned: {pinnedMonth === null ? 'none' : (MONTHS[pinnedMonth]?.month ?? '')}
+        </p>
       </section>
 
       <section className="space-y-2">
