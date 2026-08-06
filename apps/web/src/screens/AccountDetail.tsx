@@ -313,6 +313,17 @@ function AccountView({
         )}
       </div>
 
+      {/*
+        Only on failure, never while loading. A load resolves in a moment and a message that
+        appears and vanishes on every visit is noise; a failure is permanent, and without this the
+        buttons above are greyed out forever with nothing saying why.
+      */}
+      {managed.isError && (
+        <p role="status" className="px-5 pt-2 text-xs text-slate-500 dark:text-slate-400">
+          {ACCOUNT_COPY.editUnavailable}
+        </p>
+      )}
+
       <div className="flex items-baseline justify-between gap-3 px-5 pt-4">
         <div>
           <div className="text-3xl font-semibold tabular-nums">{formatCents(total)}</div>

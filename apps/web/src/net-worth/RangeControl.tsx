@@ -113,7 +113,7 @@ export function RangeControl({
               })}
               <li>
                 <RangeOption
-                  label="Custom"
+                  label={RANGE_COPY.custom}
                   detail={rangeDetail(value)}
                   selected={value.kind === 'custom'}
                   onClick={() => setShowCustom(true)}
@@ -203,8 +203,8 @@ function CustomRangeForm({
       }}
     >
       <div className="flex gap-3">
-        <DateField label="Start" value={start} max={today} onChange={setStart} />
-        <DateField label="End" value={end} max={today} onChange={setEnd} />
+        <DateField label={RANGE_COPY.start} value={start} max={today} onChange={setStart} />
+        <DateField label={RANGE_COPY.end} value={end} max={today} onChange={setEnd} />
       </div>
 
       {/*
@@ -232,7 +232,7 @@ function CustomRangeForm({
           'dark:disabled:bg-slate-800 dark:disabled:text-slate-600',
         )}
       >
-        Apply
+        {RANGE_COPY.apply}
       </button>
     </form>
   )

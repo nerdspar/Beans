@@ -42,33 +42,47 @@ export function ChartTable({ label, columns, rows, sampledFrom }: ChartTableProp
 
   const sampled = sampledFrom !== undefined && sampledFrom > rows.length
 
+  /*
+   * `sr-only` goes on a wrapping div, not on the table.
+   *
+   * It cannot do its job on a `<table>`. The utility works by clamping to 1×1 and clipping, but a
+   * table box takes its specified width as a *minimum* — CSS table layout will not shrink below
+   * min-content — so `width: 1px` is ignored and the element stays its natural size. Measured in a
+   * browser: 261×480, positioned absolutely over the chart, hidden only because `clip-path` happens
+   * to still apply.
+   *
+   * That works, and it is one `overflow: auto` ancestor away from not working. A div has no such
+   * rule, collapses to 1×1 as intended, and clips the table inside it.
+   */
   return (
-    <table className="sr-only">
-      <caption>
-        {CHART_COPY.tableCaption(label)}
-        {sampled ? `. ${CHART_COPY.sampledNote(rows.length, sampledFrom)}` : ''}
-      </caption>
-      <thead>
-        <tr>
-          {columns.map((column) => (
-            <th key={column} scope="col">
-              {column}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row, index) => (
-          // Index, not the header: two rows can legitimately share a label once a series is
-          // sampled by month, and a duplicate key drops one of them silently.
-          <tr key={index}>
-            <th scope="row">{row.header}</th>
-            {row.cells.map((cell, cellIndex) => (
-              <td key={cellIndex}>{cell}</td>
+    <div className="sr-only">
+      <table>
+        <caption>
+          {CHART_COPY.tableCaption(label)}
+          {sampled ? `. ${CHART_COPY.sampledNote(rows.length, sampledFrom)}` : ''}
+        </caption>
+        <thead>
+          <tr>
+            {columns.map((column) => (
+              <th key={column} scope="col">
+                {column}
+              </th>
             ))}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            // Index, not the header: two rows can legitimately share a label once a series is
+            // sampled by month, and a duplicate key drops one of them silently.
+            <tr key={index}>
+              <th scope="row">{row.header}</th>
+              {row.cells.map((cell, cellIndex) => (
+                <td key={cellIndex}>{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }

@@ -186,6 +186,8 @@ export function DevPreview(): ReactNode {
           onScrub={setFlowScrub}
           describePoint={(index) => THIS_MONTH[index]?.date ?? ''}
           scrubLabel="Running total"
+          tableLabel="Running total"
+          comparisonLabel="Month before"
           elapsedCount={18}
         />
       </section>
@@ -210,6 +212,7 @@ export function DevPreview(): ReactNode {
           selectedIndex={pinnedMonth}
           describePoint={(index) => MONTHS[index]?.month ?? ''}
           scrubLabel="Read by month"
+          tableLabel="Net"
         />
         <p className="text-xs text-slate-500">
           Pinned: {pinnedMonth === null ? 'none' : (MONTHS[pinnedMonth]?.month ?? '')}
@@ -242,6 +245,7 @@ export function DevPreview(): ReactNode {
           onScrub={setCategoryScrub}
           describePoint={(index) => SERIES[index]?.date ?? ''}
           scrubLabel="Read account by date"
+          tableLabel="Everyday Checking"
         />
       </section>
 
@@ -265,6 +269,7 @@ export function DevPreview(): ReactNode {
           completeFromIndex={120}
           describePoint={(index) => SERIES[index]?.date ?? ''}
           scrubLabel="Read by date"
+          tableLabel="Net worth"
         />
       </section>
     </div>

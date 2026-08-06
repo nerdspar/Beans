@@ -49,6 +49,17 @@ export const ACCOUNT_COPY = {
    */
   liabilitySignNote: 'Shown as a negative amount because it is money owed.',
 
+  /**
+   * Why the edit buttons are greyed out.
+   *
+   * They are disabled whenever the editable copy of the account has not arrived, which is right —
+   * an editor opened over nothing is worse. But a disabled control with no explanation is its own
+   * dead end: during a load it is brief and unremarkable, and after a failure it is permanent, and
+   * the reader has no way to tell those apart. Everything else on the screen is still correct, so
+   * this says what is unavailable rather than presenting the screen as broken.
+   */
+  editUnavailable: 'Editing is unavailable — the account settings could not be loaded.',
+
   notFound: 'No such account',
   notFoundDetail: 'This account may have been removed, or the link may be out of date.',
 } as const
@@ -123,8 +134,25 @@ export const RANGE_COPY = {
   /** Marks the range currently in force. */
   selected: 'Selected',
 
+  /** The custom-range preset, and the fields behind it. */
+  custom: 'Custom',
+  start: 'Start',
+  end: 'End',
+  apply: 'Apply',
+
   errorOrder: 'The end date is before the start date.',
   errorFuture: 'The end date is in the future.',
+} as const
+
+/**
+ * The two proportion bars at the top of net worth.
+ *
+ * Shown only at household scope: they describe the household, not a category. Plain nouns — these
+ * label a number, and there is no version of a joke here that survives the number being bad.
+ */
+export const NET_WORTH_TOTALS_COPY = {
+  assets: 'Assets',
+  liabilities: 'Liabilities',
 } as const
 
 export const NET_WORTH_STATE_COPY = {

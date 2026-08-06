@@ -2,6 +2,7 @@ import {
   ACCOUNTS_COPY,
   CONNECTION_STATUS_LABEL,
   NET_WORTH_SCOPE_COPY,
+  NET_WORTH_TOTALS_COPY,
   NET_WORTH_SCRUB_COPY,
   NET_WORTH_STATE_COPY,
   coverageNotice,
@@ -343,8 +344,8 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
             : 'pointer-events-none h-0 overflow-hidden opacity-0',
         )}
       >
-        <ProportionBar label="Assets" amount={assets} against={assets} color="#3b82f6" />
-        <ProportionBar label="Liabilities" amount={liabilities} against={assets} color="#f97316" />
+        <ProportionBar label={NET_WORTH_TOTALS_COPY.assets} amount={assets} against={assets} color="#3b82f6" />
+        <ProportionBar label={NET_WORTH_TOTALS_COPY.liabilities} amount={liabilities} against={assets} color="#f97316" />
       </div>
 
       <div className="mt-4">
