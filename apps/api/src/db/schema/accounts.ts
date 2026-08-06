@@ -262,6 +262,20 @@ export const balanceSnapshots = pgTable(
     balance: bytea('balance').notNull(),
     source: snapshotSource('source').notNull(),
 
+    /**
+     * The import that wrote this reading, for rows whose source is `imported`.
+     *
+     * Without it a balances import cannot be undone. Reversal deletes `where import_id = $1`, and a
+     * snapshot with no such column would simply be missed — the undo would report success, delete
+     * nothing, and leave the imported history in place. Transactions have carried this since the
+     * import feature existed; balances only became importable later.
+     *
+     * `set null` rather than cascade: purging an old import record must not take a household's
+     * balance history with it. What is lost then is the ability to undo, which the reversal window
+     * had already closed on.
+     */
+    importId: uuid('import_id').references(() => imports.id, { onDelete: 'set null' }),
+
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

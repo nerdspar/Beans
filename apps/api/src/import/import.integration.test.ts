@@ -12,6 +12,7 @@ import {
 import { resetAll, resetHouseholdsFor } from '../test-support/reset-database.js'
 import { parseCsv } from './csv.js'
 import { confirmSeamMatches, findSeamCandidates, setImportCutover } from './seam.js'
+import { rebuildAccountHistory } from '../balance-history/rebuild.js'
 import { commitImport, previewImport, reverseImport, stageImport } from './staging.js'
 
 const TEST_DATABASE_URL = process.env['TEST_DATABASE_URL']
@@ -765,6 +766,119 @@ not-a-date,BAD ROW,-10.00
     expect(proposals).toHaveLength(1)
     // Proposed, never confirmed. A proposal moves no total; only a person excludes anything.
     expect(proposals[0]?.status).toBe('proposed')
+  })
+
+  /**
+   * Balance history, which is the only route to investment history from before Beans was watching.
+   *
+   * A cash balance can be reconstructed backwards from transactions; an investment balance cannot,
+   * because a share price moving is not something anybody posts. These check the two properties
+   * that make the feature worth having: the readings land as `imported`, and a rebuild leaves them
+   * alone — an anchor that reconstruction overwrites is no anchor at all.
+   */
+  describe('balance history', () => {
+    const BALANCES_CSV = `Date,Account,Balance
+2019-03-01,Brokerage,142900.00
+2019-04-01,Brokerage,151250.75
+`
+
+    async function importBalances(ctx: HouseholdContext, accountId: string): Promise<void> {
+      const csv = parseCsv(BALANCES_CSV)
+      const staged = await stageImport(ctx, {
+        csv,
+        mapping: guessMapping(csv.headers),
+        preset: findPreset('balances')!,
+        kind: 'balances',
+        accountMap: [{ value: 'Brokerage', accountId }],
+        originalFilename: 'balances.csv',
+        dateFormat: 'iso',
+      })
+      await commitImport(ctx, staged.importId, NOW)
+    }
+
+    it('writes readings as imported snapshots rather than transactions', async () => {
+      const result = await withHouseholdContext(deps, USER, async (ctx) => {
+        const account = await makeAccount(ctx)
+        await importBalances(ctx, account)
+
+        const snapshots = await ctx.client.query<{
+          as_of_date: string
+          balance: Buffer
+          source: string
+        }>(
+          `select as_of_date, balance, source from balance_snapshots
+            where account_id = $1 and source = 'imported' order by as_of_date`,
+          [account],
+        )
+        const transactions = await ctx.client.query('select id from transactions')
+
+        return {
+          snapshots: snapshots.rows.map((row) => ({
+            date: row.as_of_date,
+            cents: ctx.cipher.decryptMoney(row.balance),
+            source: row.source,
+          })),
+          transactionCount: transactions.rows.length,
+        }
+      })
+
+      expect(result.snapshots).toHaveLength(2)
+      expect(result.snapshots[0]).toMatchObject({ date: '2019-03-01', cents: 142_900_00n })
+      expect(result.snapshots[1]?.cents).toBe(151_250_75n)
+      // Not one fake transaction. This is the failure that would corrupt every derived balance.
+      expect(result.transactionCount).toBe(0)
+    })
+
+    it('survives a rebuild, which is the entire point of an anchor', async () => {
+      const kept = await withHouseholdContext(deps, USER, async (ctx) => {
+        const account = await makeAccount(ctx)
+        await importBalances(ctx, account)
+
+        // The operation that rewrites history. It deletes `derived` rows and must not touch these.
+        await rebuildAccountHistory(ctx, account, '2026-08-05')
+
+        const rows = await ctx.client.query<{ balance: Buffer }>(
+          `select balance from balance_snapshots
+            where account_id = $1 and as_of_date = '2019-03-01' and source = 'imported'`,
+          [account],
+        )
+        return rows.rows.map((row) => ctx.cipher.decryptMoney(row.balance))
+      })
+
+      expect(kept).toEqual([142_900_00n])
+    })
+
+    it('reverses the readings, not silently nothing', async () => {
+      /*
+       * Reversal used to delete from `transactions` alone. For a balances import that meant
+       * deleting nothing and reporting success — the worst shape an undo can take, because the
+       * reader is told it worked.
+       */
+      const after = await withHouseholdContext(deps, USER, async (ctx) => {
+        const account = await makeAccount(ctx)
+        const csv = parseCsv(BALANCES_CSV)
+        const staged = await stageImport(ctx, {
+          csv,
+          mapping: guessMapping(csv.headers),
+          preset: findPreset('balances')!,
+          kind: 'balances',
+          accountMap: [{ value: 'Brokerage', accountId: account }],
+          originalFilename: 'balances.csv',
+          dateFormat: 'iso',
+        })
+        await commitImport(ctx, staged.importId, NOW)
+        const reversal = await reverseImport(ctx, staged.importId, NOW)
+
+        const remaining = await ctx.client.query(
+          `select id from balance_snapshots where account_id = $1 and source = 'imported'`,
+          [account],
+        )
+        return { reversed: reversal.reversed, remaining: remaining.rows.length }
+      })
+
+      expect(after.reversed).toBe(2)
+      expect(after.remaining).toBe(0)
+    })
   })
 
   describe('the seam', () => {

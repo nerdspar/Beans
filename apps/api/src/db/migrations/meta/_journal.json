@@ -99,6 +99,13 @@
       "when": 1785946540714,
       "tag": "0013_milky_carmella_unuscione",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1786031505911,
+      "tag": "0014_curvy_colonel_america",
+      "breakpoints": true
     }
   ]
 }

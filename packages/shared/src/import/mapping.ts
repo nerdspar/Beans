@@ -231,6 +231,15 @@ export const IMPORT_PRESETS: readonly ImportPreset[] = [
   { id: 'mint', label: 'Mint', kind: 'transactions', amountConvention: 'debit-credit' },
   { id: 'ynab', label: 'YNAB', kind: 'transactions', amountConvention: 'debit-credit' },
   { id: 'custom', label: 'Something else', kind: 'transactions', amountConvention: 'signed' },
+
+  /*
+   * Balance history rather than transactions.
+   *
+   * One preset, because there is nothing to vary: a balance row has no direction and therefore no
+   * amount convention to get backwards. `signed` is carried only to satisfy the shape — nothing in
+   * the balance parser reads it.
+   */
+  { id: 'balances', label: 'Balance history', kind: 'balances', amountConvention: 'signed' },
 ]
 
 export function findPreset(id: string): ImportPreset | undefined {

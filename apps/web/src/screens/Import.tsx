@@ -85,6 +85,17 @@ export function Import(): ReactNode {
     onSuccess: (result) => {
       setMapping(result.inspection.mapping)
       setAccountMap({})
+
+      /*
+       * Proposed, not decided.
+       *
+       * A `Balance` column and no `Amount` is about as clear as a signal gets, and pre-selecting
+       * saves the one reader in ten who wants this from hunting for it. The dropdown above still
+       * shows the choice and still has to be right — this only changes what it starts on.
+       */
+      const roles = new Set(result.inspection.mapping.map((column) => column.role))
+      if (roles.has('balance') && !roles.has('amount')) setPresetId('balances')
+
       setStage({ kind: 'map', ...result })
     },
   })
@@ -191,7 +202,7 @@ export function Import(): ReactNode {
       return stageImport({
         content: input.content,
         presetId,
-        kind: 'transactions',
+        kind: findPreset(presetId)?.kind ?? 'transactions',
         // One or the other, never both: a file that names its accounts routes per row, and a file
         // that does not goes to the single chosen account.
         ...(namedAccounts === null
@@ -465,7 +476,16 @@ export function Import(): ReactNode {
               onChange={(event) => setPresetId(event.target.value)}
               className={selectClass}
             >
-              {IMPORT_PRESETS.filter((preset) => preset.kind === 'transactions').map((preset) => (
+              {/*
+                Every preset, balance history included — the kind of file is chosen here rather
+                than inferred.
+
+                Inferring it would be the wrong risk to take. A balances file read as transactions
+                inserts one fake transaction per reading, and every balance derived after them is
+                rebuilt from those, so the damage spreads well past the rows themselves and looks
+                entirely plausible. The guesser proposes below; this is where it is confirmed.
+              */}
+              {IMPORT_PRESETS.map((preset) => (
                 <option key={preset.id} value={preset.id}>
                   {preset.label}
                 </option>

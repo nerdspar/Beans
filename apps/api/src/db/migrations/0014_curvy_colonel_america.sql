@@ -1,0 +1,2 @@
+ALTER TABLE "balance_snapshots" ADD COLUMN "import_id" uuid;--> statement-breakpoint
+ALTER TABLE "balance_snapshots" ADD CONSTRAINT "balance_snapshots_import_id_imports_id_fk" FOREIGN KEY ("import_id") REFERENCES "public"."imports"("id") ON DELETE set null ON UPDATE no action;

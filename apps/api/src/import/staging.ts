@@ -3,6 +3,7 @@ import {
   detectDateFormat,
   parseDecimalToCents,
   hasBlockingProblem,
+  parseBalanceRow,
   parseImportRow,
   toIsoDate,
   validateMapping,
@@ -10,6 +11,7 @@ import {
   type DateFormat,
   type ImportKind,
   type ImportPreset,
+  type ParsedBalanceRow,
   type ParsedRow,
 } from '@beans/shared'
 import { rebuildAccountHistory } from '../balance-history/rebuild.js'
@@ -47,6 +49,19 @@ type StoredRow = Omit<ParsedRow, 'amountCents'> & { amount: string }
 function toStored(row: ParsedRow): StoredRow {
   const { amountCents, ...rest } = row
   return { ...rest, amount: centsToDecimalString(amountCents) }
+}
+
+/**
+ * A staged balance row.
+ *
+ * Separate from `StoredRow` rather than a widened version of it, because the two are genuinely
+ * different claims: a transaction is a movement, a balance is a reading. Sharing one shape would
+ * mean every consumer asking which half of it is populated.
+ */
+type StoredBalanceRow = { date: string; balance: string; account: string | null }
+
+function toStoredBalance(row: ParsedBalanceRow): StoredBalanceRow {
+  return { date: row.date, balance: centsToDecimalString(row.balanceCents), account: row.account }
 }
 
 function fromStored(stored: StoredRow): ParsedRow {
@@ -262,7 +277,16 @@ export async function stageImport(
 
   try {
     for (const [index, cells] of csv.rows.entries()) {
-      const result = parseImportRow(cells, { mapping, preset, dateFormat })
+      /*
+       * Which parser reads the row is decided by `kind`, and the kind is chosen by the reader
+       * rather than inferred. A balances file read as transactions would insert a fake transaction
+       * per reading — and every balance derived after it would be rebuilt from those, so the damage
+       * spreads well past the rows themselves and looks plausible the whole way.
+       */
+      const result =
+        kind === 'balances'
+          ? parseBalanceRow(cells, { mapping, dateFormat })
+          : parseImportRow(cells, { mapping, preset, dateFormat })
 
       let rowAccountId: string | null = targetAccountId ?? null
       let unmappedAccount: string | null = null
@@ -318,7 +342,13 @@ export async function stageImport(
         // Both encrypted: staged rows are transaction data in every respect except that they have
         // not been committed yet.
         context.cipher.encryptJson(cells),
-        result.ok ? context.cipher.encryptJson(toStored(result.row)) : null,
+        result.ok
+          ? context.cipher.encryptJson(
+              kind === 'balances'
+                ? toStoredBalance(result.row as ParsedBalanceRow)
+                : toStored(result.row as ParsedRow),
+            )
+          : null,
         rowAccountId,
         deliberatelySkipped ? 'skipped' : failedReason === null ? 'pending' : 'failed',
         deliberatelySkipped
@@ -480,6 +510,17 @@ export async function commitImport(
     throw new ImportError(`This import is ${status} and cannot be committed again`)
   }
 
+  /*
+   * What the staged rows mean. Read from the import rather than passed in, so a commit cannot
+   * disagree with the staging that produced it — the rows were parsed one way and there is exactly
+   * one correct way to write them.
+   */
+  const kindRow = await context.client.query<{ kind: string }>(
+    'select kind from imports where id = $1',
+    [importId],
+  )
+  const isBalances = kindRow.rows[0]?.kind === 'balances'
+
   const rows = await context.client.query<{
     id: string
     parsed: Buffer
@@ -517,6 +558,45 @@ export async function commitImport(
           [row.id],
         )
         skipped += 1
+        continue
+      }
+
+      if (isBalances) {
+        /*
+         * A reading, written straight into the history as `imported`.
+         *
+         * That source is what protects it: `rebuildAccountHistory` deletes only `derived` rows, so
+         * an imported 2019 balance survives every subsequent rebuild and is used as an anchor
+         * rather than being overwritten by reconstruction. It is the only way investment history
+         * from before Beans was watching can exist at all.
+         *
+         * `on conflict do update` because re-importing a corrected file should correct the day
+         * rather than fail on it — and because a derived row for that date very likely already
+         * exists, put there by a rebuild, which this deliberately replaces.
+         */
+        const balance = context.cipher.decryptJson<StoredBalanceRow>(row.parsed)
+
+        await context.client.query(
+          `insert into balance_snapshots (household_id, account_id, as_of_date, balance, source,
+                                          import_id)
+           values ($1,$2,$3,$4,'imported',$5)
+           on conflict (account_id, as_of_date) do update
+             set balance = excluded.balance, source = 'imported', import_id = excluded.import_id`,
+          [
+            context.householdId,
+            row.target_account_id,
+            balance.date,
+            context.cipher.encryptMoney(parseDecimalToCents(balance.balance)),
+            importId,
+          ],
+        )
+
+        await context.client.query(`update import_rows set status = 'imported' where id = $1`, [
+          row.id,
+        ])
+
+        touchedAccounts.add(row.target_account_id)
+        committed += 1
         continue
       }
 
@@ -630,6 +710,23 @@ export async function reverseImport(
     [importId],
   )
 
+  /*
+   * And the balance readings, for a balances import.
+   *
+   * Undo has to reach these or it is not undo. Reversal used to delete from `transactions` alone,
+   * which for a balances import meant deleting nothing, reporting success, and leaving every
+   * imported reading in place — the worst shape a reversal can take, because the reader is told it
+   * worked.
+   *
+   * The accounts are folded into the same rebuild below, which regenerates `derived` rows for the
+   * dates these occupied. An investment account with no transactions simply gets its history back
+   * to where it was, which is the honest outcome.
+   */
+  const deletedSnapshots = await context.client.query<{ account_id: string }>(
+    `delete from balance_snapshots where import_id = $1 returning account_id`,
+    [importId],
+  )
+
   for (const transaction of deleted.rows) {
     await context.client.query(
       `insert into deletions (household_id, entity_type, entity_id, deleted_at)
@@ -648,9 +745,15 @@ export async function reverseImport(
     [importId],
   )
 
-  await rebuildTouchedAccounts(context, new Set(deleted.rows.map((row) => row.account_id)), now)
+  await rebuildTouchedAccounts(
+    context,
+    new Set([...deleted.rows, ...deletedSnapshots.rows].map((row) => row.account_id)),
+    now,
+  )
 
-  return { reversed: deleted.rowCount ?? 0 }
+  // Both counted: a balances import that removed four hundred readings reversed four hundred
+  // things, and reporting zero would read as a reversal that failed.
+  return { reversed: (deleted.rowCount ?? 0) + (deletedSnapshots.rowCount ?? 0) }
 }
 
 async function loadImportStatus(context: HouseholdContext, importId: string): Promise<string> {

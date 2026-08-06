@@ -128,7 +128,13 @@ export type RowParseOptions = {
 
 export type RowResult = { ok: true; row: ParsedRow } | { ok: false; reason: string }
 
-function cell(
+/**
+ * The cell a role is mapped to, or null.
+ *
+ * Exported because the balance parser needs exactly this and duplicating it would mean two answers
+ * to "which column is the date" — which is the question the whole mapping step exists to settle.
+ */
+export function cellFor(
   cells: readonly string[],
   mapping: readonly ColumnMapping[],
   role: ColumnRole,
@@ -173,7 +179,7 @@ function normalizeAmount(raw: string): string {
 export function parseImportRow(cells: readonly string[], options: RowParseOptions): RowResult {
   const { mapping, preset, dateFormat } = options
 
-  const rawDate = cell(cells, mapping, 'date')
+  const rawDate = cellFor(cells, mapping, 'date')
   if (rawDate === null || rawDate === '') {
     return { ok: false, reason: 'No date' }
   }
@@ -190,8 +196,8 @@ export function parseImportRow(cells: readonly string[], options: RowParseOption
     return amount
   }
 
-  const description = cell(cells, mapping, 'description') ?? ''
-  const payee = cell(cells, mapping, 'payee')
+  const description = cellFor(cells, mapping, 'description') ?? ''
+  const payee = cellFor(cells, mapping, 'payee')
 
   if (description === '' && (payee === null || payee === '')) {
     return { ok: false, reason: 'No description or payee' }
@@ -204,9 +210,9 @@ export function parseImportRow(cells: readonly string[], options: RowParseOption
       amountCents: amount.amountCents,
       description: description === '' ? (payee ?? '') : description,
       payee: payee === '' ? null : payee,
-      memo: emptyToNull(cell(cells, mapping, 'memo')),
-      category: emptyToNull(cell(cells, mapping, 'category')),
-      account: emptyToNull(cell(cells, mapping, 'account')),
+      memo: emptyToNull(cellFor(cells, mapping, 'memo')),
+      category: emptyToNull(cellFor(cells, mapping, 'category')),
+      account: emptyToNull(cellFor(cells, mapping, 'account')),
     },
   }
 }
@@ -227,8 +233,8 @@ function parseAmount(
   preset: ImportPreset,
 ): AmountResult {
   if (preset.amountConvention === 'debit-credit') {
-    const debit = cell(cells, mapping, 'debit')
-    const credit = cell(cells, mapping, 'credit')
+    const debit = cellFor(cells, mapping, 'debit')
+    const credit = cellFor(cells, mapping, 'credit')
 
     const debitCents = parseOptional(debit)
     const creditCents = parseOptional(credit)
@@ -247,7 +253,7 @@ function parseAmount(
     return { ok: true, amountCents: abs(creditCents ?? 0n) }
   }
 
-  const raw = cell(cells, mapping, 'amount')
+  const raw = cellFor(cells, mapping, 'amount')
   if (raw === null || raw === '') {
     return { ok: false, reason: 'No amount' }
   }

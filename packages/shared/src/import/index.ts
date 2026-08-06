@@ -14,6 +14,7 @@ export {
 
 export {
   RowParseError,
+  cellFor,
   detectDateFormat,
   parseImportDate,
   parseImportRow,
@@ -22,6 +23,13 @@ export {
   type RowParseOptions,
   type RowResult,
 } from './rows.js'
+
+export {
+  parseBalanceRow,
+  type BalanceRowParseOptions,
+  type BalanceRowResult,
+  type ParsedBalanceRow,
+} from './balance-rows.js'
 
 export {
   matchAccountsByMask,
