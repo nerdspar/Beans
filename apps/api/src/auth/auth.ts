@@ -92,6 +92,13 @@ export function createAuth(config: Config, db: Database) {
     trustedOrigins: config.trustedOrigins,
 
     advanced: {
+      /*
+       * Which header the rate limiter counts against. Exactly one, named by the deployment —
+       * whatever is actually in front of the app. See `TRUSTED_IP_HEADER` for why a fallback chain
+       * would defeat the purpose.
+       */
+      ipAddress: { ipAddressHeaders: [config.trustedIpHeader] },
+
       // Secure cookies are automatic in production; forced here so a misread NODE_ENV cannot
       // silently downgrade them.
       useSecureCookies: config.isProduction,

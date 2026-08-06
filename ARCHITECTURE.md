@@ -889,8 +889,27 @@ skips its cross-tenant isolation tests is worse than one that fails.
 
 ### 13.1 TLS and hostname
 
-Hosted at `https://beans.nerdspar.com`, behind Nginx Proxy Manager terminating TLS. The app does not
-terminate TLS itself.
+Hosted at `https://beans.nerdspar.com`, behind a **Cloudflare tunnel** terminating TLS. The app does
+not terminate TLS itself.
+
+The tunnel replaced a reverse proxy on the LAN, and the reason is not the certificate — it is that
+`cloudflared` dials *out* and holds the connection open. Nothing listens for the internet, nothing is
+forwarded on the router, and the home IP is never published. A self-hosted finance app on a
+residential connection otherwise means an open port on the same network as everything else in the
+house, permanently, guarded by whatever the proxy is running that week.
+
+The consequence worth writing down: **the app container publishes no port at all.** `cloudflared`
+reaches it by service name over the compose network, exactly as the app reaches Postgres (§13). That
+makes the tunnel the only route in, which is what lets the rate limiter trust `CF-Connecting-IP` —
+Cloudflare always overwrites that header, so it cannot be forged by anyone who cannot bypass
+Cloudflare, and with no published port nobody can. Publishing the port again would quietly undo it:
+the header becomes whatever the caller says it is. The two settings are one decision, and
+`docker/truenas.yaml` says so at both ends.
+
+What is *not* claimed: Cloudflare terminates TLS, so it can see plaintext traffic. That is the trade
+against exposing a residential IP and an inbound port, taken deliberately. The data at rest is
+encrypted with a key Cloudflare never holds (§5), so the exposure is traffic in flight, not the
+database.
 
 A real hostname with a valid certificate is **required**, not cosmetic:
 

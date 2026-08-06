@@ -9,8 +9,9 @@
 # Full deployment, once there is a frontend to build:
 #     docker compose up -d
 #
-# TLS is terminated by Nginx Proxy Manager in front of this stack, at https://beans.nerdspar.com —
-# the app does not terminate TLS itself.
+# This stack is for development and publishes its ports on the LAN. Production is docker/truenas.yaml,
+# where TLS terminates at a Cloudflare tunnel, the app publishes nothing, and the tunnel is the only
+# route in — so a port opened here is not evidence that one is open there.
 #
 # Storage lives under $BEANS_DATA_DIR, which is a ZFS dataset on TrueNAS
 # (/mnt/NAS/Data/beans) and a local ./data directory otherwise. Bind mounts rather than named

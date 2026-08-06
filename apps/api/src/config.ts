@@ -45,6 +45,26 @@ const schema = z.object({
     .string()
     .min(32, 'BETTER_AUTH_SECRET must be at least 32 characters. Generate: openssl rand -hex 32'),
 
+  /**
+   * The header carrying the client's IP, which is what sign-in rate limiting counts against.
+   *
+   * **One header, not a list, and that is the point.** A fallback chain — try `cf-connecting-ip`,
+   * else `x-forwarded-for` — is exactly the spoofable arrangement: anyone reaching the origin
+   * directly sends whichever header the proxy would have set, and is believed. Only the thing
+   * actually in front of the app can be trusted, and a deployment has one of those.
+   *
+   * `x-forwarded-for` is the default because every reverse proxy sets it. It is also the weaker
+   * choice: proxies *append*, so a client sending its own value produces a two-hop chain, and Better
+   * Auth refuses to guess which entry is real. It then drops that request into one shared bucket —
+   * so a user behind a corporate proxy that already set the header competes for sign-in attempts
+   * with everyone else who failed to resolve.
+   *
+   * Behind Cloudflare, set `cf-connecting-ip`: the edge always writes it, always overwrites it, and
+   * it is always a single address. That is only true if the origin cannot be reached except through
+   * the tunnel — see `docker/truenas.yaml`, which stops publishing the port in the same change.
+   */
+  TRUSTED_IP_HEADER: z.string().trim().toLowerCase().optional(),
+
   /** Optional per deployment — see the refinement below. */
   GOOGLE_CLIENT_ID: z.string().trim().optional(),
   GOOGLE_CLIENT_SECRET: z.string().trim().optional(),
@@ -72,6 +92,8 @@ export type Config = {
   /** Always includes `publicUrl`. Anything else comes from `EXTRA_TRUSTED_ORIGINS`. */
   trustedOrigins: string[]
   betterAuthSecret: string
+  /** Lowercased. Defaults to `x-forwarded-for`; `cf-connecting-ip` behind a Cloudflare tunnel. */
+  trustedIpHeader: string
   /** Null when unconfigured, which hides the Google button rather than showing a broken one. */
   google: { clientId: string; clientSecret: string } | null
   mail: MailTransport
@@ -140,6 +162,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
         .filter((origin) => origin.length > 0),
     ],
     betterAuthSecret: raw.BETTER_AUTH_SECRET,
+    trustedIpHeader: isSet(raw.TRUSTED_IP_HEADER) ? raw.TRUSTED_IP_HEADER : 'x-forwarded-for',
     google:
       isSet(googleClientId) && isSet(googleClientSecret)
         ? { clientId: googleClientId, clientSecret: googleClientSecret }

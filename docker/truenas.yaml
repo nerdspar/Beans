@@ -8,6 +8,10 @@
 #   - Postgres does not need to be on the LAN at all. The app reaches it by service name over the
 #     compose network, so no port is published and nothing outside this stack can connect. That is
 #     strictly better than publishing 5432 and relying on nobody proxying it.
+#   - The same now goes for the app itself. `cloudflared` is in this file so it can reach `app:3100`
+#     over that network, which means the app publishes no port either and the tunnel is the only way
+#     in. Split across two stacks, the app would have to be on the LAN for the tunnel to find it —
+#     which is the exposure the tunnel exists to remove.
 #   - The API applies migrations on startup, so it genuinely needs the database ready first.
 #     `depends_on` with `service_healthy` expresses that; two separate apps cannot.
 #
@@ -71,9 +75,31 @@
 #
 #   4. Replace every REPLACE_ value below.
 #
-#   5. Point Nginx Proxy Manager at this stack's port 3100 for beans.nerdspar.com, with a
-#      certificate. HTTPS is not optional: the session cookie is Secure, Google rejects OAuth
-#      redirects to bare IPs, and a service worker needs a secure context to install.
+#   5. Create the Cloudflare tunnel and paste its token below.
+#
+#      In the Zero Trust dashboard: Networks -> Tunnels -> Create a tunnel -> Cloudflared. Name it,
+#      copy the token from the Docker install snippet, and add one public hostname:
+#
+#          beans.nerdspar.com  ->  HTTP  ->  app:3100
+#
+#      `app:3100` is the service name on this compose network, not an IP and not localhost. The
+#      tunnel container resolves it the same way the app resolves `db`.
+#
+#      **HTTP, not HTTPS, is correct for the service URL.** TLS terminates at Cloudflare and the
+#      last hop runs inside the compose network, which never touches the LAN. Setting HTTPS there
+#      means presenting a certificate the app does not have, and the tunnel fails to connect.
+#
+#      Cloudflare creates the DNS record itself when you add the hostname. Nothing is forwarded on
+#      the router — the tunnel dials out, so there is no inbound port to open and no public IP to
+#      find. That is the whole reason to prefer it to a reverse proxy on a home connection.
+#
+#      HTTPS remains non-optional and Cloudflare provides it: the session cookie is Secure, Google
+#      rejects OAuth redirects to bare IPs, and a service worker needs a secure context to install.
+#
+#      The token is a credential — it grants routing into this network. It is inline here, like the
+#      database password and the auth secret, because TrueNAS gives custom apps no `.env`. Unlike
+#      the master key it is not tied to the data: revoke and reissue it from the dashboard whenever
+#      you like, at the cost of one restart. It is worth nothing to an attacker without it.
 #
 # ---------------------------------------------------------------------------------------------
 # Migrating from the database-only app
@@ -184,9 +210,26 @@ services:
       RESEND_API_KEY: ''
       MAIL_FROM: beans@nerdspar.com
 
-    ports:
-      # Behind Nginx Proxy Manager, which terminates TLS. LAN-only.
-      - '3100:3100'
+      # The client's real address, for sign-in rate limiting. Cloudflare always writes this header
+      # and always overwrites it, so unlike `x-forwarded-for` it cannot arrive as a chain and cannot
+      # be forged.
+      #
+      # **That holds only while the port below stays unpublished.** Anything that can reach the
+      # container directly can claim to be any address by setting the header itself — there is no
+      # tunnel in the way to overwrite it. These are one decision; do not undo half of it.
+      TRUSTED_IP_HEADER: cf-connecting-ip
+
+    # No `ports`, for the same reason the database has none: cloudflared reaches this over the
+    # compose network by service name, so the app is not on the LAN at all and nothing is forwarded
+    # on the router. The only way in is the tunnel, which is the point.
+    #
+    # To reach it from the NAS itself without opening it up — checking whether a problem is the app
+    # or the tunnel:
+    #     docker compose exec app node -e "require('http').get('http://127.0.0.1:3100/health',
+    #       r => r.pipe(process.stdout))"
+    #
+    # If you go back to a reverse proxy, publish '3100:3100' again **and** change TRUSTED_IP_HEADER
+    # back to x-forwarded-for in the same edit.
 
     volumes:
       - /mnt/NAS/Data/beans/secrets/master.key:/run/secrets/master.key:ro
@@ -205,3 +248,49 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # The only route in from the internet.
+  #
+  # It dials out to Cloudflare and holds the connection open, so traffic arrives over a socket this
+  # container opened. There is no listening port, nothing forwarded on the router, and the NAS's
+  # address is never published — which is the substantive difference from a reverse proxy, not just
+  # a more convenient way to get a certificate.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+
+    # `service_started`, deliberately not `service_healthy`.
+    #
+    # The app reports unhealthy when the sync worker is stopped, on purpose — balances silently
+    # going stale must not read as fine. But that is a reason to show degraded data, not a reason to
+    # be unreachable. Gate the tunnel on healthy and a stack restart while the worker is failing
+    # leaves the whole site off the internet, with no way to sign in and see why.
+    #
+    # The cost is a short window during migrations where Cloudflare answers 502 because nothing is
+    # listening yet. That is the better failure: it is brief, and it self-resolves.
+    depends_on:
+      - app
+
+    # `run` with no tunnel name: the token names the tunnel, carries its credentials, and holds the
+    # hostname routing configured in the dashboard.
+    #
+    # Do not add `--no-autoupdate` here even though every guide shows it. The image's ENTRYPOINT is
+    # already `cloudflared --no-autoupdate`, so this appends to it — the flag is present, and
+    # repeating it after the subcommand risks the parser rejecting it outright.
+    command: tunnel run
+
+    environment:
+      # By environment rather than on the command line, so it is not in `ps` inside the container.
+      # Both are visible to `docker inspect`, which is the same exposure the database password and
+      # the auth secret already have — and unlike the master key this token is not tied to any data.
+      # Revoke and reissue it from the dashboard at any time; the cost is one restart.
+      #
+      # For tighter handling, cloudflared also reads TUNNEL_TOKEN_FILE. Mounting it needs care: this
+      # image runs as uid 65532, so it cannot read a 600 file owned by 568 the way the master key is
+      # — set `user: '568:568'` on this service as well if you go that way.
+      TUNNEL_TOKEN: REPLACE_CLOUDFLARE_TUNNEL_TOKEN
+
+    # No healthcheck, and not an oversight. cloudflared can expose a /ready probe on a metrics port,
+    # but the image is distroless — no shell, no wget, no curl — so there is nothing here to call it
+    # with, and a CMD-SHELL probe would fail every time and cycle a tunnel that was working.
+    # `docker logs cloudflared` and the dashboard's own tunnel status both report the connection.

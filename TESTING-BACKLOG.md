@@ -48,9 +48,10 @@ The mailer has three implementations and the disabled path is the only one exerc
 Local development runs plain HTTP on `localhost`, which is exempt from several browser rules that
 production is not.
 
-- [ ] `secure` cookies actually set and returned through Nginx Proxy Manager
-- [ ] `trustProxy` resolves the real client IP, so auth rate limiting is per-user rather than
-      per-proxy
+- [ ] `secure` cookies actually set and returned through the Cloudflare tunnel
+- [ ] Sign-in rate limiting keys on the real client address: two browsers on different networks get
+      separate buckets, and a request carrying a forged `CF-Connecting-IP` does not get a fresh one.
+      The forged half only holds while the app publishes no port — so this also tests that.
 - [ ] Session survives a full browser round trip on the real domain
 - [ ] CSRF origin validation accepts the real origin and rejects others
 

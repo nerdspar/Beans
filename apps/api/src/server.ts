@@ -48,8 +48,16 @@ export async function buildServer({
 }: ServerDependencies): Promise<FastifyInstance> {
   const fastify = Fastify({
     logger: loggerOptions(config.logLevel, config.isProduction),
-    // Behind Nginx Proxy Manager, so the client IP and protocol arrive in forwarded headers.
-    // Without this, rate limiting would see every request as coming from the proxy.
+    /*
+     * Always behind something — a Cloudflare tunnel, or a reverse proxy — so the scheme the user
+     * actually used arrives in a forwarded header. Without this, `request.protocol` reads `http`
+     * on every request and anything deriving a URL from it emits links that downgrade.
+     *
+     * It does **not** decide the client IP for rate limiting. `trustProxy: true` takes the leftmost
+     * forwarded entry, which the client controls; the limiter reads the single header the operator
+     * named in `TRUSTED_IP_HEADER` instead. The reason to keep `true` here anyway is that nothing
+     * security-bearing reads `request.ip` — it reaches the logs and stops there.
+     */
     trustProxy: true,
 
     /*
