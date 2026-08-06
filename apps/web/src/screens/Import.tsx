@@ -299,29 +299,33 @@ export function Import(): ReactNode {
           <Problem error={inspect.error} fallback={IMPORT_COPY.readFailed} />
 
           {/*
-            The example, beside the picker rather than in documentation.
+            Both examples, beside the picker rather than in documentation.
 
-            The question it answers — "will my export work?" — is had at exactly this moment, and a
-            sample two clicks away in a README is a sample nobody opens. Built in the browser from
-            the selected preset, so it costs no request and always matches the app named above.
+            The question they answer — "will my export work?" — is had at exactly this moment, and a
+            sample two clicks away in a README is a sample nobody opens.
+
+            Both, because the thing that distinguishes them is the thing worth learning, and the
+            control that picks one is on the *next* step. Offering a single sample here meant either
+            guessing at the reader's app or referring to a selector they could not see.
           */}
           <div className="mt-6 rounded-xl border border-slate-200 p-3 dark:border-slate-800">
             <h2 className="text-xs font-semibold">{IMPORT_COPY.sampleHeading}</h2>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               {IMPORT_COPY.sampleDetail}
             </p>
-            <button
-              type="button"
-              onClick={() => downloadSample(presetId)}
-              className={cn(
-                'mt-2 inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-medium',
-                'border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800',
-                'focus-visible:outline-2 focus-visible:outline-sky-500',
-              )}
-            >
-              <Download className="size-3.5" aria-hidden />
-              {IMPORT_COPY.sampleAction}
-            </button>
+
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <SampleButton
+                label={IMPORT_COPY.sampleSigned}
+                hint={IMPORT_COPY.sampleSignedHint}
+                onClick={() => downloadSample('empower')}
+              />
+              <SampleButton
+                label={IMPORT_COPY.sampleDebitCredit}
+                hint={IMPORT_COPY.sampleDebitCreditHint}
+                onClick={() => downloadSample('mint')}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -968,4 +972,33 @@ function downloadSample(presetId: string): void {
   link.download = sampleCsvFilename(preset)
   link.click()
   URL.revokeObjectURL(url)
+}
+
+/** One example offer: what the file looks like, and which apps produce it. */
+function SampleButton({
+  label,
+  hint,
+  onClick,
+}: {
+  label: string
+  hint: string
+  onClick: () => void
+}): ReactNode {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex min-h-11 flex-1 items-center gap-2 rounded-lg border px-3 py-2 text-left',
+        'border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800',
+        'focus-visible:outline-2 focus-visible:outline-sky-500',
+      )}
+    >
+      <Download className="size-3.5 shrink-0" aria-hidden />
+      <span className="min-w-0">
+        <span className="block text-xs font-medium">{label}</span>
+        <span className="block text-[11px] text-slate-500 dark:text-slate-400">{hint}</span>
+      </span>
+    </button>
+  )
 }

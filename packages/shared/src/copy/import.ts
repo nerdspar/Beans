@@ -8,17 +8,24 @@
 
 export const IMPORT_COPY = {
   /**
-   * The example file, offered beside the file picker.
+   * The example files, offered beside the file picker.
    *
-   * "Not sure of the format" rather than "Download sample": it answers the question somebody has at
-   * that moment, which is whether their export will work, not whether they want a file. The sample
-   * follows the selected app above it, because a signed export and a debit/credit one are different
-   * files and showing the wrong one teaches the wrong thing.
+   * **Two of them, because there are two shapes and neither is a default.** An earlier version
+   * offered one "matching the app selected above" — and the app selector is on the *next* step,
+   * after a file has been chosen, so it referred to a control that was not on screen. Somebody
+   * reading it would have gone looking for a dropdown that does not exist there.
+   *
+   * Named by what is in the file rather than by which app made it. Beans does not have per-app
+   * importers; it has these two conventions, and every app is one or the other. Saying "Mint" would
+   * imply an integration that is not there and would not help anyone whose app is not on the list.
    */
   sampleHeading: 'Not sure of the format?',
   sampleDetail:
-    'Download a small example matching the app selected above. Beans reads what your app exports — there is no need to build a file by hand.',
-  sampleAction: 'Download an example',
+    'Beans reads what your app exports — there is no file to fill in. Exports differ in one way that matters: whether money out is a negative number, or a separate column.',
+  sampleSigned: 'Example: one amount column',
+  sampleSignedHint: 'Negative means money out. Empower, Monarch, most banks.',
+  sampleDebitCredit: 'Example: debit and credit columns',
+  sampleDebitCreditHint: 'Whichever column is filled decides the direction. Mint, YNAB.',
 
   title: 'Import',
   blurb:
