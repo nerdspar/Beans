@@ -57,12 +57,11 @@ production is not.
 
 ### Container and deployment
 
-- [ ] Dockerfile builds. `apps/web/dist` now exists (milestone 6), but the **API still has no build
-      script** — it runs via tsx in development and nothing bundles it for production. That is the
-      remaining blocker.
-- [ ] Migrations run on container startup, idempotently, against the existing database
-- [ ] `/health` reachable through the proxy and reports `database: ok`
-- [ ] Master key mounted correctly and readable by the container user
+Most of this section is gone because it happened: the image builds and publishes, migrations apply
+on startup, and the master key loads — the app would not boot otherwise, and it has, repeatedly.
+
+- [ ] `/health` reachable **through the tunnel** and reporting `database: ok`. The container's own
+      healthcheck hits `127.0.0.1`, so it proves the app answers, not that the tunnel reaches it.
 - [ ] Graceful shutdown on `SIGTERM` closes the pool without dropping in-flight requests
 
 ---
@@ -111,19 +110,21 @@ behavior is a separate question.
       iOS meta tags are set, but nothing has been added to a home screen. Verify standalone display,
       the icon, safe-area insets against a real notch, and that the app does not get stuck on a
       stale build after a deploy.
-- [ ] Tab reordering persisting across devices. The optimistic update and the endpoint both exist,
-      but the round trip has only been exercised signed-out (401), so the persisted path is
-      unproven.
+- [ ] Navigation order persisting across devices. The write path is now covered by integration
+      tests against real Postgres — it had never worked at all, because a JavaScript array was being
+      handed to a `jsonb` column — so what is unproven is only the cross-device half: reorder on a
+      phone, open a laptop, find it there.
 - [ ] **Mapping real SimpleFIN errors onto recommendations.** `assessConnection` currently infers
       what to recommend from status, consecutive failure count and age, because that is all the
       schema records. SimpleFIN's `errlist` carries structured reasons, and some of them are
       distinguishable — "needs re-authentication" versus "institution temporarily unavailable" —
       which would let the banner stop guessing. Needs a real connection that has actually failed to
       see what the Bridge returns in practice.
-- [ ] **The banner's actions do nothing yet.** Reconnect, Sync now and Try now render and are
-      reachable, but none is wired — reconnect needs the claim flow, and the two sync buttons need
-      an endpoint that triggers a run on demand and reports back. Verify against the Bridge's
-      24-requests-per-day ceiling that a user mashing "Sync now" cannot exhaust the day's budget.
+- [ ] **Whether mashing "Sync now" can exhaust the day's budget.** Reconnect and Sync now are wired
+      now — the claim flow and `POST /api/connections/:id/sync` both exist — so what is left is the
+      quota question against a real Bridge: `canSync` reserves part of the 24-per-day ceiling for
+      the schedule, and that reservation has never been tested by somebody actually pressing the
+      button repeatedly.
 - [ ] Whether carrying a balance flat is the right default for **investment** accounts specifically.
       Backward reconstruction is already wrong for them (§4), and a flat line through a month of
       market movement is visibly false in a different way than it is for a credit card. May want to
