@@ -202,7 +202,6 @@ export function Accounts(): ReactNode {
         link rather than a primary action.
       */}
       <section className="mt-5">
-        <h2 className="text-sm font-semibold">{ACCOUNTS_COPY.connectionHeading}</h2>
 
         {connections.data !== undefined && connections.data.length === 0 ? (
           <>
@@ -251,6 +250,69 @@ export function Accounts(): ReactNode {
             {ACCOUNTS_COPY.addAnotherHelp}
           </p>
         )}
+      </section>
+
+      {/*
+        The way into importing, directly under the connection it complements.
+
+        It used to be a top-level destination, which put a task most people do at the start — and
+        then rarely — permanently in the navigation. It is here because this is the same job as the
+        rest of the screen: getting account data into Beans. It keeps its own URL, so nothing about
+        the page or a link to it changed; only where it is found.
+
+        Above the account lists rather than below them, because it belongs beside connecting: both
+        answer "how does data get in", and a household with forty accounts had to scroll past all of
+        them to find the other half of that answer.
+      */}
+      <section className="mt-5 rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+        <h2 className="text-sm font-semibold">{ACCOUNTS_COPY.importHeading}</h2>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          {ACCOUNTS_COPY.importDetail}
+        </p>
+        {/*
+          A real file input, not a link.
+
+          It used to be a link labelled "Import a file" that led to a page with a file picker on it
+          — the label promised the action and delivered a journey. Choosing the file is the first
+          step of importing, so it happens on the first click, and the page opens at the mapping
+          with the file already read.
+        */}
+        <label
+          className={cn(
+            'mt-3 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm font-medium',
+            'border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800',
+            'focus-within:outline-2 focus-within:outline-sky-500',
+          )}
+        >
+          <Upload className="size-4" aria-hidden />
+          {ACCOUNTS_COPY.importAction}
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            className="sr-only"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (file === undefined) return
+              setPendingImportFile(file)
+              navigate('/import')
+            }}
+          />
+        </label>
+
+        {/*
+          The other reason to open that page, and the reason it cannot simply be a file dialog: it
+          also lists past imports and is where an import gets undone. Quiet, because it is the
+          second thing somebody wants here, but present, because nothing else reaches it.
+        */}
+        <Link
+          href="/import"
+          className={cn(
+            'ml-3 text-xs font-medium text-sky-600 hover:underline dark:text-sky-400',
+            'focus-visible:outline-2 focus-visible:outline-sky-500',
+          )}
+        >
+          {ACCOUNTS_COPY.importHistoryLink}
+        </Link>
       </section>
 
       {institutions.map(([institution, group]) => (
@@ -303,64 +365,6 @@ export function Accounts(): ReactNode {
         )}
       </section>
 
-      {/*
-        The way into importing.
-
-        It used to be a top-level destination, which put a task most people do at the start — and
-        then rarely — permanently in the navigation. It is here because this is the same job as the
-        rest of the screen: getting account data into Beans. It keeps its own URL, so nothing about
-        the page or a link to it changed; only where it is found.
-      */}
-      <section className="mt-8 rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-        <h2 className="text-sm font-semibold">{ACCOUNTS_COPY.importHeading}</h2>
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          {ACCOUNTS_COPY.importDetail}
-        </p>
-        {/*
-          A real file input, not a link.
-
-          It used to be a link labelled "Import a file" that led to a page with a file picker on it
-          — the label promised the action and delivered a journey. Choosing the file is the first
-          step of importing, so it happens on the first click, and the page opens at the mapping
-          with the file already read.
-        */}
-        <label
-          className={cn(
-            'mt-3 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm font-medium',
-            'border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800',
-            'focus-within:outline-2 focus-within:outline-sky-500',
-          )}
-        >
-          <Upload className="size-4" aria-hidden />
-          {ACCOUNTS_COPY.importAction}
-          <input
-            type="file"
-            accept=".csv,text/csv"
-            className="sr-only"
-            onChange={(event) => {
-              const file = event.target.files?.[0]
-              if (file === undefined) return
-              setPendingImportFile(file)
-              navigate('/import')
-            }}
-          />
-        </label>
-
-        {/*
-          The other reason to open that page, and the reason it cannot simply be a file dialog: it
-          also lists past imports and is where an import gets undone. Quiet, because it is the
-          second thing somebody wants here, but present, because nothing else reaches it.
-        */}
-        <Link
-          href="/import"
-          className={cn(
-            'ml-3 text-xs font-medium text-sky-600 hover:underline dark:text-sky-400',
-            'focus-visible:outline-2 focus-visible:outline-sky-500',
-          )}
-        >
-          {ACCOUNTS_COPY.importHistoryLink}
-        </Link>
-      </section>
 
       {hasClosed && (
         <label className="mt-6 flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">

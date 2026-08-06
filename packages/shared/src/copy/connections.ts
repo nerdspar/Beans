@@ -223,7 +223,6 @@ export const ACCOUNTS_COPY = {
   saveFailed: 'Could not save those changes.',
   cancel: 'Cancel',
 
-  connectionHeading: 'Bank connection',
   connected: 'Connected through SimpleFIN',
   notConnected: 'No bank connection',
   notConnectedDetail:
