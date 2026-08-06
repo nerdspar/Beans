@@ -15,6 +15,23 @@ export const PORTFOLIO_COPY = {
   emptyDetail:
     'Anything typed as an investment appears here. Connect an institution, or change an account’s type on the accounts screen.',
 
+  /**
+   * Ordering the account list.
+   *
+   * Four keys and no ascending/descending toggle. Each of these has an obvious interesting end —
+   * the biggest holding, the best day, the worst day — and every one of those is answered by
+   * reading from the top or the bottom of a list that is already on screen. A direction control
+   * would double the states to explain a scroll away.
+   *
+   * Share of the portfolio is deliberately absent: it is balance divided by a constant, so sorting
+   * by it produces the same order as balance and would be a control that appears to do nothing.
+   */
+  sortLabel: 'Sort by',
+  sortBalance: 'Balance',
+  sortChange: 'Day change',
+  sortChangePercent: 'Day change %',
+  sortName: 'Name',
+
   byAccount: 'By account',
   byHolding: 'By holding',
   /** Names the control rather than repeating the selected option, which the select already shows. */

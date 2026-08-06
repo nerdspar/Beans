@@ -24,6 +24,7 @@ import { StackedArea } from '../charts/StackedArea.js'
 import { cn } from '../lib/cn.js'
 import { InfoNote } from '../lib/InfoNote.js'
 import { SECTION_COLORS } from '../net-worth/colors.js'
+import { sortAccounts, type PortfolioSort } from '../net-worth/portfolio-sort.js'
 import { formatAxisValue, formatShortDate } from '../net-worth/display.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
 import { DEFAULT_RANGE, type RangeSelection } from '../net-worth/range.js'
@@ -44,6 +45,7 @@ const CHART_HEIGHT = 180
 export function Portfolio(): ReactNode {
   const workingSet = useWorkingSet()
   const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE)
+  const [sort, setSort] = useState<PortfolioSort>('balance')
   const today = localToday()
 
   /*
@@ -289,10 +291,26 @@ export function Portfolio(): ReactNode {
   )
   const datesAgree = readingDates.every((date) => date === newestReading)
 
-  const ordered = [...investments].sort(
-    (left, right) =>
-      Number((right.series.at(-1)?.value ?? 0n) - (left.series.at(-1)?.value ?? 0n)),
-  )
+  /*
+   * Ordered by whatever the reader asked for, defaulting to largest first.
+   *
+   * The day change comes from `dayChanges`, computed above — the same figure the row displays, so
+   * the list can never be sorted by one number while showing another. `null` where an account has
+   * never moved, which the sorter puts last rather than treating as flat.
+   */
+  const ordered = sortAccounts(
+    investments.map((account) => {
+      const reading = dayChanges.get(account.id) ?? null
+      return {
+        account,
+        name: account.name,
+        valueCents: account.series.at(-1)?.value ?? account.currentBalanceCents ?? 0n,
+        changeCents: reading?.change.marketCents ?? null,
+        changeFraction: reading?.change.fraction ?? null,
+      }
+    }),
+    sort,
+  ).map((entry) => entry.account)
 
   const total = investments.reduce(
     (sum, account) => sum + (account.series.at(-1)?.value ?? account.currentBalanceCents ?? 0n),
@@ -391,6 +409,30 @@ export function Portfolio(): ReactNode {
             <option value="holding">{PORTFOLIO_COPY.byHolding}</option>
           </select>
         </label>
+        {/*
+          Sorting, only where there is a list to sort. The holdings view is its own component with
+          its own ordering, and a control that silently applied to nothing would be worse than none.
+        */}
+        {grouping === 'account' && (
+          <label className="flex items-baseline gap-1.5">
+            <span className="sr-only">{PORTFOLIO_COPY.sortLabel}</span>
+            <select
+              value={sort}
+              onChange={(event) => setSort(event.target.value as PortfolioSort)}
+              className={cn(
+                'cursor-pointer rounded-md bg-transparent px-1 py-0.5 text-xs',
+                'text-slate-500 dark:text-slate-400',
+                'focus-visible:outline-2 focus-visible:outline-sky-500',
+              )}
+            >
+              <option value="balance">{PORTFOLIO_COPY.sortBalance}</option>
+              <option value="change">{PORTFOLIO_COPY.sortChange}</option>
+              <option value="changePercent">{PORTFOLIO_COPY.sortChangePercent}</option>
+              <option value="name">{PORTFOLIO_COPY.sortName}</option>
+            </select>
+          </label>
+        )}
+
         {grouping === 'account' && newestReading !== null && (
           <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
             {PORTFOLIO_COPY.asOfDay(formatShortDate(newestReading))}
