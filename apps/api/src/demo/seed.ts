@@ -284,11 +284,11 @@ async function insertTransaction(
 }
 
 /**
- * A loan that is paid off partway through, so a liability visibly ends.
+ * A loan still being paid, so the liabilities side has something moving.
  *
- * Its balance is zero today, and reconstruction walks the payments backwards to show what was owed
- * — which is the same path a real paid-off loan takes, and worth demonstrating because it is the
- * one where a missing payment history shows as flat zero.
+ * Reconstruction walks the payments backwards from today's balance, so the chart shows a debt that
+ * was larger and is shrinking — which is the same path any real loan takes, and the reason the
+ * payments run right up to the present rather than stopping partway.
  */
 async function seedStudentLoan(
   context: HouseholdContext,
@@ -300,10 +300,7 @@ async function seedStudentLoan(
   const accountId = accountIds.get('student-loan')
   if (accountId === undefined) return
 
-  // Payments stop nine months back; the balance has been zero since.
-  const lastPayment = monthsBefore(today, 9)
-
-  for (const date of monthlyDates(start, lastPayment, 21)) {
+  for (const date of monthlyDates(start, today, 21)) {
     await insertTransaction(context, {
       accountId,
       date,

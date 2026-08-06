@@ -19,6 +19,8 @@ import { localIsoDate } from '../lib/today.js'
  */
 export type SyncableAccount = {
   institutionName: string | null
+  /** When the balance itself was observed. The honest answer to "how current is this number". */
+  balanceAsOf: string | null
   connectionStatus: 'healthy' | 'stale' | 'error' | null
   lastSuccessAt: string | null
   consecutiveFailures: number
@@ -57,19 +59,26 @@ export function formatSyncMoment(iso: string | null): SyncMoment | null {
 }
 
 /**
- * When this account last reported.
+ * When this account's balance was last observed.
  *
  * A time for today and a date otherwise, matching how the reference reads — "4:08 PM" says *this is
  * current* far more directly than today's date does, and a time on a three-week-old balance would be
  * a false precision.
+ *
+ * **`balanceAsOf` first, `lastSuccessAt` only as a fallback.** They are not the same question. The
+ * sync time says when Beans last spoke to the provider; the balance date says how current the number
+ * on screen is, and a provider that answers today with yesterday's close makes those differ — which
+ * is exactly the confusion the portfolio's dated figures exist to prevent. An account with no
+ * connection at all has no sync time and a perfectly good balance date.
  */
 export function formatLastUpdated(account: SyncableAccount): string {
   if (account.isManual) return ACCOUNT_COPY.manualAccount
 
-  const moment = formatSyncMoment(account.lastSuccessAt)
+  const observed = account.balanceAsOf ?? account.lastSuccessAt
+  const moment = formatSyncMoment(observed)
   if (moment === null) return 'Never'
 
-  const days = localDaysSince(account.lastSuccessAt, new Date())
+  const days = localDaysSince(observed, new Date())
   return days === 0 ? moment.time : moment.date
 }
 

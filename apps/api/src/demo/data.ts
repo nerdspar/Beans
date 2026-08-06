@@ -121,21 +121,34 @@ export const DEMO_ACCOUNTS: readonly DemoAccount[] = [
     isManual: false,
   },
   {
-    /* Finishes partway through the history, so the chart shows a liability genuinely ending. */
+    /*
+     * Still outstanding, and visibly paying down.
+     *
+     * It was modelled as paid off, which left the loan section showing $0.00 — technically right
+     * and indistinguishable from an account that failed to load. A balance that shrinks month by
+     * month is the thing worth showing, and it gives the liabilities side of net worth something
+     * other than a mortgage.
+     */
     key: 'student-loan',
     name: 'Graduate Loan',
     institution: 'Meridian Student Lending',
     type: 'loan',
     mask: '6204',
     taxTreatment: 'none',
-    currentBalanceCents: 0n,
+    currentBalanceCents: -14_280_00n,
     isManual: false,
   },
   {
     /* Only a person can say what a house is worth, which is what manual accounts are for. */
     key: 'house',
     name: 'Home',
-    institution: 'Manual',
+    /*
+     * The address, where a synced account would name its bank.
+     *
+     * "Manual" said only what the account already says elsewhere, and read as a placeholder nobody
+     * had filled in — which for the one account a person types themselves is the wrong impression.
+     */
+    institution: '42 Apple Road',
     type: 'other_asset',
     mask: null,
     taxTreatment: 'none',
