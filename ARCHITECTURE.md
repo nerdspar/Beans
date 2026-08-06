@@ -214,15 +214,31 @@ testing backlog counted that as coverage for the highest-risk failure in the app
 `analyseDrift` (`packages/shared/src/balance-history/drift.ts`) is the real check: between two
 independent readings, the transactions either explain the change or they do not, and inverted signs
 produce drift of exactly twice the net movement in the same direction — a signature rather than a
-smell. It is written, tested, and **wired to nothing**, because the readings it needs are the ones
-being discarded.
+smell, which is why it can name the cause instead of reporting a large number.
 
-**The fix is a separate table, not a policy for which value wins.** `balance_snapshots` has
+It reports on the sync run rather than raising. Three periods of same-direction drift is strong
+evidence and not proof, and the balances remain the provider's own figures either way. One period is
+deliberately silent: a provider missing a transaction or a pending row settling differently goes
+both ways, and a check that fires on ordinary noise is one nobody reads.
+
+**It needs several readings before it can say anything**, so a newly connected account is unprotected
+for its first weeks — which is exactly when a sign convention error is introduced. It reduces the
+manual check in the testing backlog rather than replacing it.
+
+**Built as `balance_readings`, a separate table rather than a policy for which value wins.** `balance_snapshots` has
 `unique(account_id, as_of_date)` — one row per account per day — which is what forces an observed
 value and a derived value to compete for the same slot, and what made this look like a decision
-about what the chart should draw. It is not. An append-only log of provider readings, written once
-per sync and read by nothing but the detector, keeps both facts without either displacing the other:
-the chart continues to show reconstruction, and the disagreement becomes visible.
+about what the chart should draw. It is not. A log of provider readings, written once per sync
+and read by nothing that draws, keeps both facts without either displacing the other: the chart
+continues to show reconstruction, and the disagreement becomes visible.
+
+Written from `updateBalance` in the sync path **and nowhere else**. A rebuild triggered by an edit —
+a sign flip, a manual correction — also has a balance in hand, and recording that would turn the
+table from what the provider said into what Beans last thought, which is exactly what it exists to
+be independent of.
+
+The readings are also their own export (§11.2). They are the only primary figures in the file:
+everything in the daily balances for a reconstructable account is computed from them.
 
 Reconstruction should stay authoritative for the chart (§4.1). A provider's balance is frequently
 stale — the portfolio's dated figures exist because of exactly that — so pinning history to reported

@@ -113,6 +113,13 @@
       "when": 1786031888141,
       "tag": "0015_lame_deathbird",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1786050125311,
+      "tag": "0016_slim_toxin",
+      "breakpoints": true
     }
   ]
 }

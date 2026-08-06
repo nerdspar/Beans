@@ -255,6 +255,34 @@ async function updateBalance(
       account.id,
     ],
   )
+
+  /*
+   * Keep what the institution said, alongside what Beans computes from it.
+   *
+   * Reconstruction overwrites the reported figure with derived values built on top of it, so
+   * without this row the provider's own claim about a date survives nowhere — and the only way to
+   * notice an institution reporting balances and transactions in opposite sign conventions is to
+   * compare two of its claims against the transactions between them (§4.4).
+   *
+   * **Here and nowhere else.** A rebuild triggered by an edit — a sign flip, a manual correction —
+   * also has a balance in hand, and recording that would turn this from what the provider said into
+   * what Beans last thought, which is precisely the thing it exists to be independent of.
+   *
+   * Sign-corrected to match, because the comparison is against transactions that already are. The
+   * inversion this detects is the institution's convention disagreeing with itself, not Beans
+   * disagreeing with the institution.
+   */
+  await context.client.query(
+    `insert into balance_readings (household_id, account_id, as_of_date, balance)
+     values ($1,$2,$3,$4)
+     on conflict (account_id, as_of_date) do update set balance = excluded.balance`,
+    [
+      context.householdId,
+      account.id,
+      toIsoDate(providerAccount.balanceDate ?? now),
+      context.cipher.encryptMoney(balance),
+    ],
+  )
 }
 
 /**

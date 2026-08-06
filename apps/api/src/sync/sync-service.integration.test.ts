@@ -299,6 +299,94 @@ describeIntegration('sync service', () => {
     })
   })
 
+  /**
+   * The failure §3.3 calls the highest-risk code in the app, caught end to end.
+   *
+   * An institution reporting balances and transactions in opposite sign conventions produces a
+   * smooth, plausible, steadily wrong chart. Nothing errors. Net worth is off by a growing amount
+   * in a direction that looks reasonable.
+   *
+   * It is invisible to reconstruction by construction — the series is built *from* the balance, so
+   * it always agrees with it. The only way to see it is to compare two of the institution's own
+   * readings against the transactions between them, which is why `balance_readings` exists.
+   */
+  describe('balance drift', () => {
+    /** Four weekly syncs of one account, at whatever balances and transactions are given. */
+    async function syncWeekly(
+      connectionId: string,
+      weeks: ReadonlyArray<{ balance: string; date: string; transaction?: string }>,
+    ): Promise<Array<{ errors: string[] | null }>> {
+      const runs: Array<{ errors: string[] | null }> = []
+
+      for (const week of weeks) {
+        await withHouseholdContext(deps, USER, async (ctx) => {
+          const body = {
+            errors: [],
+            accounts: [
+              {
+                ...account(
+                  week.transaction === undefined
+                    ? []
+                    : [
+                        {
+                          id: `TRN-${week.date}`,
+                          posted: epoch(`${week.date}T00:00:00Z`),
+                          amount: week.transaction,
+                          description: 'MOVEMENT',
+                        },
+                      ],
+                ),
+                balance: week.balance,
+                'balance-date': epoch(`${week.date}T11:00:00Z`),
+              },
+            ],
+          }
+
+          // `manual` so the weekly cadence is not refused by the scheduled-sync backoff.
+          await runSync(ctx, connectionId, makeFetcher(body), 'manual', new Date(`${week.date}T12:00:00Z`))
+        })
+      }
+
+      const rows = await readSyncRuns()
+      for (const row of rows) runs.push({ errors: row.errors })
+      return runs
+    }
+
+    it('flags an institution whose transactions contradict its own balances', async () => {
+      const connectionId = await setUp()
+
+      /*
+       * The card is confirmed sign-inverted by `setUp`, so a falling balance is money being spent.
+       * The transactions claim the opposite direction every week — the inversion.
+       */
+      const runs = await syncWeekly(connectionId, [
+        { balance: '3000.00', date: '2026-07-01' },
+        { balance: '3500.00', date: '2026-07-08', transaction: '500.00' },
+        { balance: '4000.00', date: '2026-07-15', transaction: '500.00' },
+        { balance: '4500.00', date: '2026-07-22', transaction: '500.00' },
+      ])
+
+      const messages = runs.flatMap((run) => run.errors ?? [])
+      expect(messages.some((message) => message.includes('opposite signs'))).toBe(true)
+    })
+
+    it('says nothing when the transactions add up', async () => {
+      const connectionId = await setUp()
+
+      // The same movements, in the direction the balances actually went.
+      const runs = await syncWeekly(connectionId, [
+        { balance: '3000.00', date: '2026-07-01' },
+        { balance: '3500.00', date: '2026-07-08', transaction: '-500.00' },
+        { balance: '4000.00', date: '2026-07-15', transaction: '-500.00' },
+        { balance: '4500.00', date: '2026-07-22', transaction: '-500.00' },
+      ])
+
+      // The healthy case has to stay silent, or the warning is noise from the first week.
+      const messages = runs.flatMap((run) => run.errors ?? [])
+      expect(messages.some((message) => message.includes('do not explain'))).toBe(false)
+    })
+  })
+
   describe('transfer detection', () => {
     /** A card payment: money leaves checking and lands on the card, same amount, next day. */
     const transferBody = {

@@ -2,7 +2,12 @@ import { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { DataKeyCache } from '../crypto/data-key-cache.js'
 import { LocalMasterKeyProvider } from '../crypto/local-master-key-provider.js'
-import { exportAccounts, exportBalances, exportTransactions } from './export.js'
+import {
+  exportAccounts,
+  exportBalances,
+  exportReadings,
+  exportTransactions,
+} from './export.js'
 import {
   createHousehold,
   withHouseholdContext,
@@ -158,6 +163,27 @@ describeIntegration('export', () => {
       makeAccount(ctx, 'depository', 'Checking', 500_00n).then(() => exportAccounts(ctx)),
     )
     expect(table.rows[0]?.[8]).toBe('500.00')
+  })
+
+  it('exports the institutions own readings, which nothing else records', async () => {
+    /*
+     * The only primary figures in the export. Everything in `balances` for a reconstructable
+     * account is computed from these; if they are missing, an auditor has nothing to check the
+     * derived history against.
+     */
+    const table = await withHouseholdContext(deps, USER, async (ctx) => {
+      const account = await makeAccount(ctx, 'depository', 'Checking', 500_00n)
+      await ctx.client.query(
+        `insert into balance_readings (household_id, account_id, as_of_date, balance)
+         values ($1,$2,'2026-08-01',$3)`,
+        [ctx.householdId, account, ctx.cipher.encryptMoney(512_34n)],
+      )
+      return exportReadings(ctx)
+    })
+
+    expect(table.rows).toHaveLength(1)
+    expect(table.rows[0]?.[2]).toBe('Checking')
+    expect(table.rows[0]?.[3]).toBe('512.34')
   })
 
   it('exports transactions with their decrypted description and category', async () => {

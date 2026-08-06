@@ -125,6 +125,39 @@ export async function exportBalances(context: HouseholdContext): Promise<ExportT
   }
 }
 
+/**
+ * What each institution actually reported, as opposed to what Beans derived from it.
+ *
+ * Sparser than the daily balances — one row per account per sync rather than per day — and the only
+ * primary record in the file. Everything in `balances` for a reconstructable account is computed;
+ * these are the figures the institution itself stated, which is what anybody auditing the other
+ * file would want to check it against.
+ */
+export async function exportReadings(context: HouseholdContext): Promise<ExportTable> {
+  const result = await context.client.query<{
+    account_id: string
+    display_name: Buffer | null
+    provider_name: Buffer | null
+    as_of_date: string
+    balance: Buffer | null
+  }>(
+    `select r.account_id, r.as_of_date, r.balance, a.display_name, a.provider_name
+       from balance_readings r
+       join accounts a on a.id = r.account_id
+      order by r.as_of_date, r.account_id`,
+  )
+
+  return {
+    headers: ['as_of_date', 'account_id', 'account_name', 'reported_balance'],
+    rows: result.rows.map((row) => [
+      row.as_of_date,
+      row.account_id,
+      accountName(context, row),
+      moneyOrBlank(context, row.balance),
+    ]),
+  }
+}
+
 /** Every transaction, voided ones included and marked — a void is a fact about what happened. */
 export async function exportTransactions(context: HouseholdContext): Promise<ExportTable> {
   const result = await context.client.query<{

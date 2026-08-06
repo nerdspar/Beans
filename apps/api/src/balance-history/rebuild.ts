@@ -1,4 +1,5 @@
 import {
+  analyseDrift,
   addDays,
   carryForward,
   carryStale,
@@ -10,6 +11,7 @@ import {
   type AccountType,
   type DailyBalance,
   type IsoDate,
+  type DriftAnalysis,
 } from '@beans/shared'
 import type { HouseholdContext } from '../repositories/household-context.js'
 
@@ -40,9 +42,22 @@ const RECONSTRUCTABLE: ReadonlySet<AccountType> = new Set<AccountType>([
 export type RebuildResult = {
   accountId: string
   snapshotsWritten: number
-  /** False when the derived series disagrees with the observed balance. See below. */
+  /**
+   * False when the derived series disagrees with the balance it was built from.
+   *
+   * **An assertion about reconstruction, not about the institution.** It compares the series to its
+   * own anchor, which is an invariant of the algorithm — it can only fail if reconstruction is
+   * buggy. The check that can see an institution's signs disagreeing is `drift` (§4.4).
+   */
   consistent: boolean
   difference: bigint
+  /**
+   * Whether the provider's own readings and its transactions tell the same story.
+   *
+   * Null when there is nothing to ask: a manual account has no provider to disagree with, and an
+   * account that has reported once has nothing to compare against yet.
+   */
+  drift: DriftAnalysis | null
   coverageStart: IsoDate | null
 }
 
@@ -76,6 +91,7 @@ export async function rebuildAccountHistory(
     snapshotsWritten: 0,
     consistent: true,
     difference: 0n,
+    drift: null,
     coverageStart: account?.coverage_start_date ?? null,
   }
 
@@ -160,11 +176,25 @@ export async function rebuildAccountHistory(
       ? checkReconstruction(series, currentBalance)
       : { consistent: true, difference: 0n }
 
+  /*
+   * The check that can actually fail — two of the institution's own readings, and the transactions
+   * between them (§4.4). Skipped for manual accounts, whose balances are typed by the person who
+   * owns them: there is nothing to disagree with, and flagging drift there would be Beans telling
+   * somebody their own figures do not add up.
+   */
+  const drift = account.is_manual
+    ? null
+    : analyseDrift(
+        await loadReadings(context, accountId, coverageStart),
+        await loadTransactions(context, accountId, coverageStart, balanceAsOf),
+      )
+
   return {
     accountId,
     snapshotsWritten: written,
     consistent: check.consistent,
     difference: check.difference,
+    drift,
     coverageStart,
   }
 }
@@ -300,6 +330,25 @@ async function loadTransactions(
   return result.rows.map((row) => ({
     date: row.posted_date,
     amountCents: context.cipher.decryptMoney(row.amount),
+  }))
+}
+
+/** What the institution reported, as opposed to what was derived from it. See `balance_readings`. */
+async function loadReadings(
+  context: HouseholdContext,
+  accountId: string,
+  from: IsoDate,
+): Promise<Array<{ date: IsoDate; balanceCents: bigint }>> {
+  const result = await context.client.query<{ as_of_date: IsoDate; balance: Buffer }>(
+    `select as_of_date, balance from balance_readings
+      where account_id = $1 and as_of_date >= $2
+      order by as_of_date`,
+    [accountId, from],
+  )
+
+  return result.rows.map((row) => ({
+    date: row.as_of_date,
+    balanceCents: context.cipher.decryptMoney(row.balance),
   }))
 }
 

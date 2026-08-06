@@ -3,7 +3,12 @@ import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import type { Auth } from '../auth/auth.js'
 import { getSession } from '../auth/routes.js'
 import { exportFilename, toCsv } from '../export/csv.js'
-import { exportAccounts, exportBalances, exportTransactions } from '../repositories/export.js'
+import {
+  exportAccounts,
+  exportBalances,
+  exportReadings,
+  exportTransactions,
+} from '../repositories/export.js'
 import {
   NoHouseholdError,
   withHouseholdContext,
@@ -28,11 +33,13 @@ import {
 
 export type ExportRoutesOptions = { auth: Auth; deps: ContextDependencies }
 
-/** The three tables, and the only names the route accepts. */
+/** Every table, and the only names the route accepts. */
 const EXPORTS = {
   accounts: exportAccounts,
   balances: exportBalances,
   transactions: exportTransactions,
+  /** The institutions' own figures — the only primary record among these. */
+  readings: exportReadings,
 } as const
 
 type ExportName = keyof typeof EXPORTS

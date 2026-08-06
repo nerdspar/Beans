@@ -180,15 +180,39 @@ export async function runSync(
       )
     }
 
-    // A drifting series means the account's balance and its transactions are in opposite sign
-    // conventions. It produces a smooth, plausible, wrong chart rather than an error, so it is
-    // surfaced on the sync run instead of being averaged away.
+    /*
+     * Transactions that do not explain the institution's own readings, sustained across periods.
+     *
+     * This replaces a check that could not fail. The old one compared the reconstructed series to
+     * the balance it was reconstructed *from* — an invariant of the algorithm rather than a fact
+     * about the institution — so the failure it was written for went undetected while looking
+     * covered (§4.4).
+     *
+     * Reported on the sync run rather than raised. It is a suspicion with a false-positive rate,
+     * not an error: three periods of same-direction drift is strong evidence and not proof, and the
+     * balances remain the provider's own figures either way.
+     */
+    const drifting = rebuilds.filter((rebuild) => rebuild.drift?.sustained === true)
+    if (drifting.length > 0) {
+      const inverted = drifting.filter((rebuild) => rebuild.drift?.likelyInverted === true)
+
+      outcome.errors.push(
+        inverted.length > 0
+          ? `Transactions do not explain the reported balance on ${inverted.length} account(s), by ` +
+            `about twice the amount moved each period — the signature of an institution reporting ` +
+            `balances and transactions with opposite signs. Check the sign setting on those accounts.`
+          : `Transactions do not explain the reported balance on ${drifting.length} account(s) ` +
+            `across several readings. The balances are the provider's own figures; the history ` +
+            `derived between them may be understated or overstated.`,
+      )
+    }
+
+    // Kept as an assertion about reconstruction itself, which is all it can ever be.
     const inconsistent = rebuilds.filter((rebuild) => !rebuild.consistent)
     if (inconsistent.length > 0) {
       outcome.errors.push(
-        `Balance history for ${inconsistent.length} account(s) does not reconcile with the ` +
-          `reported balance. This usually means the institution reports balances and transactions ` +
-          `with opposite signs.`,
+        `Reconstruction did not reconcile for ${inconsistent.length} account(s). That is a bug in ` +
+          `Beans rather than a problem with the institution.`,
       )
     }
 

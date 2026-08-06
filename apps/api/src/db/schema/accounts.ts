@@ -328,6 +328,57 @@ export const balanceSnapshots = pgTable(
 ).enableRLS()
 
 /**
+ * What the institution actually said, kept.
+ *
+ * **The only record of a provider's own figures.** `balance_snapshots` holds what Beans *computed*:
+ * for a reconstructable account every row is `derived`, walked backwards from the latest balance,
+ * so the reported figure is used as an anchor and then overwritten by the arithmetic built on it.
+ * One row per account per day (`balance_snapshots_account_date_uq`) means an observation and a
+ * derivation cannot both live there — which is why this is a separate table rather than a `source`.
+ *
+ * Nothing reads it to draw anything. Reconstruction stays authoritative for the chart (§4.1):
+ * provider balances are frequently stale, and pinning history to them would trade a smooth wrong
+ * line for a jagged one and lose the property that a late transaction corrects the days it belongs
+ * to.
+ *
+ * What it makes possible is `analyseDrift` — two independent readings and the transactions between
+ * them, which is the only way to see an institution reporting balances and transactions in opposite
+ * sign conventions (§3.3, §4.4). Without it that failure is undetectable, and the check that
+ * appeared to cover it could not fire.
+ *
+ * Written from the sync path alone, where the figure genuinely came from the institution. A rebuild
+ * triggered by an edit — a sign flip, a manual correction — must never land here, or the record
+ * stops being what the provider said and becomes what Beans last thought.
+ */
+export const balanceReadings = pgTable(
+  'balance_readings',
+  {
+    id: primaryId(),
+    householdId: householdId().references(() => households.id, { onDelete: 'cascade' }),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+
+    /** The date the institution attributed the balance to, not the date it was fetched. */
+    asOfDate: date('as_of_date').notNull(),
+    balance: bytea('balance').notNull(),
+
+    createdAt: createdAt(),
+  },
+  (table) => [
+    /*
+     * One reading per account per day. Syncing twice in a day replaces it rather than accumulating,
+     * because the later fetch is the better answer for that date — and because drift compares
+     * consecutive days, which duplicate rows would turn into intervals of zero length.
+     */
+    unique('balance_readings_account_date_uq').on(table.accountId, table.asOfDate),
+    index('balance_readings_account_date_idx').on(table.accountId, table.asOfDate),
+
+    householdIsolationPolicy('balance_readings'),
+  ],
+).enableRLS()
+
+/**
  * User-entered balances for manual accounts — a house, a car, a private investment, a crypto wallet.
  *
  * Each entry becomes an `observed` snapshot at its effective date, held flat until the next entry

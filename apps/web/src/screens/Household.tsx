@@ -277,6 +277,7 @@ export function Household(): ReactNode {
                 HOUSEHOLD_COPY.exportTransactions,
                 HOUSEHOLD_COPY.exportTransactionsHint,
               ],
+              ['readings', HOUSEHOLD_COPY.exportReadings, HOUSEHOLD_COPY.exportReadingsHint],
               ['accounts', HOUSEHOLD_COPY.exportAccounts, HOUSEHOLD_COPY.exportAccountsHint],
             ] as const
           ).map(([name, label, hint]) => (

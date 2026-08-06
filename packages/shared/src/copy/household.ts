@@ -27,6 +27,9 @@ export const HOUSEHOLD_COPY = {
     'One row per account per day, including loans and investments. The history nothing else can rebuild.',
   exportTransactions: 'Transactions',
   exportTransactionsHint: 'Every transaction with its category, including voided ones.',
+  exportReadings: 'Reported balances',
+  exportReadingsHint:
+    'What each institution said, on the days it said it. The only figures here Beans did not calculate.',
 
   title: 'Household',
   loading: 'Counting the beans.',
