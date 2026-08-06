@@ -62,9 +62,22 @@ export function proposeTransferPairs(
     .filter((entry) => entry.amountCents < 0n && !alreadyPaired.has(entry.id))
     .sort((left, right) => (left.postedDate < right.postedDate ? -1 : 1))
 
-  const inflows = transactions.filter(
-    (entry) => entry.amountCents > 0n && !alreadyPaired.has(entry.id),
-  )
+  /*
+   * Inflows bucketed by amount, because the amounts have to match exactly anyway.
+   *
+   * This used to scan every inflow for every outflow, with a date parse inside the comparison. On a
+   * few hundred transactions that is invisible; on an imported decade it is tens of millions of
+   * comparisons, and it is the reason detection only ever looks back 120 days. A map lookup makes
+   * the candidate set the handful of transactions that could possibly pair, and the rest of the
+   * matching is unchanged — same pairs, same ordering, same tie-break.
+   */
+  const inflowsByAmount = new Map<bigint, PairableTransaction[]>()
+  for (const entry of transactions) {
+    if (entry.amountCents <= 0n || alreadyPaired.has(entry.id)) continue
+    const bucket = inflowsByAmount.get(entry.amountCents)
+    if (bucket === undefined) inflowsByAmount.set(entry.amountCents, [entry])
+    else bucket.push(entry)
+  }
 
   const used = new Set<string>()
   const pairs: ProposedPair[] = []
@@ -72,13 +85,12 @@ export function proposeTransferPairs(
   for (const outflow of outflows) {
     if (used.has(outflow.id)) continue
 
-    const candidates = inflows
+    const candidates = (inflowsByAmount.get(-outflow.amountCents) ?? [])
       .filter(
         (inflow) =>
           !used.has(inflow.id) &&
           // A transfer moves money between two accounts. The same account cannot be both ends.
           inflow.accountId !== outflow.accountId &&
-          inflow.amountCents === -outflow.amountCents &&
           Math.abs(daysBetween(outflow.postedDate, inflow.postedDate)) <= MAX_DAYS_APART &&
           !rejectedKeys.has(pairKeyFor(outflow.id, inflow.id)),
       )

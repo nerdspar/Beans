@@ -721,6 +721,52 @@ not-a-date,BAD ROW,-10.00
     })
   })
 
+  /**
+   * An import proposes transfers, as a sync does.
+   *
+   * It never used to. A file of a household's own history is full of transfers — every card
+   * payment, every move to savings — and none of them were proposed until somebody pressed the
+   * button on the cash flow screen, which nobody presses to check for a problem they cannot see.
+   * Both totals stayed inflated by the same amount, with net looking untouched and nothing saying so.
+   */
+  it('proposes a transfer among the rows it just committed', async () => {
+    const proposals = await withHouseholdContext(deps, USER, async (ctx) => {
+      const checking = await makeAccount(ctx)
+      const card = await makeAccount(ctx)
+
+      // The same amount leaving one account and arriving in the other, two days apart — a card
+      // payment, which is the commonest transfer in anybody's file.
+      const csv = parseCsv(
+        `Date,Description,Category,Amount,Account
+2026-08-01,CHASE CREDIT CRD AUTOPAY,Transfers,-500.00,Checking
+2026-08-03,PAYMENT THANK YOU,Transfers,500.00,Card
+`,
+      )
+
+      const staged = await stageImport(ctx, {
+        csv,
+        mapping: guessMapping(csv.headers),
+        preset: findPreset('empower')!,
+        kind: 'transactions',
+        accountMap: [
+          { value: 'Checking', accountId: checking },
+          { value: 'Card', accountId: card },
+        ],
+        originalFilename: 'transfers.csv',
+        dateFormat: 'iso',
+      })
+
+      await commitImport(ctx, staged.importId, NOW)
+
+      const rows = await ctx.client.query<{ status: string }>('select status from transfer_matches')
+      return rows.rows
+    })
+
+    expect(proposals).toHaveLength(1)
+    // Proposed, never confirmed. A proposal moves no total; only a person excludes anything.
+    expect(proposals[0]?.status).toBe('proposed')
+  })
+
   describe('the seam', () => {
     /** Seeds a synced transaction that duplicates an imported one under a different description. */
     async function seedSynced(

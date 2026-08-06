@@ -14,6 +14,7 @@ import {
 } from '@beans/shared'
 import { rebuildAccountHistory } from '../balance-history/rebuild.js'
 import { applyRules } from '../repositories/categories.js'
+import { detectTransfers } from '../repositories/transfers.js'
 import { advanceProgress, beginProgress, endProgress } from './progress.js'
 import type { HouseholdContext } from '../repositories/household-context.js'
 import { columnSamples, type ParsedCsv } from './csv.js'
@@ -559,6 +560,23 @@ export async function commitImport(
     )
 
     await rebuildTouchedAccounts(context, touchedAccounts, now)
+
+    /*
+     * Look for transfers among the rows that just landed.
+     *
+     * Sync has done this since detection existed; import never has, which meant a file of a
+     * household's own history — where every card payment and every move to savings is a transfer —
+     * produced no proposals at all until somebody pressed the button on the cash flow screen. The
+     * same asymmetry as rules, below, and missed for the same reason: both are "enrich what just
+     * arrived", and only one arrival path had them.
+     *
+     * **Not wrapped in a try/catch, unlike the sync path, and that is not an oversight.** This runs
+     * inside the import's transaction. Postgres aborts a transaction on the first failed statement
+     * and refuses everything after it, so catching the error here would buy nothing — the commit is
+     * already lost. A failure rolls the import back, which is at least a state the reader can
+     * retry, rather than a half-committed one.
+     */
+    await detectTransfers(context)
 
     /*
      * Categorize the rows that just landed, for the same reason sync does.
