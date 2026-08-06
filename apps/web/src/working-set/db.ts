@@ -29,6 +29,14 @@ export type StoredAccount = {
   institutionName: string | null
   mask: string | null
   currentBalanceCents: bigint | null
+  /**
+   * What the provider says is actually available, where it says anything.
+   *
+   * On a current account that is the balance minus holds — what can be spent today. On a card the
+   * provider appears to send available *credit* instead, which is a different quantity wearing the
+   * same field, so it is shown labelled rather than merged into the balance.
+   */
+  availableBalanceCents: bigint | null
   balanceAsOf: string | null
   isManual: boolean
   isClosed: boolean
@@ -175,6 +183,8 @@ export async function applyDelta(
       mask: account.mask,
       currentBalanceCents:
         account.currentBalance === null ? null : parseDecimalToCents(account.currentBalance),
+      availableBalanceCents:
+        account.availableBalance === null ? null : parseDecimalToCents(account.availableBalance),
       balanceAsOf: account.balanceAsOf,
       isManual: account.isManual,
       isClosed: account.isClosed,

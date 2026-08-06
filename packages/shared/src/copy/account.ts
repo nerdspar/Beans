@@ -17,6 +17,15 @@ export const ACCOUNT_COPY = {
   institution: 'Institution',
   taxTreatment: 'Tax treatment',
   lastUpdated: 'Last updated',
+  /**
+   * What the provider says is actually available.
+   *
+   * Shown beside the balance rather than merged into it, because on a card it is available *credit*
+   * — a different quantity in the same field. Labelled, so the two are never read as one number.
+   */
+  availableBalance: 'Available',
+  /** Searching one account's activity, which is the common case for "when did I pay that". */
+  searchActivity: 'Search this account',
   connection: 'Connection',
 
   /** Values that are an absence rather than a number. */

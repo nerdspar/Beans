@@ -22,6 +22,7 @@ function account(overrides: Partial<StoredAccount> & { id: string }): StoredAcco
     institutionName: 'Bank',
     mask: null,
     currentBalanceCents: null,
+    availableBalanceCents: null,
     balanceAsOf: null,
     isManual: false,
     isClosed: false,

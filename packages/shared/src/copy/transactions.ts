@@ -50,6 +50,31 @@ export const TRANSACTIONS_COPY = {
   voided: 'Removed by the bank',
 
   /** Reported so a short list is not mistaken for a complete one. */
+  /**
+   * The net of everything currently listed, pinned to the bottom of the screen.
+   *
+   * **Of the filtered list, not the range**, which is the entire reason it is worth having: filter
+   * to one category and it answers "how much did we spend on this", filter to an account and it
+   * answers "what moved through here". A figure that ignored the filters would just be the range's
+   * net repeated on every screen.
+   *
+   * Called net rather than total because it is a sum of signed amounts — money in less money out —
+   * and "total" invites reading it as spending.
+   */
+  runningNet: 'Net',
+  /** Said once, at the foot, so nobody mistakes a filtered net for the whole range's. */
+  runningNetFiltered: 'of the filtered list',
+
+  /**
+   * Pending transactions, gathered at the top rather than sorted in by date.
+   *
+   * They are the ones that can still change — amount, date, or vanishing entirely — and they are
+   * what somebody is looking for when they open this screen having just spent something. Sorted in
+   * by date they scatter among settled rows that will never move again.
+   */
+  pendingHeading: 'Pending',
+  pendingNote: 'Not settled yet. These can still change or disappear.',
+
   showing: (shown: number, total: number): string =>
     shown === total
       ? `${total} transaction${total === 1 ? '' : 's'}`

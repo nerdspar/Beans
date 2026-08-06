@@ -327,6 +327,19 @@ function AccountView({
       <div className="flex items-baseline justify-between gap-3 px-5 pt-4">
         <div>
           <div className="text-3xl font-semibold tabular-nums">{formatCents(total)}</div>
+          {/*
+            Only where the provider sent one, and only when it differs from the balance.
+
+            Equal values mean nothing is held and nothing is drawn down, and printing the same
+            number twice under two labels invites the reader to look for a difference that is not
+            there. Absent entirely for manual accounts, which have no provider to report it.
+          */}
+          {account.availableBalanceCents !== null &&
+            account.availableBalanceCents !== account.currentBalanceCents && (
+              <div className="mt-0.5 text-xs text-slate-500 tabular-nums dark:text-slate-400">
+                {ACCOUNT_COPY.availableBalance} {formatCents(account.availableBalanceCents)}
+              </div>
+            )}
           {/* Matching net worth: the date replaces the change while a day is being read. */}
           {reading === null ? (
             <div
