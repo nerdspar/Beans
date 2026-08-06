@@ -68,7 +68,7 @@ describe('resolveNavigationOrder', () => {
 describe('resolveTabOrder', () => {
   it('is the front of the navigation order', () => {
     // The property the whole change rests on. If these ever diverge, the setting means two things.
-    for (const stored of [null, ['rules', 'portfolio'], ['settings', 'import', 'categories']]) {
+    for (const stored of [null, ['rules', 'portfolio'], ['settings', 'accounts', 'categories']]) {
       expect(keys(resolveTabOrder(stored))).toEqual(
         keys(resolveNavigationOrder(stored)).slice(0, TAB_SLOTS),
       )
@@ -83,11 +83,11 @@ describe('resolveTabOrder', () => {
   })
 
   it('puts whatever the reader chose in the bar, with no destination held back', () => {
-    // Previously Settings, Import and Household were refused a slot on their behalf. Someone
-    // mid-migration who wants Import under their thumb is not making a mistake.
-    expect(keys(resolveTabOrder(['settings', 'import', 'household', 'rules']))).toEqual([
+    // Settings, Accounts and Household were once refused a slot on their behalf. Somebody who wants
+    // Manage accounts under their thumb is not making a mistake.
+    expect(keys(resolveTabOrder(['settings', 'accounts', 'household', 'rules']))).toEqual([
       'settings',
-      'import',
+      'accounts',
       'household',
       'rules',
     ])

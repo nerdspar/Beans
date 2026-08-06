@@ -8,7 +8,7 @@ import {
   parseDecimalToCents,
 } from '@beans/shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ExternalLink, Plus, RefreshCw } from 'lucide-react'
+import { ExternalLink, Plus, RefreshCw, Upload } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { AccountEditor, ManualAccountForm, ManualBalanceForm } from '../accounts/AccountForms.js'
 import { listManagedAccounts, type ManagedAccount } from '../accounts/api.js'
@@ -299,6 +299,32 @@ export function Accounts(): ReactNode {
             ))}
           </ul>
         )}
+      </section>
+
+      {/*
+        The way into importing.
+
+        It used to be a top-level destination, which put a task most people do at the start — and
+        then rarely — permanently in the navigation. It is here because this is the same job as the
+        rest of the screen: getting account data into Beans. It keeps its own URL, so nothing about
+        the page or a link to it changed; only where it is found.
+      */}
+      <section className="mt-8 rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+        <h2 className="text-sm font-semibold">{ACCOUNTS_COPY.importHeading}</h2>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          {ACCOUNTS_COPY.importDetail}
+        </p>
+        <Link
+          href="/import"
+          className={cn(
+            'mt-3 inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-medium',
+            'border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800',
+            'focus-visible:outline-2 focus-visible:outline-sky-500',
+          )}
+        >
+          <Upload className="size-4" aria-hidden />
+          {ACCOUNTS_COPY.importAction}
+        </Link>
       </section>
 
       {hasClosed && (

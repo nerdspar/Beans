@@ -6,7 +6,6 @@ import {
   PiggyBank,
   Settings,
   Tags,
-  Upload,
   Users,
   Wallet,
 } from 'lucide-react'
@@ -29,7 +28,6 @@ export type DestinationKey =
   | 'accounts'
   | 'categories'
   | 'rules'
-  | 'import'
   | 'household'
   | 'settings'
 
@@ -98,7 +96,18 @@ export const DESTINATIONS: readonly Destination[] = [
     icon: Wallet,
   },
   /*
-   * Categories, rules, import and the household are **destinations**, not settings.
+   * **Import is deliberately not in this list**, though `/import` is still a real route.
+   *
+   * Being a destination and being in the navigation are separable, and conflating them is what put
+   * it here. The problem it was pulled out of Settings to fix was the *shape*: an accordion with no
+   * URL, no back button, and a reload that dropped you at the top. It keeps the URL and the page;
+   * it just is not one of the things you scroll past every day to reach something else.
+   *
+   * It is reached from Manage accounts, which is the same job — getting account data in — and where
+   * somebody already is when they discover they need it. Anything that removes it from there has to
+   * put a link somewhere, or the screen becomes reachable only by typing the path.
+   *
+   * Categories, rules and the household are **destinations**, not settings.
    *
    * They were folded into the settings page as expanding sections, which was the wrong shape twice
    * over. Each is a screen's worth of interface stuffed into a list row, so opening one shoved
@@ -122,13 +131,6 @@ export const DESTINATIONS: readonly Destination[] = [
     label: 'Rules',
     short: 'Rules',
     icon: Filter,
-  },
-  {
-    key: 'import',
-    path: '/import',
-    label: 'Import data',
-    short: 'Import',
-    icon: Upload,
   },
   {
     key: 'household',

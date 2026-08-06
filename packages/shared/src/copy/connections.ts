@@ -156,6 +156,21 @@ export const ACCOUNTS_COPY = {
   edit: 'Edit',
   editTitle: 'Edit account',
   /**
+   * The way into importing, now that it is reached from here rather than from the navigation.
+   *
+   * It sits on this screen because it is the same job: getting account data into Beans. Settings
+   * was the other candidate and the wrong one — it was deliberately emptied down to preferences,
+   * and an import is not a preference.
+   *
+   * Named for the outcome rather than the mechanism. "Import data" is what the file does; "history
+   * a connection cannot reach" is why somebody would want to.
+   */
+  importHeading: 'Import from a file',
+  importDetail:
+    'History from before you connected, or an institution SimpleFIN does not reach. Transactions or balances, from a CSV.',
+  importAction: 'Import a file',
+
+  /**
    * The last four digits, appended to an account name.
    *
    * Here rather than written out at each screen, because it was written out at two and they have to
