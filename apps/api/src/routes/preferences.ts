@@ -4,6 +4,11 @@ import { MAX_TAB_ORDER_LENGTH } from '@beans/shared'
 import { z } from 'zod'
 import type { Auth } from '../auth/auth.js'
 import { getSession } from '../auth/routes.js'
+import {
+  readPreferences,
+  writePreferences,
+  type QueryFn,
+} from '../repositories/preferences.js'
 
 /**
  * Per-user interface preferences.
@@ -78,25 +83,11 @@ export const preferenceRoutes: FastifyPluginAsync<PreferenceRoutesOptions> = asy
       return reply.status(401).send({ error: 'Not signed in' })
     }
 
-    const preferences = await asUser(session.user.id, async (query) => {
-      const result = await query<{
-        tab_order: string[] | null
-        theme: string
-        show_incomplete_history: boolean
-      }>(
-        'select tab_order, theme, show_incomplete_history from user_preferences where user_id = $1',
-        [session.user.id],
-      )
-      return result.rows[0]
-    })
+    const preferences = await asUser(session.user.id, (query) =>
+      readPreferences(query, session.user.id),
+    )
 
-    return reply.send({
-      tabOrder: preferences?.tab_order ?? null,
-      theme: preferences?.theme ?? 'system',
-      // Shown by default: the alternative discards real history, which nobody should get without
-      // having asked for it.
-      showIncompleteHistory: preferences?.show_incomplete_history ?? true,
-    })
+    return reply.send(preferences)
   })
 
   fastify.put('/api/preferences', async (request, reply) => {
@@ -110,42 +101,9 @@ export const preferenceRoutes: FastifyPluginAsync<PreferenceRoutesOptions> = asy
       return reply.status(400).send({ error: 'Invalid preferences' })
     }
 
-    await asUser(session.user.id, async (query) => {
-      /**
-       * Upsert rather than update: a user has no preferences row until they change something, and
-       * creating one on signup would mean every code path that creates a user has to remember.
-       *
-       * The stored keys are not validated against the destination registry on purpose — that list
-       * lives in the frontend and changes with it. Unknown keys are dropped when the preference is
-       * resolved, so a stale one degrades to the default rather than breaking navigation.
-       */
-      await query(
-        `insert into user_preferences (user_id, tab_order, theme, show_incomplete_history)
-         values ($1, $2, coalesce($3, 'system'), coalesce($4, true))
-         on conflict (user_id) do update
-           set tab_order = case
-                 when $5 then excluded.tab_order
-                 else user_preferences.tab_order
-               end,
-               theme = coalesce($3, user_preferences.theme),
-               show_incomplete_history =
-                 coalesce($4, user_preferences.show_incomplete_history)`,
-        [
-          session.user.id,
-          body.data.tabOrder ?? null,
-          body.data.theme ?? null,
-          body.data.showIncompleteHistory ?? null,
-          // Distinguishes "clear the tab order" from "leave it alone" — both arrive as null above.
-          'tabOrder' in body.data,
-        ],
-      )
-    })
+    await asUser(session.user.id, (query) => writePreferences(query, session.user.id, body.data))
 
     return reply.status(204).send()
   })
 }
 
-type QueryFn = <T extends Record<string, unknown>>(
-  text: string,
-  values?: unknown[],
-) => Promise<{ rows: T[] }>
