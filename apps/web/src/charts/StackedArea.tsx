@@ -1,5 +1,8 @@
+import { CHART_COPY } from '@beans/shared'
 import { useMemo, type ReactNode } from 'react'
 import { labelPrecision, niceTicks } from './axis.js'
+import { ChartTable } from './ChartTable.js'
+import { CHART_TABLE_ROWS, sampleIndices } from './table-rows.js'
 import { cn } from '../lib/cn.js'
 
 /**
@@ -26,6 +29,16 @@ export type StackedAreaProps = {
   formatValue: (cents: bigint, fractionDigits: number) => string
   height?: number
   className?: string
+  /**
+   * Names the table fallback — "Portfolio by account".
+   *
+   * This chart used to be marked purely decorative, on the grounds that the account list beneath it
+   * was the table a screen reader should read. That list is only ever *today*: it has no dates in
+   * it. Everything this chart is actually for — which account grew, when a new one appeared, the
+   * transfer that shows up as one band thickening while the total holds flat — lives in the time
+   * axis, and none of it reached a reader who could not see the picture.
+   */
+  tableLabel?: string | undefined
 }
 
 const AXIS_HEIGHT = 18
@@ -49,6 +62,7 @@ export function StackedArea({
   formatValue,
   height = 220,
   className,
+  tableLabel,
 }: StackedAreaProps): ReactNode {
   const geometry = useMemo(() => {
     if (bands.length === 0) return null
@@ -64,10 +78,20 @@ export function StackedArea({
     const dates = [...new Set(bands.flatMap((band) => band.points.map((point) => point.date)))].sort()
     if (dates.length === 0) return null
 
-    const valueAt = bands.map((band) => {
-      const byDate = new Map(band.points.map((point) => [point.date, point.value]))
-      return (date: string): number => toPixelUnits(byDate.get(date) ?? 0n)
-    })
+    /*
+     * One date-to-value lookup per band, built once and shared.
+     *
+     * The pixel math and the table fallback both need it, and building it twice would mean walking
+     * every point of every account a second time on a screen that already has the data in hand.
+     */
+    const byDate = bands.map(
+      (band) => new Map(band.points.map((point) => [point.date, point.value])),
+    )
+    const valueAt = byDate.map(
+      (lookup) =>
+        (date: string): number =>
+          toPixelUnits(lookup.get(date) ?? 0n),
+    )
 
     // Running totals, so each band's top is everything below it plus itself.
     const tops: number[][] = []
@@ -118,6 +142,30 @@ export function StackedArea({
       ),
       start: dates[0],
       end: dates[dates.length - 1],
+
+      /*
+       * Built here rather than in a second memo because `dates` is the expensive part — a union of
+       * every date across every band, deduplicated and sorted — and it is already in hand.
+       *
+       * The total is its own column, and is the one most readers want: the stack's height is the
+       * portfolio, and reconstructing it by adding six account columns by ear is not a reasonable
+       * thing to ask of anyone.
+       */
+      tableRows: sampleIndices(dates.length, CHART_TABLE_ROWS).flatMap((index) => {
+        const date = dates[index]
+        if (date === undefined) return []
+
+        const values = bands.map((band, bandIndex) => byDate[bandIndex]?.get(date) ?? 0n)
+        const total = values.reduce((sum, value) => sum + value, 0n)
+
+        return [
+          {
+            header: AXIS_DATE.format(new Date(`${date}T00:00:00Z`)),
+            cells: [...values.map((value) => formatValue(value, 2)), formatValue(total, 2)],
+          },
+        ]
+      }),
+      dateCount: dates.length,
     }
   }, [bands, height, formatValue])
 
@@ -130,7 +178,8 @@ export function StackedArea({
         preserveAspectRatio="none"
         className="w-full"
         style={{ height: geometry.plotHeight }}
-        // Decorative: the account list beneath is the table a screen reader should read.
+        // The paths themselves say nothing useful aloud; the table at the end of this component is
+        // what a screen reader reads instead.
         aria-hidden
       >
         {geometry.ticks.map((tick) => (
@@ -180,6 +229,19 @@ export function StackedArea({
           </span>
         ))}
       </div>
+
+      {tableLabel !== undefined && (
+        <ChartTable
+          label={tableLabel}
+          columns={[
+            CHART_COPY.dateColumn,
+            ...bands.map((band) => band.label),
+            CHART_COPY.totalColumn,
+          ]}
+          rows={geometry.tableRows}
+          sampledFrom={geometry.dateCount}
+        />
+      )}
     </div>
   )
 }

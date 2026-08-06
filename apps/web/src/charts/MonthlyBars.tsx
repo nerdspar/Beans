@@ -1,4 +1,7 @@
+import { CHART_COPY } from '@beans/shared'
 import { useCallback, useMemo, type ReactNode } from 'react'
+import { ChartTable } from './ChartTable.js'
+import { CHART_TABLE_ROWS, sampleIndices } from './table-rows.js'
 import { useChartScrub } from './use-chart-scrub.js'
 import { cn } from '../lib/cn.js'
 
@@ -41,6 +44,14 @@ export type MonthlyBarsProps = {
   onScrub?: ((index: number | null) => void) | undefined
   describePoint?: ((index: number) => string) | undefined
   scrubLabel?: string
+  /**
+   * Names the table fallback — "Net", "Spending".
+   *
+   * The table follows `mode` rather than listing all three figures. It stands in for the chart, and
+   * a chart showing spending should not have a fallback that quietly also reports income: a reader
+   * comparing notes with someone looking at the picture would be reading a different thing.
+   */
+  tableLabel?: string | undefined
   /** A committed reading: a tap, or the end of a drag. See use-chart-scrub. */
   onSelect?: ((index: number, viaTap: boolean) => void) | undefined
   /** The pinned month, drawn as held rather than as hovered. */
@@ -66,6 +77,23 @@ const SPENDING_COLOR = '#fb923c'
 /** Room under the plot for month labels, taken out of `height` so the box stays its stated size. */
 const AXIS_HEIGHT = 18
 
+/**
+ * The month spelled out, for the table fallback.
+ *
+ * The axis uses a single initial, which is right under a bar and useless in a table — four rows
+ * labelled "J" is not a reading of anything. The year is included because a twelve-month range
+ * crosses one, and "January" alone would be ambiguous exactly where the comparison matters.
+ */
+const MONTH_LABEL = new Intl.DateTimeFormat(undefined, {
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
+})
+
+function monthLabel(month: string): string {
+  return MONTH_LABEL.format(new Date(`${month}-01T00:00:00Z`))
+}
+
 const MONTH_INITIAL = new Intl.DateTimeFormat(undefined, { month: 'narrow', timeZone: 'UTC' })
 
 function monthInitial(month: string): string {
@@ -90,10 +118,31 @@ export function MonthlyBars({
   scrubLabel,
   onSelect,
   selectedIndex = null,
+  tableLabel,
 }: MonthlyBarsProps): ReactNode {
   const resolveIndex = useCallback(
     (offsetX: number, width: number) => monthAtPosition(offsetX, width, periods.length),
     [periods.length],
+  )
+
+  const tableRows = useMemo(
+    () =>
+      tableLabel === undefined
+        ? []
+        : sampleIndices(periods.length, CHART_TABLE_ROWS).flatMap((index) => {
+            const period = periods[index]
+            if (period === undefined) return []
+
+            const value =
+              mode === 'income'
+                ? period.incomeCents
+                : mode === 'spending'
+                  ? period.spendingCents
+                  : period.netCents
+
+            return [{ header: monthLabel(period.month), cells: [formatValue(value)] }]
+          }),
+    [tableLabel, periods, mode, formatValue],
   )
 
   const scrub = useChartScrub({
@@ -322,7 +371,7 @@ export function MonthlyBars({
           ref={scrub.plotRef}
           role="slider"
           tabIndex={0}
-          aria-label={scrubLabel ?? 'Read by month'}
+          aria-label={scrubLabel ?? CHART_COPY.scrubByMonth}
           aria-valuemin={0}
           aria-valuemax={Math.max(0, periods.length - 1)}
           aria-valuenow={scrubIndex ?? selectedIndex ?? Math.max(0, periods.length - 1)}
@@ -364,6 +413,15 @@ export function MonthlyBars({
           </span>
         ))}
       </div>
+
+      {tableLabel !== undefined && (
+        <ChartTable
+          label={tableLabel}
+          columns={[CHART_COPY.monthColumn, tableLabel]}
+          rows={tableRows}
+          sampledFrom={periods.length}
+        />
+      )}
     </div>
   )
 }

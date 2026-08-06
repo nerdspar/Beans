@@ -214,6 +214,88 @@ describeIntegration('connection sync', () => {
     expect(transaction?.postedDate).toBe('2026-08-01')
   })
 
+  /**
+   * Transactions are written in batches rather than one statement each.
+   *
+   * Both of these fail loudly against the batched writer and pass trivially against the old
+   * one-row-at-a-time version, which is the point: they exist because batching introduced two ways
+   * to be wrong that per-row writes could not have.
+   */
+  describe('batched writes', () => {
+    it('writes every transaction when there are more than one batch', async () => {
+      const connectionId = await setUpConnection()
+
+      /*
+       * Deliberately across the 500-row batch boundary and not a multiple of it, so an off-by-one
+       * in the slice arithmetic drops rows instead of landing exactly on the edge and hiding.
+       */
+      const count = 1201
+      const transactions = Array.from({ length: count }, (_, index) => ({
+        id: `TRN-${index}`,
+        posted: epoch('2026-08-01T00:00:00Z'),
+        amount: '-1.00',
+        description: `Row ${index}`,
+      }))
+
+      const outcome = await withHouseholdContext(deps, USER, async (ctx) =>
+        syncConnection(ctx, connectionId, makeFetcher({ errors: [], accounts: [cardAccount('3386.39', transactions)] }), {
+          lastSuccessAt: LAST_SUCCESS,
+          now: NOW,
+        }),
+      )
+
+      expect(outcome.transactionsUpserted).toBe(count)
+
+      const written = await readTransactions()
+      expect(written).toHaveLength(count)
+      // Both ends, so a batch dropped from either the front or the back is caught.
+      expect(written.map((row) => row.id)).toContain('TRN-0')
+      expect(written.map((row) => row.id)).toContain(`TRN-${count - 1}`)
+    })
+
+    it('survives the same id twice in one response, keeping the last', async () => {
+      const connectionId = await setUpConnection()
+
+      /*
+       * `ON CONFLICT DO UPDATE` refuses to touch a row twice in one statement — Postgres raises
+       * "cannot affect row a second time" and the whole sync fails. Writing one row per statement
+       * made a repeat harmless, so nothing in the code said this mattered until batching arrived.
+       */
+      const body = {
+        errors: [],
+        accounts: [
+          cardAccount('3386.39', [
+            {
+              id: 'TRN-dup',
+              posted: epoch('2026-08-01T00:00:00Z'),
+              amount: '-10.00',
+              description: 'First',
+            },
+            {
+              id: 'TRN-dup',
+              posted: epoch('2026-08-01T00:00:00Z'),
+              amount: '-25.00',
+              description: 'Second',
+            },
+          ]),
+        ],
+      }
+
+      await withHouseholdContext(deps, USER, async (ctx) =>
+        syncConnection(ctx, connectionId, makeFetcher(body), {
+          lastSuccessAt: LAST_SUCCESS,
+          now: NOW,
+        }),
+      )
+
+      const written = await readTransactions()
+      expect(written).toHaveLength(1)
+      // Last wins, which is what one-statement-per-row did by applying them in order.
+      expect(written[0]?.amount).toBe(-2500n)
+      expect(written[0]?.description).toBe('Second')
+    })
+  })
+
   describe('idempotency', () => {
     it('running the same payload twice changes nothing', async () => {
       const connectionId = await setUpConnection()

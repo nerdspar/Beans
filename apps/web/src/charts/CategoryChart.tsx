@@ -43,6 +43,8 @@ export type CategoryChartProps = {
   completeFromIndex?: number | null
   onSelect?: ((index: number, viaTap: boolean) => void) | undefined
   selectedIndex?: number | null
+  /** Names the table fallback. Applied to the incoming layer only, like the scrubber. */
+  tableLabel?: string | undefined
 }
 
 /**
@@ -73,6 +75,7 @@ export function CategoryChart({
   completeFromIndex = null,
   onSelect,
   selectedIndex = null,
+  tableLabel,
 }: CategoryChartProps): ReactNode {
   const [current, setCurrent] = useState<Layer>({ key: categoryKey, series, color })
   const [outgoing, setOutgoing] = useState<Layer | null>(null)
@@ -119,6 +122,9 @@ export function CategoryChart({
             No scrubber on the way out. The outgoing layer is mid-fade and about to be removed, and
             a second reading line and dot fading out beside the live ones reads as a glitch rather
             than a transition.
+
+            No table either, for the same reason and one worse: two tables of the same series in the
+            accessibility tree at once, one of them the category the reader just left.
           */}
           <AreaChart
             series={outgoing.series}
@@ -145,6 +151,7 @@ export function CategoryChart({
           completeFromIndex={completeFromIndex}
           onSelect={onSelect}
           selectedIndex={selectedIndex}
+          tableLabel={tableLabel}
           {...(scrubLabel === undefined ? {} : { scrubLabel })}
         />
       </div>

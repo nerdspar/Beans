@@ -141,6 +141,7 @@ export function HoldingDetail({ params }: { params: { key: string } }): ReactNod
             formatValue={formatValue}
             height={CHART_HEIGHT}
             scrubLabel={HOLDINGS_COPY.chartScrubLabel}
+            tableLabel={HOLDINGS_COPY.columnValue}
           />
           {/*
             The coverage boundary, restated for a security.

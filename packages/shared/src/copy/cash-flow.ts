@@ -45,6 +45,13 @@ export const CASH_FLOW_COPY = {
    * work — without naming it, a second line on a chart is decoration nobody can interpret.
    */
   runningTotal: 'Running total',
+  /**
+   * Heads the comparison column in the running-total table.
+   *
+   * "Month before" rather than "Last month": the chart compares against the month preceding the one
+   * being viewed, which is only *last* month while looking at this one.
+   */
+  monthBeforeColumn: 'Month before',
   byMonthReading: 'Month',
 
   throughDay: (label: string): string => `Through ${label}`,

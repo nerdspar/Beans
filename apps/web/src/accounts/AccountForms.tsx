@@ -407,7 +407,7 @@ export function ManualAccountForm({
           <input
             type="text"
             value={name}
-            placeholder="18 Atlantic Xing"
+            placeholder={ACCOUNTS_COPY.namePlaceholder}
             onChange={(event) => setName(event.target.value)}
             className={fieldClass}
           />

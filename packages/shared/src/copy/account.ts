@@ -40,6 +40,15 @@ export const ACCOUNT_COPY = {
   manualEdit: 'Rename or edit',
   manualRecord: 'Record value',
 
+  /**
+   * Why a liability reads as a negative number.
+   *
+   * Signs are decided once, at ingest. This only names the convention so the screen explains itself
+   * rather than looking like a bug — a mortgage shown as −$281,640 is the balance being correct, and
+   * nothing on the screen otherwise says so.
+   */
+  liabilitySignNote: 'Shown as a negative amount because it is money owed.',
+
   notFound: 'No such account',
   notFoundDetail: 'This account may have been removed, or the link may be out of date.',
 } as const
@@ -79,6 +88,43 @@ export const NET_WORTH_SCRUB_COPY = {
   label: 'Read net worth by date. Use the arrow keys to move a day at a time.',
   /** Spoken as the slider moves, so the value is heard rather than only seen. */
   describe: (date: string, value: string): string => `${date}: ${value}`,
+} as const
+
+/**
+ * Naming which slice of net worth the chart is currently showing.
+ *
+ * Used twice, and it has to be the same words both times: the live region that announces a scroll
+ * crossing, and the caption on the chart's table fallback. A reader who hears "Showing Cash" and
+ * then finds a table captioned something else has to work out whether they are looking at the same
+ * thing — which is the one question the announcement existed to answer.
+ */
+export const NET_WORTH_SCOPE_COPY = {
+  /** Everything, as opposed to one category section. */
+  household: 'Net worth',
+  /** Kept verbatim: "household net worth" reads better here than the bare label does. */
+  showingHousehold: 'Showing household net worth',
+  showing: (label: string): string => `Showing ${label}`,
+} as const
+
+/**
+ * The date range control.
+ *
+ * The two validation messages are the only place a voice would be tempting and the only place it is
+ * clearly wrong: someone has just typed dates and been refused, and what they need is which field to
+ * change. They say what is wrong with the dates, not what the reader did.
+ */
+export const RANGE_COPY = {
+  title: 'Select date range',
+  customTitle: 'Custom range',
+  /** Names the back arrow, which is otherwise an unlabelled chevron. */
+  backToPresets: 'Back to preset ranges',
+  /** Describes the dialog for a screen reader, which gets no layout to infer it from. */
+  description: 'Choose the period the totals and chart cover.',
+  /** Marks the range currently in force. */
+  selected: 'Selected',
+
+  errorOrder: 'The end date is before the start date.',
+  errorFuture: 'The end date is in the future.',
 } as const
 
 export const NET_WORTH_STATE_COPY = {

@@ -1,5 +1,8 @@
+import { CHART_COPY } from '@beans/shared'
 import { useCallback, useMemo, type ReactNode } from 'react'
 import { indexAtPosition } from './AreaChart.js'
+import { ChartTable } from './ChartTable.js'
+import { CHART_TABLE_ROWS, sampleIndices } from './table-rows.js'
 import { useChartScrub } from './use-chart-scrub.js'
 import { labelPrecision, niceTicks } from './axis.js'
 import { cn } from '../lib/cn.js'
@@ -54,6 +57,11 @@ export type CumulativeFlowProps = {
    * the chart is in no position to make.
    */
   elapsedCount?: number | undefined
+
+  /** Names the table fallback — "Running total". */
+  tableLabel?: string | undefined
+  /** Heads the comparison column. Ignored when there is no comparison series. */
+  comparisonLabel?: string | undefined
 }
 
 const AXIS_HEIGHT = 18
@@ -99,6 +107,8 @@ export function CumulativeFlow({
   elapsedCount,
   onSelect,
   selectedIndex = null,
+  tableLabel,
+  comparisonLabel,
 }: CumulativeFlowProps): ReactNode {
   /*
    * Readable up to the last day that has happened, not to the end of the month.
@@ -120,6 +130,34 @@ export function CumulativeFlow({
       return index === null ? null : Math.min(index, lastReadable)
     },
     [series.length, lastReadable],
+  )
+
+  /*
+   * Stops at `lastReadable`, for the same reason the scrub does.
+   *
+   * A month-to-date series runs to the end of the month, and the days after today carry the last
+   * real running total repeated forward. Listing them would report a figure for the 28th on the
+   * 12th — indistinguishable from a real one in a table, where there is no flat line to see.
+   */
+  const tableRows = useMemo(
+    () =>
+      tableLabel === undefined
+        ? []
+        : sampleIndices(lastReadable + 1, CHART_TABLE_ROWS).flatMap((index) => {
+            const point = series[index]
+            if (point === undefined) return []
+
+            const cells = [formatValue(point.cumulativeCents, 2)]
+            if (comparison !== undefined) {
+              const against = comparison[index]
+              cells.push(
+                against === undefined ? CHART_COPY.noValue : formatValue(against.cumulativeCents, 2),
+              )
+            }
+
+            return [{ header: formatDay(point.date), cells }]
+          }),
+    [tableLabel, lastReadable, series, comparison, formatValue],
   )
 
   const scrub = useChartScrub({
@@ -328,7 +366,7 @@ export function CumulativeFlow({
           ref={scrub.plotRef}
           role="slider"
           tabIndex={0}
-          aria-label={scrubLabel ?? 'Read by date'}
+          aria-label={scrubLabel ?? CHART_COPY.scrubByDate}
           aria-valuemin={0}
           aria-valuemax={Math.max(0, series.length - 1)}
           aria-valuenow={activeIndex ?? Math.max(0, series.length - 1)}
@@ -425,10 +463,26 @@ export function CumulativeFlow({
         ))}
       </div>
 
-      <span className="sr-only">
-        {geometry.start === undefined ? '' : formatDay(geometry.start)} –{' '}
-        {geometry.end === undefined ? '' : formatDay(geometry.end)}
-      </span>
+      {tableLabel === undefined ? (
+        // No table asked for, so the range is all a reader gets — still better than nothing.
+        <span className="sr-only">
+          {geometry.start === undefined ? '' : formatDay(geometry.start)} –{' '}
+          {geometry.end === undefined ? '' : formatDay(geometry.end)}
+        </span>
+      ) : (
+        <ChartTable
+          label={tableLabel}
+          columns={[
+            CHART_COPY.dateColumn,
+            tableLabel,
+            ...(comparison === undefined
+              ? []
+              : [comparisonLabel ?? CHART_COPY.comparisonColumn]),
+          ]}
+          rows={tableRows}
+          sampledFrom={lastReadable + 1}
+        />
+      )}
     </div>
   )
 }

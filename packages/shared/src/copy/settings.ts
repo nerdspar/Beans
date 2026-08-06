@@ -39,4 +39,18 @@ export const SETTINGS_COPY = {
   tabsTitle: 'Bottom tabs',
   tabsHelp: (slots: number): string =>
     `Pick up to ${slots} and put them in order. More always fills the last slot and holds everything else.`,
+
+  /**
+   * The same list under two headings, because the reader's question changes.
+   *
+   * With room left it is "what can I add?"; once full it is "where did the rest go?". A greyed-out
+   * "Add a tab" answers neither, and reads as something broken rather than something finished.
+   */
+  tabsAdd: 'Add a tab',
+  tabsInMore: 'In the More menu',
+  tabsFull: 'Remove one above to add another.',
+
+  tabsReset: 'Reset to the default order',
+  /** Announced rather than shown, so a save does not shift the layout mid-interaction. */
+  tabsSaving: 'Saving your tab order',
 } as const

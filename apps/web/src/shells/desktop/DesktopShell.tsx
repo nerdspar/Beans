@@ -1,9 +1,10 @@
 import { type ReactNode } from 'react'
 import { LogOut } from 'lucide-react'
 import { Link, useLocation } from 'wouter'
-import { AUTH_COPY } from '@beans/shared'
+import { AUTH_COPY, SHELL_COPY } from '@beans/shared'
 import { useSignOut } from '../../auth/use-session.js'
 import { cn } from '../../lib/cn.js'
+import { MAIN_REGION_ID, SkipLink } from '../../lib/main-region.js'
 import { DESTINATIONS, destinationForPath } from '../../navigation/destinations.js'
 
 /**
@@ -28,7 +29,10 @@ export function DesktopShell({ children }: { children: ReactNode }): ReactNode {
   const { signOut, isPending } = useSignOut()
 
   return (
-    <div className="flex min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div className="relative flex min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      {/* First in the DOM so the first Tab reaches it, before the whole sidebar. */}
+      <SkipLink />
+
       <nav
         aria-label="Primary"
         className={cn(
@@ -82,7 +86,19 @@ export function DesktopShell({ children }: { children: ReactNode }): ReactNode {
         </div>
       </nav>
 
-      <main className="min-w-0 flex-1">{children}</main>
+      {/*
+        `tabIndex={-1}` makes this focusable by script and by the skip link without putting it in
+        the tab order itself. Without it the skip link moves the *page* but not the focus, and the
+        next Tab carries on from the navigation the reader just skipped.
+      */}
+      <main
+        id={MAIN_REGION_ID}
+        tabIndex={-1}
+        aria-label={SHELL_COPY.mainRegion}
+        className="min-w-0 flex-1 focus:outline-none"
+      >
+        {children}
+      </main>
     </div>
   )
 }

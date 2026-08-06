@@ -2,7 +2,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { type ReactNode } from 'react'
 import { LogOut } from 'lucide-react'
 import { Link } from 'wouter'
-import { AUTH_COPY } from '@beans/shared'
+import { AUTH_COPY, SHELL_COPY } from '@beans/shared'
 import { useSignOut } from '../../auth/use-session.js'
 import { cn } from '../../lib/cn.js'
 import type { Destination } from '../../navigation/destinations.js'
@@ -63,7 +63,7 @@ export function MoreSheet({
 
           <Dialog.Title className="px-5 pt-3 text-base font-semibold">More</Dialog.Title>
           <Dialog.Description className="sr-only">
-            Everything not shown in the tab bar.
+            {SHELL_COPY.moreSheetDescription}
           </Dialog.Description>
 
           <ul className="grid grid-cols-2 gap-1 p-4">

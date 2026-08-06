@@ -1,5 +1,7 @@
 import {
+  ACCOUNTS_COPY,
   CONNECTION_STATUS_LABEL,
+  NET_WORTH_SCOPE_COPY,
   NET_WORTH_SCRUB_COPY,
   NET_WORTH_STATE_COPY,
   coverageNotice,
@@ -278,6 +280,12 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
             describePoint={describePoint}
             scrubLabel={NET_WORTH_SCRUB_COPY.label}
             completeFromIndex={completeFromIndex}
+            /* The chart is whichever category is in scope, so the table says which one. */
+            tableLabel={
+              activeGroup === undefined
+                ? NET_WORTH_SCOPE_COPY.household
+                : SECTION_LABELS[activeGroup.section]
+            }
           />
 
           {backfill.isLoading && (
@@ -321,8 +329,8 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
         */}
         <span aria-live="polite" className="sr-only">
           {activeGroup === undefined
-            ? 'Showing household net worth'
-            : `Showing ${SECTION_LABELS[activeGroup.section]}`}
+            ? NET_WORTH_SCOPE_COPY.showingHousehold
+            : NET_WORTH_SCOPE_COPY.showing(SECTION_LABELS[activeGroup.section])}
         </span>
       </div>
 
@@ -404,9 +412,6 @@ function NetWorthView({ workingSet }: { workingSet: DerivedWorkingSet }): ReactN
         })}
       </div>
 
-      <p className="px-5 py-8 text-xs text-slate-500 dark:text-slate-400">
-        Sample data. Not yet connected to your accounts.
-      </p>
     </div>
   )
 }
@@ -479,7 +484,7 @@ function AccountRow({ account }: { account: DerivedAccount }): ReactNode {
             )}
             <span className="truncate">
               {account.name}
-              {account.mask !== null && ` - Ending in ${account.mask}`}
+              {account.mask !== null && ACCOUNTS_COPY.maskSuffix(account.mask)}
             </span>
           </span>
         </span>

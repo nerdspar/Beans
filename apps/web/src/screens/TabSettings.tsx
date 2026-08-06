@@ -131,11 +131,11 @@ export function TabSettings(): ReactNode {
               rather than a greyed-out control that answers neither.
             */}
             <h3 className="mt-6 text-sm font-medium text-slate-600 dark:text-slate-300">
-              {isFull ? 'In the More menu' : 'Add a tab'}
+              {isFull ? SETTINGS_COPY.tabsInMore : SETTINGS_COPY.tabsAdd}
             </h3>
             {isFull && (
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Remove one above to add another.
+                {SETTINGS_COPY.tabsFull}
               </p>
             )}
 
@@ -171,12 +171,12 @@ export function TabSettings(): ReactNode {
           onClick={resetTabOrder}
           className="mt-6 text-sm font-medium text-sky-600 hover:underline dark:text-sky-400"
         >
-          Reset to the default order
+          {SETTINGS_COPY.tabsReset}
         </button>
 
         {/* Announced rather than shown, so a save does not shift the layout mid-interaction. */}
         <span aria-live="polite" className="sr-only">
-          {isSaving ? 'Saving your tab order' : ''}
+          {isSaving ? SETTINGS_COPY.tabsSaving : ''}
         </span>
       </section>
 

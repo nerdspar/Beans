@@ -173,9 +173,13 @@ export async function syncConnection(
 
       for (const transaction of providerAccount.transactions) {
         seen.add(transaction.id)
-        await upsertTransaction(context, account, transaction)
-        outcome.transactionsUpserted += 1
       }
+
+      outcome.transactionsUpserted += await upsertTransactions(
+        context,
+        account,
+        providerAccount.transactions,
+      )
     }
   }
 
@@ -263,41 +267,97 @@ async function updateBalance(
  * `category_id` is deliberately absent from the update: a user's categorization must survive an
  * amended description.
  */
-async function upsertTransaction(
+/**
+ * Rows per insert statement.
+ *
+ * Postgres caps a statement at 65535 bound parameters and each row binds nine, so the hard ceiling
+ * is around 7,200. Five hundred sits well inside it and matches the import path, which batches for
+ * the same reason — see `import/staging.ts`.
+ */
+const UPSERT_BATCH = 500
+
+/**
+ * Writes a provider's transactions for one account, a batch at a time.
+ *
+ * Previously one statement per transaction. That is invisible on a routine sync, which carries a
+ * handful of new rows, and is the whole cost of a *first* sync — a year of history across several
+ * accounts is thousands of sequential round trips, each one a full network wait, while the user
+ * watches a connection sit at "syncing".
+ *
+ * The upsert itself is unchanged, including the conflict target. Encryption still happens per row
+ * because it must: every value is encrypted individually, and there is no batch form of that.
+ *
+ * Returns how many rows were written, so the caller's counter cannot drift from what was sent.
+ */
+async function upsertTransactions(
   context: HouseholdContext,
   account: LinkedAccount,
-  transaction: SimplefinTransaction,
-): Promise<void> {
-  // Date only — a transaction posted on the 3rd is on the 3rd regardless of anyone's timezone.
-  const postedDate = transaction.date.toISOString().slice(0, 10)
+  provided: readonly SimplefinTransaction[],
+): Promise<number> {
+  const COLUMNS = 9
 
-  await context.client.query(
-    `insert into transactions (
-       household_id, account_id, simplefin_id, posted_date, amount,
-       description, payee, memo, pending, status, source
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'active','synced')
-     on conflict (account_id, simplefin_id) where simplefin_id is not null
-     do update set
-       posted_date = excluded.posted_date,
-       amount = excluded.amount,
-       description = excluded.description,
-       payee = excluded.payee,
-       memo = excluded.memo,
-       pending = excluded.pending,
-       -- A row that had been voided and then reappears is genuinely active again.
-       status = 'active'`,
-    [
+  /*
+   * Deduplicated by id before anything is bound, and this is **required** by the batching rather
+   * than a tidiness measure.
+   *
+   * `ON CONFLICT DO UPDATE` refuses to touch the same row twice in one statement — Postgres raises
+   * "cannot affect row a second time" and the whole sync fails. One statement per row hid this
+   * completely: a repeated id was simply an update applied after an insert.
+   *
+   * Last occurrence wins, which is what the sequential version did. SimpleFIN should not repeat an
+   * id within a response, but "should not" from a provider whose pending transactions vanish
+   * without a tombstone is not something to stake a sync on.
+   */
+  const byId = new Map<string, SimplefinTransaction>()
+  for (const transaction of provided) byId.set(transaction.id, transaction)
+  const transactions = [...byId.values()]
+
+  for (let start = 0; start < transactions.length; start += UPSERT_BATCH) {
+    const batch = transactions.slice(start, start + UPSERT_BATCH)
+
+    const values = batch
+      .map(
+        (_, row) =>
+          `(${Array.from(
+            { length: COLUMNS },
+            (__, column) => `$${row * COLUMNS + column + 1}`,
+          ).join(',')},'active','synced')`,
+      )
+      .join(',')
+
+    const parameters = batch.flatMap((transaction) => [
       context.householdId,
       account.id,
       transaction.id,
-      postedDate,
+      // Date only — a transaction posted on the 3rd is on the 3rd regardless of anyone's timezone.
+      transaction.date.toISOString().slice(0, 10),
       context.cipher.encryptMoney(transaction.amountCents),
       context.cipher.encryptText(transaction.description),
       context.cipher.encryptTextOrNull(transaction.payee),
       context.cipher.encryptTextOrNull(transaction.memo),
       transaction.pending,
-    ],
-  )
+    ])
+
+    await context.client.query(
+      `insert into transactions (
+         household_id, account_id, simplefin_id, posted_date, amount,
+         description, payee, memo, pending, status, source
+       ) values ${values}
+       on conflict (account_id, simplefin_id) where simplefin_id is not null
+       do update set
+         posted_date = excluded.posted_date,
+         amount = excluded.amount,
+         description = excluded.description,
+         payee = excluded.payee,
+         memo = excluded.memo,
+         pending = excluded.pending,
+         -- A row that had been voided and then reappears is genuinely active again.
+         status = 'active'`,
+      parameters,
+    )
+  }
+
+  return transactions.length
 }
 
 /**

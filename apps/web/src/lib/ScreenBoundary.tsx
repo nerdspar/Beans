@@ -1,3 +1,4 @@
+import { SHELL_COPY } from '@beans/shared'
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 
 /**
@@ -56,10 +57,9 @@ export class ScreenBoundary extends Component<Props, State> {
 
     return (
       <div className="mx-auto max-w-2xl p-6">
-        <h1 className="text-lg font-semibold">This screen could not be shown</h1>
+        <h1 className="text-lg font-semibold">{SHELL_COPY.screenFailed}</h1>
         <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-          Nothing was changed, and the rest of Beans still works. Moving to another tab and back
-          will try again.
+          {SHELL_COPY.screenFailedDetail}
         </p>
 
         <pre className="mt-4 overflow-x-auto rounded-lg bg-slate-100 p-3 text-left font-mono text-xs text-slate-700 dark:bg-slate-900 dark:text-slate-300">

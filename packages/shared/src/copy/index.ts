@@ -9,6 +9,8 @@ export {
 export {
   ACCOUNT_COPY,
   HISTORY_SETTING_COPY,
+  NET_WORTH_SCOPE_COPY,
+  RANGE_COPY,
   NET_WORTH_SCRUB_COPY,
   NET_WORTH_STATE_COPY,
   carriedNotice,
@@ -19,8 +21,10 @@ export { PICKER_COPY } from './picker.js'
 export { ACCOUNTS_COPY, ACCOUNT_TYPE_LABELS, CONNECTION_COPY } from './connections.js'
 export { CATEGORY_COPY, TRANSACTIONS_COPY } from './transactions.js'
 export { CASH_FLOW_COPY } from './cash-flow.js'
+export { CHART_COPY } from './chart.js'
 export { PORTFOLIO_COPY } from './portfolio.js'
 export { HOLDINGS_COPY } from './holdings.js'
 export { HOUSEHOLD_COPY } from './household.js'
 export { SETTINGS_COPY } from './settings.js'
+export { SHELL_COPY } from './shell.js'
 export { IMPORT_COPY } from './import.js'

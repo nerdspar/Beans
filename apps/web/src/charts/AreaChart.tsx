@@ -6,7 +6,10 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react'
+import { CHART_COPY } from '@beans/shared'
 import { labelPrecision, niceTicks } from './axis.js'
+import { ChartTable } from './ChartTable.js'
+import { CHART_TABLE_ROWS, sampleIndices } from './table-rows.js'
 import { useChartScrub } from './use-chart-scrub.js'
 import { cn } from '../lib/cn.js'
 
@@ -74,6 +77,16 @@ export type AreaChartProps = {
    * newest account, and leaving it unmarked would let the step where the rest joins read as a gain.
    */
   completeFromIndex?: number | null
+
+  /**
+   * What the series is — "Net worth", "Value" — naming the table fallback for readers who cannot
+   * see the chart.
+   *
+   * Optional, and omitting it renders no table. That is deliberate rather than lax: a screen that
+   * shows the same series twice would otherwise announce it twice, and the second one is noise. Any
+   * chart that is the primary way a screen presents its numbers should pass this.
+   */
+  tableLabel?: string | undefined
 }
 
 const GRID_LINES = 5
@@ -146,6 +159,7 @@ export function AreaChart({
   completeFromIndex = null,
   onSelect,
   selectedIndex = null,
+  tableLabel,
 }: AreaChartProps): ReactNode {
   const resolveIndex = useCallback(
     (offsetX: number, width: number) => indexAtPosition(offsetX, width, series.length),
@@ -256,13 +270,31 @@ export function AreaChart({
     }
   }, [series, height, formatValue])
 
+  /*
+   * Full precision, unlike the axis. The axis drops decimals because its labels sit inches apart and
+   * the reader is judging shape; a table row is the exact figure and rounding it there would be
+   * inventing a number nobody can check against.
+   */
+  const tableRows = useMemo(
+    () =>
+      tableLabel === undefined
+        ? []
+        : sampleIndices(series.length, CHART_TABLE_ROWS).flatMap((index) => {
+            const point = series[index]
+            return point === undefined
+              ? []
+              : [{ header: formatAxisDate(point.date), cells: [formatValue(point.value, 2)] }]
+          }),
+    [series, tableLabel, formatValue],
+  )
+
   if (geometry === null) {
     return (
       <div
         className={cn('flex items-center justify-center text-sm text-slate-500', className)}
         style={{ height }}
       >
-        Nothing to chart yet.
+        {CHART_COPY.empty}
       </div>
     )
   }
@@ -415,7 +447,7 @@ export function AreaChart({
           ref={scrub.plotRef}
           role="slider"
           tabIndex={0}
-          aria-label={scrubLabel ?? 'Read the chart by date'}
+          aria-label={scrubLabel ?? CHART_COPY.scrubByDate}
           aria-valuemin={0}
           aria-valuemax={Math.max(0, series.length - 1)}
           aria-valuenow={activeIndex ?? Math.max(0, series.length - 1)}
@@ -467,6 +499,15 @@ export function AreaChart({
           </span>
         ))}
       </div>
+
+      {tableLabel !== undefined && (
+        <ChartTable
+          label={tableLabel}
+          columns={[CHART_COPY.dateColumn, tableLabel]}
+          rows={tableRows}
+          sampledFrom={series.length}
+        />
+      )}
     </div>
   )
 }

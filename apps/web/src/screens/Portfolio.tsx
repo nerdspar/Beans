@@ -340,6 +340,7 @@ export function Portfolio(): ReactNode {
             formatValue={(basisPoints) => formatPercent(basisPoints)}
             height={CHART_HEIGHT}
             scrubLabel={PORTFOLIO_COPY.indexScrubLabel}
+            tableLabel={PORTFOLIO_COPY.indexTableLabel}
           />
           <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
             {reportsFlows ? PORTFOLIO_COPY.indexNote : PORTFOLIO_COPY.indexNoteWithoutFlows}
@@ -358,6 +359,7 @@ export function Portfolio(): ReactNode {
             }))}
             formatValue={(cents, digits) => formatAxisValue(cents, 'investment', digits)}
             height={CHART_HEIGHT}
+            tableLabel={PORTFOLIO_COPY.allocationTableLabel}
           />
         </div>
       )}

@@ -45,6 +45,18 @@ export const CONNECTION_COPY = {
   skipped: 'Not included',
   alreadyLinked: 'Already connected — this will update it, not duplicate it',
 
+  /**
+   * The account's type and the sign it would be recorded with disagree.
+   *
+   * Names both halves rather than saying "mismatch", because the reader has two toggles in front of
+   * them and needs to know which one is wrong. Calm and factual: this is a warning about money being
+   * recorded backwards, which is not a place for a voice.
+   */
+  signMismatchLiability: (type: string): string =>
+    `A ${type} is money you owe, but this would be recorded as money you have.`,
+  signMismatchAsset: (type: string): string =>
+    `A ${type} is money you have, but this would be recorded as money you owe.`,
+
   lowConfidence: 'Beans is guessing at this type. Check it.',
 
   confirmAction: 'Confirm and sync',
@@ -143,7 +155,21 @@ export const ACCOUNTS_COPY = {
 
   edit: 'Edit',
   editTitle: 'Edit account',
+  /**
+   * The last four digits, appended to an account name.
+   *
+   * Here rather than written out at each screen, because it was written out at two and they have to
+   * match: the same account named two ways on the list and on its own detail screen reads as two
+   * accounts. Takes the mask rather than the account so nothing has to reach into a domain type.
+   */
+  maskSuffix: (mask: string): string => ` - Ending in ${mask}`,
+
   name: 'Name',
+  /**
+   * An example, not a default. A street address is the case worth showing: it is what a manual
+   * property asset should be called, and "Manual" or "House" is what people type instead.
+   */
+  namePlaceholder: '18 Atlantic Xing',
   institution: 'Institution',
   type: 'Type',
   taxTreatment: 'Tax treatment',

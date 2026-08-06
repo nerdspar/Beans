@@ -4,13 +4,14 @@ import { Route, Switch, useLocation } from 'wouter'
 import { DesktopShell } from './shells/desktop/DesktopShell.js'
 import { MobileShell } from './shells/mobile/MobileShell.js'
 import { useIsDesktop } from './shells/use-shell.js'
+import { useRouteFocus } from './lib/main-region.js'
 import { useWorkingSet } from './working-set/use-working-set.js'
 import { readPendingInvite } from './auth/pending-invite.js'
 import { useSession } from './auth/use-session.js'
 import { AccountDetail } from './screens/AccountDetail.js'
 import { HoldingDetail } from './screens/HoldingDetail.js'
 import { TransactionDetail } from './screens/TransactionDetail.js'
-import { CATEGORY_COPY, HOUSEHOLD_COPY, IMPORT_COPY } from '@beans/shared'
+import { CATEGORY_COPY, HOUSEHOLD_COPY, IMPORT_COPY, SHELL_COPY } from '@beans/shared'
 import { CategoriesPanel } from './categories/CategoryTree.js'
 import { RulesPanel } from './categories/RulesPanel.js'
 import { Household } from './screens/Household.js'
@@ -109,6 +110,12 @@ function Gate(): ReactNode {
 function Shell({ children }: { children: ReactNode }): ReactNode {
   const isDesktop = useIsDesktop()
 
+  /*
+   * Here rather than in either shell, so the behaviour cannot differ between them — and so it
+   * survives the breakpoint swap, which unmounts one whole tree and mounts the other.
+   */
+  useRouteFocus()
+
   return isDesktop ? <DesktopShell>{children}</DesktopShell> : <MobileShell>{children}</MobileShell>
 }
 
@@ -151,8 +158,18 @@ function Routes(): ReactNode {
           <Household />
         </ManagementPage>
       </Route>
-      {/* Not in the destination registry: a workbench for judging the transition, not a screen. */}
-      <Route path="/prototype/transition" component={TransitionPrototype} />
+      {/*
+        A workbench for judging the transition, not a screen — so it is not in the destination
+        registry, and now not in production either.
+
+        It was routed unconditionally, which shipped it: reachable by anyone who typed the path, and
+        carried in the main bundle because the import at the top of this file is static. `DEV` is
+        the same guard `main.tsx` puts on the component preview, and it lets Rollup drop both the
+        route and the module from the build.
+      */}
+      {import.meta.env.DEV && (
+        <Route path="/prototype/transition" component={TransitionPrototype} />
+      )}
 
       {/*
         No placeholder fallback: every destination in the registry has a real route now. It existed
@@ -161,8 +178,8 @@ function Routes(): ReactNode {
 
       <Route>
         <div className="p-6">
-          <h1 className="text-lg font-semibold">Nothing here</h1>
-          <p className="mt-1 text-sm text-slate-500">That page does not exist.</p>
+          <h1 className="text-lg font-semibold">{SHELL_COPY.notFound}</h1>
+          <p className="mt-1 text-sm text-slate-500">{SHELL_COPY.notFoundDetail}</p>
         </div>
       </Route>
     </Switch>

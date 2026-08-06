@@ -1,4 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog'
+import { RANGE_COPY } from '@beans/shared'
 import { Calendar, Check, ChevronLeft } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { cn } from '../lib/cn.js'
@@ -73,15 +74,15 @@ export function RangeControl({
                 type="button"
                 onClick={() => setShowCustom(false)}
                 className="-ml-2 rounded p-1 focus-visible:outline-2 focus-visible:outline-sky-500"
-                aria-label="Back to preset ranges"
+                aria-label={RANGE_COPY.backToPresets}
               >
                 <ChevronLeft className="size-5" aria-hidden />
               </button>
             )}
-            {showCustom ? 'Custom range' : 'Select date range'}
+            {showCustom ? RANGE_COPY.customTitle : RANGE_COPY.title}
           </Dialog.Title>
           <Dialog.Description className="sr-only">
-            Choose the period the totals and chart cover.
+            {RANGE_COPY.description}
           </Dialog.Description>
 
           {showCustom ? (
@@ -156,14 +157,14 @@ function RangeOption({
         )}
       </span>
       {/* A tick as well as weight — colour and boldness alone are not a state. */}
-      {selected && <Check className="size-4 text-sky-600 dark:text-sky-400" aria-label="Selected" />}
+      {selected && <Check className="size-4 text-sky-600 dark:text-sky-400" aria-label={RANGE_COPY.selected} />}
     </button>
   )
 }
 
 const ERROR_TEXT = {
-  order: 'The end date is before the start date.',
-  future: 'The end date is in the future.',
+  order: RANGE_COPY.errorOrder,
+  future: RANGE_COPY.errorFuture,
 } as const
 
 /**

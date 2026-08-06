@@ -1,4 +1,5 @@
 import {
+  ACCOUNTS_COPY,
   ACCOUNT_COPY,
   HOLDINGS_COPY,
   NET_WORTH_SCRUB_COPY,
@@ -252,7 +253,7 @@ function AccountView({
         <h1 className="text-xl font-semibold">{account.institutionName ?? account.name}</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {account.name}
-          {account.mask !== null && ` - Ending in ${account.mask}`}
+          {account.mask !== null && ACCOUNTS_COPY.maskSuffix(account.mask)}
         </p>
       </div>
 
@@ -360,6 +361,8 @@ function AccountView({
           onScrub={setScrubIndex}
           describePoint={describePoint}
           scrubLabel={NET_WORTH_SCRUB_COPY.label}
+          /* The account's own name: this screen is about one account, and the table says which. */
+          tableLabel={account.name}
         />
       </div>
 
@@ -507,10 +510,9 @@ function AccountView({
         </ul>
       )}
 
-      {/* Signs are decided at ingest; this only names the convention so the screen is self-explaining. */}
       {isLiabilitySection(section) && (
         <p className="px-5 pt-6 text-xs text-slate-500 dark:text-slate-400">
-          Shown as a negative amount because it is money owed.
+          {ACCOUNT_COPY.liabilitySignNote}
         </p>
       )}
 

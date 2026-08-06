@@ -59,6 +59,19 @@ import { localToday } from '../lib/today.js'
  */
 const STICKY_DATE_OFFSET_PX = 8
 
+/**
+ * What the by-month table calls its value column, per tab.
+ *
+ * A record rather than a ternary at the call site so adding a mode cannot quietly fall through to
+ * "Net" — the type requires every key, and a missing one is a build error rather than a table
+ * mislabelling spending as its opposite.
+ */
+const MODE_TABLE_LABEL: Record<'net' | 'income' | 'spending', string> = {
+  net: CASH_FLOW_COPY.net,
+  income: CASH_FLOW_COPY.income,
+  spending: CASH_FLOW_COPY.spending,
+}
+
 export function CashFlow(): ReactNode {
   const workingSet = useWorkingSet()
   const queryClient = useQueryClient()
@@ -632,6 +645,8 @@ export function CashFlow(): ReactNode {
                 }}
                 scrubLabel={CASH_FLOW_COPY.runningTotal}
                 elapsedCount={elapsedDays}
+                tableLabel={CASH_FLOW_COPY.runningTotal}
+                comparisonLabel={CASH_FLOW_COPY.monthBeforeColumn}
               />
             </section>
           )}
@@ -647,6 +662,7 @@ export function CashFlow(): ReactNode {
               onScrub={setMonthIndex}
               onSelect={selectMonth}
               selectedIndex={pinnedMonthIndex === -1 ? null : pinnedMonthIndex}
+              tableLabel={CASH_FLOW_COPY.net}
               describePoint={(index) => describeMonth(summary.periods, index, 'net')}
               scrubLabel={CASH_FLOW_COPY.byMonthReading}
             />
@@ -1330,6 +1346,8 @@ function Breakdown({
           selectedIndex={selectedMonthIndex}
           describePoint={(index) => describeMonth(periods, index, mode)}
           scrubLabel={CASH_FLOW_COPY.byMonthReading}
+          /* Follows `mode`, because the table stands in for whichever chart is showing. */
+          tableLabel={MODE_TABLE_LABEL[mode]}
           /*
            * Negated for the label only, and only here. Spending stays negative in the data and is
            * drawn below the zero line as such; "Avg $-15,942" under a heading that already says

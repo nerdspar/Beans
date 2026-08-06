@@ -29,6 +29,15 @@ export const PORTFOLIO_COPY = {
    * compare against yet.
    */
   indexScrubLabel: 'Portfolio return. Arrow keys move by day.',
+  /**
+   * Names the table behind each chart, for a reader who cannot see them.
+   *
+   * Both spelled out rather than "Return" and "Accounts". A table caption arrives without the
+   * heading above it or the tab beside it, so it has to stand on its own — and on this screen there
+   * are two charts, which makes telling them apart the whole job of the caption.
+   */
+  indexTableLabel: 'Portfolio return',
+  allocationTableLabel: 'Portfolio by account',
   indexNote:
     'Your portfolio rebased to 0% at the start of the range. Money paid in or taken out is removed day by day, so this is what the market did rather than what the balance did.',
   indexNoteWithoutFlows:

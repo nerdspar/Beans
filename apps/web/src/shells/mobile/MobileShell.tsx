@@ -1,7 +1,9 @@
+import { SHELL_COPY } from '@beans/shared'
 import { useState, type ReactNode } from 'react'
 import { Link, useLocation } from 'wouter'
 import { MoreHorizontal } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
+import { MAIN_REGION_ID, SkipLink } from '../../lib/main-region.js'
 import {
   destinationForPath,
   overflowDestinations,
@@ -32,7 +34,10 @@ export function MobileShell({ children }: { children: ReactNode }): ReactNode {
   const activeInOverflow = active !== undefined && overflow.some((d) => d.key === active.key)
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div className="relative flex min-h-[100dvh] flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      {/* First in the DOM so the first Tab reaches it, ahead of everything else on the screen. */}
+      <SkipLink />
+
       {/*
         An opaque strip behind the status bar and dynamic island.
         
@@ -49,7 +54,17 @@ export function MobileShell({ children }: { children: ReactNode }): ReactNode {
         Padded by the status-bar inset above and the bar's height plus the home-indicator inset
         below, so neither the first nor the last row is hidden behind chrome.
       */}
-      <main className="flex-1 pt-[var(--beans-inset-top)] pb-[calc(4rem+env(safe-area-inset-bottom))]">
+      {/*
+        `tabIndex={-1}` makes this focusable by the skip link and by the route-change focus move,
+        without adding it to the tab order. `focus:outline-none` because the ring would frame the
+        entire screen — the announcement is what carries the change here, not a border.
+      */}
+      <main
+        id={MAIN_REGION_ID}
+        tabIndex={-1}
+        aria-label={SHELL_COPY.mainRegion}
+        className="flex-1 pt-[var(--beans-inset-top)] pb-[calc(4rem+env(safe-area-inset-bottom))] focus:outline-none"
+      >
         {children}
       </main>
 

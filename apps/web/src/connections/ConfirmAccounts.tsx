@@ -297,8 +297,8 @@ function AccountCard({
       {mismatch && (
         <Warning tone="attention">
           {isLiability(draft.type)
-            ? `A ${ACCOUNT_TYPE_LABELS[draft.type].toLowerCase()} is money you owe, but this would be recorded as money you have.`
-            : `A ${ACCOUNT_TYPE_LABELS[draft.type].toLowerCase()} is money you have, but this would be recorded as money you owe.`}
+            ? CONNECTION_COPY.signMismatchLiability(ACCOUNT_TYPE_LABELS[draft.type].toLowerCase())
+            : CONNECTION_COPY.signMismatchAsset(ACCOUNT_TYPE_LABELS[draft.type].toLowerCase())}
         </Warning>
       )}
     </div>
