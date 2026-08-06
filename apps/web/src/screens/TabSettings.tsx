@@ -3,11 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { getHousehold, setTrustImportedHistory } from '../household/api.js'
 import { WORKING_SET_KEY } from '../working-set/use-working-set.js'
-import { ChevronDown, ChevronRight, ChevronUp, Plus, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { cn } from '../lib/cn.js'
 import { usePreferences } from '../preferences/use-preferences.js'
-import { TAB_SLOTS, tabbableDestinations } from '../navigation/destinations.js'
+import { TAB_SLOTS } from '../navigation/destinations.js'
 import { useTabOrder } from '../navigation/use-tab-order.js'
 
 /**
@@ -23,12 +23,14 @@ import { useTabOrder } from '../navigation/use-tab-order.js'
  * genuinely are settings — which is also why they used to look homeless here. They were not missing
  * a home; they were sharing one with four things that had no business being in it.
  *
- * **Up/down buttons rather than drag and drop** for the tab order. With four items the reorder is
- * two taps at most, and a drag inside a scrolling page fights the scroll — on touch especially,
- * where the gesture is ambiguous until it has already gone wrong.
+ * **Up/down buttons rather than drag and drop** for the navigation order. A drag inside a scrolling
+ * page fights the scroll — on touch especially, where the gesture is ambiguous until it has already
+ * gone wrong. The list is longer than it was now that it covers every destination, which makes a
+ * drag more tempting and no less ambiguous; the rows are compact enough that a move is still a
+ * short trip.
  */
 export function TabSettings(): ReactNode {
-  const { tabs, setTabOrder, resetTabOrder, isSaving } = useTabOrder()
+  const { tabs, ordered, setTabOrder, resetTabOrder, isSaving, saveError } = useTabOrder()
   const { preferences, patch } = usePreferences()
   const queryClient = useQueryClient()
 
@@ -48,18 +50,22 @@ export function TabSettings(): ReactNode {
     },
   })
 
-  const chosen = tabs
-  const chosenKeys = chosen.map((tab) => tab.key)
-  const available = tabbableDestinations().filter(
-    (destination) => !chosenKeys.includes(destination.key),
-  )
-  const isFull = chosen.length >= TAB_SLOTS
+  /*
+   * One list of everything, not a chosen set and a spare pile.
+   *
+   * The two-list shape made sense while this configured four phone slots and nothing else: things
+   * were in the bar or waiting to be. Now the same order is the desktop sidebar, where every
+   * destination appears — so a screen offering six of ten, with four unmentioned and unmovable at
+   * the end of the sidebar, was describing a setting that no longer existed.
+   */
+  const orderedKeys = ordered.map((destination) => destination.key)
+  const tabKeys = new Set(tabs.map((tab) => tab.key))
 
   const move = (index: number, direction: -1 | 1): void => {
     const target = index + direction
-    if (target < 0 || target >= chosenKeys.length) return
+    if (target < 0 || target >= orderedKeys.length) return
 
-    const next = [...chosenKeys]
+    const next = [...orderedKeys]
     const a = next[index]
     const b = next[target]
     if (a === undefined || b === undefined) return
@@ -80,19 +86,38 @@ export function TabSettings(): ReactNode {
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           {SETTINGS_COPY.tabsHelp(TAB_SLOTS)}
         </p>
-        <ol className="mt-4 space-y-2">
-          {chosen.map((destination, index) => {
+        <ol className="mt-4 space-y-1.5">
+          {ordered.map((destination, index) => {
             const Icon = destination.icon
+            const onBar = tabKeys.has(destination.key)
+
             return (
               <li
                 key={destination.key}
                 className={cn(
-                  'flex items-center gap-3 rounded-xl border px-3 py-2',
+                  /*
+                   * 38px a row, measured — the height the controls-free rows already had, which is
+                   * the density this list wanted once it grew from four entries to ten.
+                   *
+                   * `py-0.5` against a 32px button rather than `py-1` against a 28px one: both come
+                   * to the same row, and the version that keeps the larger tap target is the one to
+                   * take. The padding was never doing anything the button height was not.
+                   */
+                  'flex items-center gap-3 rounded-xl border px-3 py-0.5',
                   'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
                 )}
               >
-                <Icon className="size-5 text-slate-500 dark:text-slate-400" aria-hidden />
-                <span className="flex-1 text-sm font-medium">{destination.label}</span>
+                <Icon className="size-4.5 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden />
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                  {destination.label}
+                </span>
+
+                {/* Which rows reach the phone's bar. Simply the first four, now that anything may be one. */}
+                {onBar && (
+                  <span className="shrink-0 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+                    {SETTINGS_COPY.tabsOnBar}
+                  </span>
+                )}
 
                 <IconButton
                   label={`Move ${destination.label} up`}
@@ -105,66 +130,14 @@ export function TabSettings(): ReactNode {
                 <IconButton
                   label={`Move ${destination.label} down`}
                   onClick={() => move(index, 1)}
-                  disabled={index === chosen.length - 1}
+                  disabled={index === ordered.length - 1}
                 >
                   <ChevronDown className="size-4" aria-hidden />
-                </IconButton>
-
-                <IconButton
-                  label={`Remove ${destination.label}`}
-                  onClick={() => setTabOrder(chosenKeys.filter((key) => key !== destination.key))}
-                  // The bar must keep at least one tab; an empty one is not a state worth allowing.
-                  disabled={chosen.length <= 1}
-                >
-                  <X className="size-4" aria-hidden />
                 </IconButton>
               </li>
             )
           })}
         </ol>
-
-        {available.length > 0 && (
-          <>
-            {/*
-              The heading answers whichever question the user actually has. With room left it is
-              "what can I add?"; when full it is "where did the rest go?" — the same list, relabelled,
-              rather than a greyed-out control that answers neither.
-            */}
-            <h3 className="mt-6 text-sm font-medium text-slate-600 dark:text-slate-300">
-              {isFull ? SETTINGS_COPY.tabsInMore : SETTINGS_COPY.tabsAdd}
-            </h3>
-            {isFull && (
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                {SETTINGS_COPY.tabsFull}
-              </p>
-            )}
-
-            <ul className="mt-2 space-y-2">
-              {available.map((destination) => {
-                const Icon = destination.icon
-                return (
-                  <li key={destination.key}>
-                    <button
-                      type="button"
-                      disabled={isFull}
-                      onClick={() => setTabOrder([...chosenKeys, destination.key])}
-                      className={cn(
-                        'flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left',
-                        'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
-                        'focus-visible:outline-2 focus-visible:outline-sky-500',
-                        isFull ? 'opacity-60' : 'hover:border-sky-300 dark:hover:border-sky-700',
-                      )}
-                    >
-                      <Icon className="size-5 text-slate-500 dark:text-slate-400" aria-hidden />
-                      <span className="flex-1 text-sm font-medium">{destination.label}</span>
-                      {!isFull && <Plus className="size-4 text-slate-400" aria-hidden />}
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          </>
-        )}
 
         <button
           type="button"
@@ -178,6 +151,17 @@ export function TabSettings(): ReactNode {
         <span aria-live="polite" className="sr-only">
           {isSaving ? SETTINGS_COPY.tabsSaving : ''}
         </span>
+
+        {/*
+          A refused save is shown, not just announced. The rollback on its own is exactly what a
+          broken button looks like — the row moves and moves back — so the one thing the reader
+          needs is that it was refused rather than ignored.
+        */}
+        {saveError !== null && (
+          <p role="alert" className="mt-3 text-sm text-rose-600 dark:text-rose-400">
+            {SETTINGS_COPY.tabsSaveFailed}
+          </p>
+        )}
       </section>
 
       {/*
@@ -286,7 +270,13 @@ function IconButton({
       // The icon alone says nothing to a screen reader; the label is the only description.
       aria-label={label}
       className={cn(
-        'flex size-9 items-center justify-center rounded-lg',
+        /*
+         * `size-8` rather than `size-9`, which is what made every row four-fifths taller than the
+         * ones without controls. Still a 32px target: under the 44px iOS guideline in isolation,
+         * but these sit inside a 40px row that is itself the hit area for nothing else, and the
+         * list is now ten rows rather than four — the height was the thing being read past.
+         */
+        'flex size-8 items-center justify-center rounded-lg',
         'text-slate-500 dark:text-slate-400',
         'hover:bg-slate-100 dark:hover:bg-slate-800',
         'focus-visible:outline-2 focus-visible:outline-sky-500',

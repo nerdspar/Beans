@@ -45,19 +45,27 @@ export const SETTINGS_COPY = {
    */
   tabsTitle: 'Navigation order',
   tabsHelp: (slots: number): string =>
-    `Put your destinations in the order you want them. The first ${slots} become the tabs along the bottom on a phone, with More holding the rest; on a wider screen the whole list is the sidebar.`,
+    `Every destination, in the order you want them. On a wider screen this is the sidebar; on a phone the first ${slots} become the bottom bar and More holds the rest.`,
 
   /**
-   * The same list under two headings, because the reader's question changes.
+   * Marks the rows that reach the phone's bottom bar.
    *
-   * With room left it is "what can I add?"; once full it is "where did the rest go?". A greyed-out
-   * "Add a tab" answers neither, and reads as something broken rather than something finished.
+   * The help text says "the first four" and this says which four, which are not the same job: the
+   * list is ten rows and counting to four while scrolling is exactly the small friction a label
+   * removes. It also survives the count changing.
    */
-  tabsAdd: 'Add a tab',
-  tabsInMore: 'In the More menu',
-  tabsFull: 'Remove one above to add another.',
+  tabsOnBar: 'Bottom tab',
 
   tabsReset: 'Reset to the default order',
   /** Announced rather than shown, so a save does not shift the layout mid-interaction. */
   tabsSaving: 'Saving your tab order',
+  /**
+   * A save the server refused.
+   *
+   * Shown, not merely announced — unlike the saving state, this one changes what the reader should
+   * do next, and the order in front of them is not the order that was kept. Plain and factual: the
+   * failure is about their navigation, but it arrives while they are configuring an app, and a
+   * joke about it would be a joke about something being broken.
+   */
+  tabsSaveFailed: 'That change could not be saved, so the order above has been put back.',
 } as const

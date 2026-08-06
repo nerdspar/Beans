@@ -47,13 +47,6 @@ export type Destination = {
    */
   short: string
   icon: LucideIcon
-  /**
-   * Whether this may occupy one of the four configurable tab slots.
-   *
-   * Settings and the like are reachable from More and do not compete for a slot — a thumb-sized
-   * target is scarce, and spending one on something visited twice a year is a poor trade.
-   */
-  tabbable: boolean
 }
 
 export const DESTINATIONS: readonly Destination[] = [
@@ -63,7 +56,6 @@ export const DESTINATIONS: readonly Destination[] = [
     label: 'Net worth',
     short: 'Net worth',
     icon: ChartLine,
-    tabbable: true,
   },
   {
     key: 'transactions',
@@ -71,7 +63,6 @@ export const DESTINATIONS: readonly Destination[] = [
     label: 'Transactions',
     short: 'Activity',
     icon: ArrowLeftRight,
-    tabbable: true,
   },
   {
     key: 'cash-flow',
@@ -79,7 +70,6 @@ export const DESTINATIONS: readonly Destination[] = [
     label: 'Cash flow',
     short: 'Cash flow',
     icon: Banknote,
-    tabbable: true,
   },
   {
     key: 'portfolio',
@@ -87,7 +77,6 @@ export const DESTINATIONS: readonly Destination[] = [
     label: 'Portfolio',
     short: 'Portfolio',
     icon: PiggyBank,
-    tabbable: true,
   },
   /**
    * Deliberately **not** a browse destination.
@@ -99,8 +88,7 @@ export const DESTINATIONS: readonly Destination[] = [
    *
    * What lives here instead is everything net worth deliberately does not show: adding and editing
    * manual accounts, closed accounts, accounts a member has marked private, and per-account
-   * settings like tax treatment. Management, not browsing — which is settings-shaped, so it sits in
-   * More rather than competing for a tab.
+   * settings like tax treatment. Management, not browsing.
    */
   {
     key: 'accounts',
@@ -108,7 +96,6 @@ export const DESTINATIONS: readonly Destination[] = [
     label: 'Manage accounts',
     short: 'Accounts',
     icon: Wallet,
-    tabbable: false,
   },
   /*
    * Categories, rules, import and the household are **destinations**, not settings.
@@ -119,12 +106,8 @@ export const DESTINATIONS: readonly Destination[] = [
    * no back button, and a reload dropped you at the top.
    *
    * As destinations they get their own address, the shells route to them for free, and the two
-   * things left in settings — the tab bar and one toggle — are finally the only things in it.
-   *
-   * Categories and rules are `tabbable`: a household deep in cleaning up a year of transactions may
-   * genuinely want one in the bar, and the whole point of configurable tabs is not deciding that on
-   * their behalf. Import and household are not — a one-off task and a setup step do not compete for
-   * a thumb-sized target, which is the same reasoning as `accounts` above.
+   * things left in settings — the navigation order and one toggle — are finally the only things in
+   * it.
    */
   {
     key: 'categories',
@@ -132,7 +115,6 @@ export const DESTINATIONS: readonly Destination[] = [
     label: 'Categories',
     short: 'Categories',
     icon: Tags,
-    tabbable: true,
   },
   {
     key: 'rules',
@@ -140,7 +122,6 @@ export const DESTINATIONS: readonly Destination[] = [
     label: 'Rules',
     short: 'Rules',
     icon: Filter,
-    tabbable: true,
   },
   {
     key: 'import',
@@ -148,7 +129,6 @@ export const DESTINATIONS: readonly Destination[] = [
     label: 'Import data',
     short: 'Import',
     icon: Upload,
-    tabbable: false,
   },
   {
     key: 'household',
@@ -156,7 +136,6 @@ export const DESTINATIONS: readonly Destination[] = [
     label: 'Household',
     short: 'Household',
     icon: Users,
-    tabbable: false,
   },
   {
     key: 'settings',
@@ -164,7 +143,6 @@ export const DESTINATIONS: readonly Destination[] = [
     label: 'Settings',
     short: 'Settings',
     icon: Settings,
-    tabbable: false,
   },
 ]
 
@@ -187,10 +165,6 @@ const BY_KEY = new Map(DESTINATIONS.map((destination) => [destination.key, desti
 
 export function findDestination(key: DestinationKey): Destination | undefined {
   return BY_KEY.get(key)
-}
-
-export function tabbableDestinations(): Destination[] {
-  return DESTINATIONS.filter((destination) => destination.tabbable)
 }
 
 /**
@@ -220,33 +194,38 @@ export function resolveNavigationOrder(stored: readonly string[] | null | undefi
     seen.add(destination.key)
   }
 
-  // What the reader asked for. Only tabbable destinations are offered by the settings screen, so
-  // anything else appearing here is a stale or hand-edited value and is skipped.
-  for (const key of stored ?? []) {
-    const destination = BY_KEY.get(key as DestinationKey)
-    if (destination?.tabbable === true) take(destination)
-  }
+  /*
+   * What the reader asked for. **Any destination** — there is no longer a set that may not be a tab.
+   *
+   * A `tabbable` flag used to gate this. Accounts, import, household and settings were excluded on
+   * the grounds that a one-off task or a setup step should not occupy a thumb-sized target. That is
+   * a reasonable default and it was encoded as a rule, which is the mistake: this file already
+   * argued the opposite case for categories and rules — "the whole point of configurable tabs is
+   * not deciding that on their behalf" — and then did the deciding anyway for four others.
+   *
+   * The opinion belongs in `DEFAULT_TAB_ORDER`, where it still is. Somebody who wants Import in
+   * their bar because they are mid-migration is not making a mistake, and nothing breaks: every
+   * destination has a short label and an icon, and More holds whatever the bar does not.
+   */
+  for (const key of stored ?? []) take(BY_KEY.get(key as DestinationKey))
 
   // Top up from the default order, so a short or partly-invalid preference still yields four tabs.
   for (const key of DEFAULT_TAB_ORDER) take(BY_KEY.get(key))
 
-  // Then everything the choice did not cover, in the order this file declares them. These are the
-  // destinations the settings screen does not offer — they have a place in the sidebar regardless.
+  // Then anything the choice did not mention, in the order this file declares them.
   for (const destination of DESTINATIONS) take(destination)
 
   return resolved
 }
 
 /**
- * The four bottom tabs, which are simply the front of the navigation order.
+ * The four bottom tabs: the front of the navigation order, and nothing cleverer.
  *
  * Derived rather than resolved separately, so the bar and the sidebar cannot disagree about what
  * the reader chose.
  */
 export function resolveTabOrder(stored: readonly string[] | null | undefined): Destination[] {
-  return resolveNavigationOrder(stored)
-    .filter((destination) => destination.tabbable)
-    .slice(0, TAB_SLOTS)
+  return resolveNavigationOrder(stored).slice(0, TAB_SLOTS)
 }
 
 /** Everything not in the tab bar, for the More sheet. Order follows DESTINATIONS. */

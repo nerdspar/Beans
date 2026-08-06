@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import type { Pool } from 'pg'
+import { MAX_TAB_ORDER_LENGTH } from '@beans/shared'
 import { z } from 'zod'
 import type { Auth } from '../auth/auth.js'
 import { getSession } from '../auth/routes.js'
@@ -29,7 +30,20 @@ export type PreferenceRoutesOptions = {
  * it toggled something unrelated, and get it wrong exactly once to wipe it.
  */
 const putBody = z.object({
-  tabOrder: z.array(z.string().min(1)).max(8).nullable().optional(),
+  /**
+   * The cap is a payload bound, not a rule about navigation.
+   *
+   * It was eight, chosen when the setting ordered only the destinations eligible for the bottom bar
+   * and six existed. The list now covers every destination — ten, and one more each time a screen is
+   * added — so eight silently rejected every save the settings screen made, which reached the user
+   * as buttons that flickered and did nothing.
+   *
+   * The number now lives in `@beans/shared`, because a limit one side enforces and the other has to
+   * guess is exactly what that package is for. Nothing downstream trusts the contents anyway:
+   * `resolveNavigationOrder` ignores unrecognised keys and de-duplicates the rest, so this only has
+   * to stop an unreasonable body rather than police what is in it.
+   */
+  tabOrder: z.array(z.string().min(1)).max(MAX_TAB_ORDER_LENGTH).nullable().optional(),
   theme: z.enum(['light', 'dark', 'system']).optional(),
   showIncompleteHistory: z.boolean().optional(),
 })

@@ -1,3 +1,4 @@
+import { MAX_TAB_ORDER_LENGTH } from '@beans/shared'
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_TAB_ORDER,
@@ -18,6 +19,18 @@ import {
  */
 
 const keys = (list: readonly { key: string }[]): string[] => list.map((item) => item.key)
+
+it('has fewer destinations than the API will accept in one order', () => {
+  /*
+   * The tripwire for the bug that made this list unsavable.
+   *
+   * The settings screen sends the whole order, so the API's cap has to exceed the number of
+   * destinations. It did not: the cap was eight, chosen when only six were offered, and the tenth
+   * destination made every save a silent 400. Adding destinations is routine and noticing a limit
+   * in another package is not, so the limit is shared and this fails the moment they cross.
+   */
+  expect(DESTINATIONS.length).toBeLessThanOrEqual(MAX_TAB_ORDER_LENGTH)
+})
 
 describe('resolveNavigationOrder', () => {
   it('lists every destination exactly once, whatever is stored', () => {
@@ -40,12 +53,11 @@ describe('resolveNavigationOrder', () => {
     expect(order).not.toContain('ghost')
   })
 
-  it('ignores a destination the settings screen never offers', () => {
-    // `settings` is not tabbable. Accepting it from a hand-edited preference would let someone put
-    // it in the bottom bar, where it is deliberately not on offer.
+  it('orders any destination, including ones that were once barred from the tab bar', () => {
+    // There is no longer a set that may not be a tab. The default still puts the four browsing
+    // screens first; wanting Settings at the top is a choice, not a mistake to be prevented.
     const order = keys(resolveNavigationOrder(['settings', 'portfolio']))
-    expect(order[0]).toBe('portfolio')
-    expect(order).toContain('settings')
+    expect(order.slice(0, 2)).toEqual(['settings', 'portfolio'])
   })
 
   it('falls back to the shipped default when nothing is stored', () => {
@@ -56,13 +68,10 @@ describe('resolveNavigationOrder', () => {
 describe('resolveTabOrder', () => {
   it('is the front of the navigation order', () => {
     // The property the whole change rests on. If these ever diverge, the setting means two things.
-    for (const stored of [null, ['rules', 'portfolio'], ['portfolio', 'cash-flow', 'categories']]) {
-      const tabs = keys(resolveTabOrder(stored))
-      const fromOrder = keys(resolveNavigationOrder(stored).filter((d) => d.tabbable)).slice(
-        0,
-        TAB_SLOTS,
+    for (const stored of [null, ['rules', 'portfolio'], ['settings', 'import', 'categories']]) {
+      expect(keys(resolveTabOrder(stored))).toEqual(
+        keys(resolveNavigationOrder(stored)).slice(0, TAB_SLOTS),
       )
-      expect(tabs).toEqual(fromOrder)
     }
   })
 
@@ -73,9 +82,14 @@ describe('resolveTabOrder', () => {
     }
   })
 
-  it('never offers a destination that is not tabbable', () => {
-    for (const destination of resolveTabOrder(['settings', 'import', 'household'])) {
-      expect(destination.tabbable).toBe(true)
-    }
+  it('puts whatever the reader chose in the bar, with no destination held back', () => {
+    // Previously Settings, Import and Household were refused a slot on their behalf. Someone
+    // mid-migration who wants Import under their thumb is not making a mistake.
+    expect(keys(resolveTabOrder(['settings', 'import', 'household', 'rules']))).toEqual([
+      'settings',
+      'import',
+      'household',
+      'rules',
+    ])
   })
 })

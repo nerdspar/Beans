@@ -40,6 +40,14 @@ export function usePreferences(): {
   preferences: Preferences
   patch: (changes: PreferencePatch) => void
   isSaving: boolean
+  /**
+   * The last save that failed, or null.
+   *
+   * Exposed because the rollback alone is indistinguishable from the control not working: the row
+   * moves, moves back, and nothing says why. A setting that silently refuses is worse than one that
+   * refuses out loud — the reader's next move is to press it again.
+   */
+  saveError: Error | null
 } {
   const queryClient = useQueryClient()
 
@@ -53,12 +61,24 @@ export function usePreferences(): {
 
   const mutation = useMutation({
     mutationFn: async (changes: PreferencePatch) => {
-      await fetch('/api/preferences', {
+      const response = await fetch('/api/preferences', {
         method: 'PUT',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(changes),
       })
+
+      /*
+       * Checked, because `fetch` does not.
+       *
+       * It rejects only on a network failure — a 400 resolves perfectly happily. So a rejected save
+       * completed "successfully", `onError` never ran, its rollback never happened, and `onSettled`
+       * refetched the old value. On screen that is a row that swaps places and swaps back, with
+       * nothing said. The rollback below was unreachable for every HTTP error there is.
+       */
+      if (!response.ok) {
+        throw new Error(`Could not save your preferences (${response.status}).`)
+      }
     },
 
     /**
@@ -91,5 +111,6 @@ export function usePreferences(): {
     preferences: data ?? FALLBACK,
     patch: (changes) => mutation.mutate(changes),
     isSaving: mutation.isPending,
+    saveError: mutation.error,
   }
 }

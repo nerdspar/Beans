@@ -26,8 +26,10 @@ export function useTabOrder(): {
   setTabOrder: (keys: DestinationKey[]) => void
   resetTabOrder: () => void
   isSaving: boolean
+  /** A save the server refused, so the screen can say so rather than just reverting. */
+  saveError: Error | null
 } {
-  const { preferences, patch, isSaving } = usePreferences()
+  const { preferences, patch, isSaving, saveError } = usePreferences()
 
   return {
     tabs: resolveTabOrder(preferences.tabOrder),
@@ -37,5 +39,6 @@ export function useTabOrder(): {
     // the shipped default reaches people who never customized it.
     resetTabOrder: () => patch({ tabOrder: null }),
     isSaving,
+    saveError,
   }
 }
