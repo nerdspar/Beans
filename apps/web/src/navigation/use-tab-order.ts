@@ -1,5 +1,6 @@
 import { usePreferences } from '../preferences/use-preferences.js'
 import {
+  resolveNavigationOrder,
   resolveTabOrder,
   type Destination,
   type DestinationKey,
@@ -18,7 +19,10 @@ import {
  * other's field on save.
  */
 export function useTabOrder(): {
+  /** The four bottom tabs, for the phone. The front of `ordered`. */
   tabs: Destination[]
+  /** Every destination in the reader's order, for the desktop sidebar. */
+  ordered: Destination[]
   setTabOrder: (keys: DestinationKey[]) => void
   resetTabOrder: () => void
   isSaving: boolean
@@ -27,6 +31,7 @@ export function useTabOrder(): {
 
   return {
     tabs: resolveTabOrder(preferences.tabOrder),
+    ordered: resolveNavigationOrder(preferences.tabOrder),
     setTabOrder: (keys) => patch({ tabOrder: keys }),
     // Null rather than the default array: storing null means "no preference", so a later change to
     // the shipped default reaches people who never customized it.

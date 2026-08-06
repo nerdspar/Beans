@@ -8,6 +8,11 @@ import {
   withHouseholdContext,
   type ContextDependencies,
 } from '../repositories/household-context.js'
+import {
+  createRule,
+  ensureDefaultCategories,
+  listCategories,
+} from '../repositories/categories.js'
 import { resetAll, resetHouseholdsFor } from '../test-support/reset-database.js'
 import { DAILY_REQUEST_BUDGET, RESERVED_FOR_SCHEDULED } from './quota.js'
 import { markStaleConnections, runSync } from './sync-service.js'
@@ -215,6 +220,85 @@ describeIntegration('sync service', () => {
    * inflated income and spending by the same amount, leaving net untouched and nothing on screen to
    * say so.
    */
+  /**
+   * Rules apply to what a sync brings in.
+   *
+   * They used to run on create, on edit, and when somebody pressed Apply — and never again. So
+   * every transaction from every subsequent sync arrived uncategorized and stayed that way, which
+   * is the opposite of what recording a decision is for. This is the regression test for that.
+   */
+  describe('category rules', () => {
+    const groceriesBody = {
+      errors: [],
+      accounts: [
+        {
+          org: { domain: 'www.chase.com', name: 'Chase' },
+          id: 'ACT-card',
+          name: 'Amazon Card',
+          currency: 'USD',
+          balance: '-3386.39',
+          'balance-date': epoch('2026-08-03T11:00:00Z'),
+          transactions: [
+            {
+              id: 'TX-groceries',
+              posted: epoch('2026-08-02T00:00:00Z'),
+              amount: '-52.40',
+              description: "TRADER JOE'S #402",
+            },
+          ],
+        },
+      ],
+    }
+
+    it('categorizes a transaction that arrives after the rule was made', async () => {
+      const categorized = await withHouseholdContext(deps, USER, async (ctx) => {
+        await ensureDefaultCategories(ctx)
+        const categories = await listCategories(ctx)
+        const groceries = categories.find((category) => category.slug === 'food-groceries')
+        if (groceries === undefined) throw new Error('expected the food-groceries default category')
+
+        /*
+         * The rule exists **before** the transaction does, which is the whole point. Creating it
+         * applies it to what is already there — nothing — so anything categorized afterwards was
+         * categorized by the sync.
+         */
+        await createRule(ctx, {
+          keywords: ['TRADER'],
+          keywordMode: 'any',
+          matchType: 'contains',
+          matchAccountId: null,
+          categoryId: groceries.id,
+        })
+
+        const fetcher = makeFetcher(groceriesBody)
+        const { connectionId } = await createConnection(ctx, SETUP_TOKEN, fetcher)
+        const discovery = await discoverAccounts(ctx, connectionId, fetcher)
+        await confirmAccounts(
+          ctx,
+          connectionId,
+          discovery.accounts.map((candidate) => ({
+            simplefinAccountId: candidate.simplefinAccountId,
+            type: 'depository' as const,
+            signInverted: false,
+            include: true,
+          })),
+          discovery.accounts,
+          NOW,
+        )
+
+        await runSync(ctx, connectionId, fetcher, 'manual', NOW)
+
+        const rows = await ctx.client.query<{ category_id: string | null }>(
+          'select category_id from transactions',
+        )
+        return { rows: rows.rows, groceriesId: groceries.id }
+      })
+
+      expect(categorized.rows).toHaveLength(1)
+      expect(categorized.rows[0]?.category_id).toBe(categorized.groceriesId)
+    })
+  })
+
   describe('transfer detection', () => {
     /** A card payment: money leaves checking and lands on the card, same amount, next day. */
     const transferBody = {

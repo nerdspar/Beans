@@ -2,6 +2,7 @@ import { toIsoDate } from '@beans/shared'
 import { rebuildAccountHistory, type RebuildResult } from '../balance-history/rebuild.js'
 import type { Fetcher } from '../simplefin/client.js'
 import type { HouseholdContext } from '../repositories/household-context.js'
+import { applyRules } from '../repositories/categories.js'
 import { detectTransfers } from '../repositories/transfers.js'
 import { canSync, type SyncTrigger } from './quota.js'
 import { connectionStatusFor, syncConnection, type SyncOutcome } from './sync-connection.js'
@@ -152,6 +153,30 @@ export async function runSync(
     } catch (error) {
       outcome.errors.push(
         `Could not check for transfers: ${error instanceof Error ? error.message : 'unknown error'}`,
+      )
+    }
+
+    /**
+     * Categorize what just arrived.
+     *
+     * Rules used to run when created, when edited, and when somebody pressed Apply — and never
+     * again. So every transaction from every subsequent sync landed uncategorized and stayed that
+     * way until the button was pressed, which defeats the entire purpose of a rule: the reason to
+     * record a decision is so it keeps applying, and "impossible to keep up with after every sync"
+     * is the problem the feature exists to solve.
+     *
+     * Safe to do unattended because `applyRules` only touches transactions with no category. It
+     * cannot overwrite an answer a person gave, so this adds work nobody has to review rather than
+     * changing anything they already decided.
+     *
+     * Non-fatal, like transfer detection above and for the same reason: balances and transactions
+     * are already written correctly, and the worst case is categories arriving one sync late.
+     */
+    try {
+      await applyRules(context)
+    } catch (error) {
+      outcome.errors.push(
+        `Could not apply category rules: ${error instanceof Error ? error.message : 'unknown error'}`,
       )
     }
 

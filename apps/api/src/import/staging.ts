@@ -13,6 +13,7 @@ import {
   type ParsedRow,
 } from '@beans/shared'
 import { rebuildAccountHistory } from '../balance-history/rebuild.js'
+import { applyRules } from '../repositories/categories.js'
 import { advanceProgress, beginProgress, endProgress } from './progress.js'
 import type { HouseholdContext } from '../repositories/household-context.js'
 import { columnSamples, type ParsedCsv } from './csv.js'
@@ -558,6 +559,18 @@ export async function commitImport(
     )
 
     await rebuildTouchedAccounts(context, touchedAccounts, now)
+
+    /*
+     * Categorize the rows that just landed, for the same reason sync does.
+     *
+     * An import is the case where it matters most: a decade of history arrives at once, entirely
+     * uncategorized, and every rule already recorded sits there not applying to any of it. Only
+     * transactions with no category are touched, so nothing a person decided is changed.
+     *
+     * Inside the commit rather than after it — the import is already a transaction, and rules that
+     * ran against rows a rollback then removed would be work attributed to nothing.
+     */
+    await applyRules(context)
 
     return { committed, skipped }
   } finally {

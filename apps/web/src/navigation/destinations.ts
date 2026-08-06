@@ -194,37 +194,59 @@ export function tabbableDestinations(): Destination[] {
 }
 
 /**
- * Resolves a stored preference into four destinations.
+ * Every destination, in the order the reader chose.
+ *
+ * **One order, two shells.** The preference used to reach only the phone: the desktop sidebar
+ * rendered `DESTINATIONS` directly and ignored it, so someone who reordered their navigation found
+ * it unchanged on a laptop — a setting that silently did nothing on half the app.
+ *
+ * The chosen keys come first, then anything the choice did not cover. The phone takes the first
+ * four of these; the sidebar shows all of them. That coupling is deliberate: promoting something to
+ * the top of the sidebar is the same intent as wanting it on the bottom bar, and expressing it
+ * twice is how two lists drift apart.
  *
  * Deliberately forgiving: a stored key that no longer exists, a list of the wrong length, or an
  * unparseable value all fall back to the default rather than erroring. A navigation bar is the
  * wrong place to surface a data problem — an app that will not render its own chrome because a
  * preference is stale is worse than one quietly showing the defaults.
  */
-export function resolveTabOrder(stored: readonly string[] | null | undefined): Destination[] {
+export function resolveNavigationOrder(stored: readonly string[] | null | undefined): Destination[] {
   const resolved: Destination[] = []
   const seen = new Set<DestinationKey>()
 
+  const take = (destination: Destination | undefined): void => {
+    if (destination === undefined || seen.has(destination.key)) return
+    resolved.push(destination)
+    seen.add(destination.key)
+  }
+
+  // What the reader asked for. Only tabbable destinations are offered by the settings screen, so
+  // anything else appearing here is a stale or hand-edited value and is skipped.
   for (const key of stored ?? []) {
     const destination = BY_KEY.get(key as DestinationKey)
-    if (destination !== undefined && destination.tabbable && !seen.has(destination.key)) {
-      resolved.push(destination)
-      seen.add(destination.key)
-    }
-    if (resolved.length === TAB_SLOTS) break
+    if (destination?.tabbable === true) take(destination)
   }
 
   // Top up from the default order, so a short or partly-invalid preference still yields four tabs.
-  for (const key of DEFAULT_TAB_ORDER) {
-    if (resolved.length === TAB_SLOTS) break
-    const destination = BY_KEY.get(key)
-    if (destination !== undefined && !seen.has(key)) {
-      resolved.push(destination)
-      seen.add(key)
-    }
-  }
+  for (const key of DEFAULT_TAB_ORDER) take(BY_KEY.get(key))
+
+  // Then everything the choice did not cover, in the order this file declares them. These are the
+  // destinations the settings screen does not offer — they have a place in the sidebar regardless.
+  for (const destination of DESTINATIONS) take(destination)
 
   return resolved
+}
+
+/**
+ * The four bottom tabs, which are simply the front of the navigation order.
+ *
+ * Derived rather than resolved separately, so the bar and the sidebar cannot disagree about what
+ * the reader chose.
+ */
+export function resolveTabOrder(stored: readonly string[] | null | undefined): Destination[] {
+  return resolveNavigationOrder(stored)
+    .filter((destination) => destination.tabbable)
+    .slice(0, TAB_SLOTS)
 }
 
 /** Everything not in the tab bar, for the More sheet. Order follows DESTINATIONS. */

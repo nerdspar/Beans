@@ -36,9 +36,16 @@ export const SETTINGS_COPY = {
   /** Reversibility is the thing that makes it safe to try. */
   historyTrustReversible: 'You can change this back at any time — nothing is overwritten.',
 
-  tabsTitle: 'Bottom tabs',
+  /**
+   * One order, both layouts.
+   *
+   * Called "Navigation order" rather than "Bottom tabs" because it is no longer only the phone's
+   * bar — the same list orders the desktop sidebar. The old name described where the setting showed
+   * up rather than what it did, and it had gone from merely narrow to inaccurate.
+   */
+  tabsTitle: 'Navigation order',
   tabsHelp: (slots: number): string =>
-    `Pick up to ${slots} and put them in order. More always fills the last slot and holds everything else.`,
+    `Put your destinations in the order you want them. The first ${slots} become the tabs along the bottom on a phone, with More holding the rest; on a wider screen the whole list is the sidebar.`,
 
   /**
    * The same list under two headings, because the reader's question changes.

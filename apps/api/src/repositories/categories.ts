@@ -521,7 +521,15 @@ export async function applyRules(context: HouseholdContext): Promise<{ categoriz
       where category_id is null and status = 'active'`,
   )
 
-  let categorized = 0
+  /*
+   * Collected by category, then written once per category rather than once per row.
+   *
+   * This used to be one statement per match, which was fine while it only ran when somebody pressed
+   * a button. It now runs at the end of every sync, where a first sync can match thousands of rows —
+   * and the matching itself already costs a decryption per transaction, so adding a network round
+   * trip per match on top is the part worth removing.
+   */
+  const byCategory = new Map<string, string[]>()
 
   for (const row of transactions.rows) {
     const categoryId = categoryForTransaction(rules, {
@@ -533,11 +541,24 @@ export async function applyRules(context: HouseholdContext): Promise<{ categoriz
 
     if (categoryId === null) continue
 
-    await context.client.query('update transactions set category_id = $2 where id = $1', [
-      row.id,
+    const ids = byCategory.get(categoryId)
+    if (ids === undefined) byCategory.set(categoryId, [row.id])
+    else ids.push(row.id)
+  }
+
+  let categorized = 0
+
+  for (const [categoryId, ids] of byCategory) {
+    /*
+     * `= any($2)` with an array parameter, not an `in (...)` list built by hand: one bound
+     * parameter regardless of how many ids, so this cannot approach the 65535-parameter statement
+     * limit however many transactions match a single category.
+     */
+    await context.client.query('update transactions set category_id = $1 where id = any($2)', [
       categoryId,
+      ids,
     ])
-    categorized += 1
+    categorized += ids.length
   }
 
   return { categorized }

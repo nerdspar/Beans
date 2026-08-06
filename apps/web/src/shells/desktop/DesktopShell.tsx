@@ -5,7 +5,8 @@ import { AUTH_COPY, SHELL_COPY } from '@beans/shared'
 import { useSignOut } from '../../auth/use-session.js'
 import { cn } from '../../lib/cn.js'
 import { MAIN_REGION_ID, SkipLink } from '../../lib/main-region.js'
-import { DESTINATIONS, destinationForPath } from '../../navigation/destinations.js'
+import { destinationForPath } from '../../navigation/destinations.js'
+import { useTabOrder } from '../../navigation/use-tab-order.js'
 
 /**
  * The desktop shell.
@@ -18,15 +19,27 @@ import { DESTINATIONS, destinationForPath } from '../../navigation/destinations.
  * beside the list so it stays visible while the user moves through accounts. `DesktopPanes` below
  * is what screens use to opt into that.
  *
- * A **separate component tree** from the mobile shell. The tab preference is deliberately not read
- * here: it configures a bar that does not exist, and a sidebar with room for everything has no
- * reason to hide destinations.
+ * A **separate component tree** from the mobile shell, but not a separate navigation order. This
+ * used to render the static registry on the reasoning that the preference configured a bar which
+ * does not exist here — true of the *four slots*, and wrong about the ordering. The effect was a
+ * setting that silently applied to half the app: reorder navigation on a phone, open a laptop, find
+ * it unchanged.
+ *
+ * So the same list drives both, read to different depths. The sidebar has room for everything and
+ * still shows everything; it just shows it in the order the reader asked for.
  */
 export function DesktopShell({ children }: { children: ReactNode }): ReactNode {
   const [location] = useLocation()
   const active = destinationForPath(location)
 
   const { signOut, isPending } = useSignOut()
+
+  /*
+   * The same preference the bottom bar reads, to its full depth rather than its first four. The
+   * sidebar used to render the static registry, so reordering navigation on a phone changed nothing
+   * here — the setting quietly applied to half the app.
+   */
+  const { ordered } = useTabOrder()
 
   return (
     <div className="relative flex min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
@@ -43,7 +56,7 @@ export function DesktopShell({ children }: { children: ReactNode }): ReactNode {
         <div className="px-5 py-5 text-lg font-semibold tracking-tight">Beans</div>
 
         <ul className="flex-1 space-y-0.5 px-3">
-          {DESTINATIONS.map((destination) => {
+          {ordered.map((destination) => {
             const Icon = destination.icon
             const isActive = active?.key === destination.key
 
