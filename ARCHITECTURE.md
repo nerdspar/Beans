@@ -191,6 +191,44 @@ Stale accounts carry forward flat (`carried`) so household net worth stays summa
 account's sync is broken — but the UI says so explicitly ("2 accounts stale, carried forward since
 7/28") rather than presenting it as observed fact.
 
+### 4.4 What the provider said is currently thrown away
+
+**Open, and the most consequential unresolved thing in the app.**
+
+For a reconstructable account — cash, credit, loan, mortgage — `rebuildAccountHistory` writes an
+entirely `derived` series. The balance the institution reported is used as the anchor and then
+discarded. Nothing writes an `observed` snapshot for these accounts at all; the only such insert in
+the codebase is the zero after a closed account's closing date.
+
+That means Beans keeps what it computed and not what it was told, and the two can disagree. §3.3
+names the failure that makes this matter: an institution reporting balances and transactions in
+opposite sign conventions produces a smooth, plausible, steadily wrong chart.
+
+**The check that was supposed to catch it cannot.** `checkReconstruction` compares the last point of
+the derived series to the balance it was derived *from*. `reconstructBackward` deliberately excludes
+later-dated transactions to preserve "the invariant that the last entry equals the observed balance
+exactly" — so the check asserts an invariant of the algorithm. It can only fail if reconstruction is
+buggy. Its test asserted `consistent === true` under a name claiming the opposite, and the manual
+testing backlog counted that as coverage for the highest-risk failure in the app.
+
+`analyseDrift` (`packages/shared/src/balance-history/drift.ts`) is the real check: between two
+independent readings, the transactions either explain the change or they do not, and inverted signs
+produce drift of exactly twice the net movement in the same direction — a signature rather than a
+smell. It is written, tested, and **wired to nothing**, because the readings it needs are the ones
+being discarded.
+
+**The fix is a separate table, not a policy for which value wins.** `balance_snapshots` has
+`unique(account_id, as_of_date)` — one row per account per day — which is what forces an observed
+value and a derived value to compete for the same slot, and what made this look like a decision
+about what the chart should draw. It is not. An append-only log of provider readings, written once
+per sync and read by nothing but the detector, keeps both facts without either displacing the other:
+the chart continues to show reconstruction, and the disagreement becomes visible.
+
+Reconstruction should stay authoritative for the chart (§4.1). A provider's balance is frequently
+stale — the portfolio's dated figures exist because of exactly that — so pinning history to reported
+values would replace a smooth wrong line with a jagged one, and lose the property that a
+late-posting transaction retroactively corrects the days it belongs to.
+
 ---
 
 ## 5. Encryption
@@ -310,6 +348,37 @@ an error, which is exactly the kind of thing that reaches production.
 
 `household_members` is a pure join table with a `unique(user_id)` constraint enforcing one household
 in v1. Removing that single constraint is the entire migration to many-to-many — no restructuring.
+
+### 6.4 Private accounts — visibility inside a household
+
+`accounts.is_shared` shipped as a column and a promise: the schema said private accounts were
+"excluded from household rollups and invisible to other members", and nothing enforced it. It could
+not have. There was no owner column, so "invisible to other members" had no referent — the boolean
+was read by nobody.
+
+Accounts now carry `owner_user_id`, and the policy is household **and** visible:
+
+```sql
+household_id = nullif(current_setting('app.current_household', true), '')::uuid
+and (is_shared or owner_user_id = nullif(current_setting('app.current_user_id', true), ''))
+```
+
+**The household clause is untouched and ANDed, and that ordering is the whole safety argument.**
+Nothing in the visibility half can widen cross-tenant access; it can only narrow within one tenant.
+There is an isolation test asserting a private account is still invisible from another household,
+sitting beside the cross-tenant tests rather than in a file of its own, for that reason.
+
+It fails closed. Private with no owner resolves to visible-to-nobody rather than
+visible-to-everybody — including for the person who hid it, which is recoverable. The opposite
+default shows somebody's separate finances to the person they hid them from, which is not.
+
+**Child tables stay isolated by household alone, deliberately.** A per-row visibility subquery on a
+table with a hundred thousand transactions in it is a real cost, and every read path already
+inner-joins `accounts` — so account visibility decides what comes back for free. That is a property
+worth knowing about rather than rediscovering: a new query that reads transactions *without* joining
+accounts leaks a private account's rows. Transfer detection did exactly that until it was fixed; a
+proposal names two transactions, and one from a hidden account discloses both its existence and an
+amount.
 
 ---
 
@@ -439,6 +508,24 @@ and every UI then has to handle arbitrary depth.
 
 ---
 
+### 8.1 Rules run on what arrives, not only when pressed
+
+Rules applied when created, when edited, and when somebody pressed Apply — and never again. Every
+transaction from every subsequent sync landed uncategorized and stayed that way, which is the
+opposite of what recording a decision is for; the categorize sheet says as much in its own copy.
+
+They now run at the end of a sync and after an import commits. Import is where it matters most: a
+decade of history arrives at once, entirely uncategorized, while every rule already written applies
+to none of it.
+
+Safe unattended because `applyRules` only touches transactions with no category. It cannot overwrite
+an answer a person gave, so it adds work nobody has to review rather than changing anything already
+decided. Non-fatal after a sync, like transfer detection — balances are already written, and the
+worst case is categories arriving one sync late. **Fatal inside an import**, and not by choice:
+Postgres aborts a transaction on the first failed statement, so catching there would buy nothing.
+
+---
+
 ## 9. Transfers
 
 A confirmed transfer is a **linked pair** in `transfer_matches` (from-transaction ↔ to-transaction,
@@ -458,6 +545,16 @@ cash flow if it is **in a confirmed pair OR its category kind is `transfer`**. C
 budgeting, and every export call that one function. Do not reimplement it per screen.
 
 Invariant, tested: **every confirmed transfer pair sums to exactly zero.**
+
+Detection also runs after an import commits, not only after a sync. A file of a household's own
+history is full of transfers — every card payment, every move to savings — and none were proposed
+until somebody pressed the button on the cash flow screen. Nobody presses a button to check for a
+problem they cannot see.
+
+The matcher buckets candidate inflows by amount rather than scanning every inflow for every outflow.
+The old shape was fine on a few hundred transactions and tens of millions of comparisons on an
+imported decade — and it is the reason detection only looks back 120 days. That window is unchanged
+and is now a cheap thing to revisit.
 
 ### 9.1 Mortgage payments are NOT transfers — do not "improve" this
 
@@ -733,6 +830,49 @@ encrypted JSONB blobs each, and they would otherwise persist forever.
 
 Real target data: the user's Empower transaction export runs back to **2019**.
 
+### 11.1 Balance history import — the only route to investment history
+
+Transactions can backfill cash and credit history because every change to those balances is a
+posting: `balance(T) = current − sum(transactions after T)` closes. **It does not work for
+investments.** A share price moving is not something anybody posts, so no transaction file recovers
+what a brokerage was worth in 2019, and the portfolio chart starts when Beans first looked rather
+than when the account did.
+
+A balances CSV is a file of *readings* — account, date, balance — written straight into
+`balance_snapshots` with `source = 'imported'`. That source is what protects them: rebuild deletes
+only `derived` rows (§4.2), so a 2019 anchor survives every later rebuild instead of being
+overwritten by reconstruction. Sparse rows are expected and fine; the realistic source is a statement
+per month, and carry-forward fills the gaps.
+
+**The kind is chosen, never inferred.** A balances file read as transactions inserts one fake
+transaction per reading, and every balance derived afterwards is rebuilt from those — the damage
+spreads far past the rows themselves and looks entirely plausible. The guesser proposes when it sees
+a `balance` column and no `amount`; the reader confirms.
+
+Parenthesised amounts are read as negative. `($281,640.00)` is accounting notation, it appears in
+real statement exports, and read as positive it turns a quarter-million-dollar mortgage into a
+quarter-million-dollar asset.
+
+Snapshots carry `import_id` for the same reason transactions do. Without it, reversing a balances
+import deleted nothing and reported success — the worst shape an undo can take, because the reader
+is told it worked.
+
+### 11.2 Export — the promise that you can leave
+
+Beans exists because eight years of history sat in another app behind a one-month-at-a-time PDF
+export. The export is therefore complete rather than convenient: accounts, transactions, and **one
+row per account per day of balance history, every type, loans and investments included**.
+
+The daily balances are the part that matters. Everything else in the file can be reconstructed
+downstream by whoever receives it; an investment balance cannot, for the reason above. Leave the
+snapshots out and that history is gone at the moment of leaving.
+
+Money leaves as decimal strings, liabilities keep their sign, closed accounts are included, and
+available balance appears — currently the only place it does other than account detail. What comes
+out is plaintext, deliberately: everything is encrypted at rest under a key the operator holds, and
+an export is the one moment a household asks for it in the clear. Over TLS, to an authenticated
+session, `no-store`, never written to disk on the server.
+
 ---
 
 ## 12. Frontend
@@ -740,6 +880,28 @@ Real target data: the user's Empower transaction export runs back to **2019**.
 Two genuinely different layouts sharing all data logic, hooks and formatting — **not** one component
 tree littered with breakpoint conditionals, which is how both layouts end up mediocre. The shell is
 picked once at a breakpoint and each is allowed to be good at its own job.
+
+### 12.0 One navigation order, two shells
+
+The tab preference reached only the phone. The desktop sidebar rendered the static registry and
+ignored it, so reordering navigation on a phone and opening a laptop showed no change — a setting
+that silently applied to half the app.
+
+Both shells now read one list to different depths: the first four entries are the bottom tabs, the
+whole order is the sidebar. Promoting something to the top of the sidebar and wanting it in the
+bottom bar are the same intent, and expressing it twice is how two lists drift apart.
+
+The `tabbable` flag is gone with it. Accounts, import, household and settings were refused a slot on
+the grounds that a one-off task should not occupy a thumb-sized target — a reasonable default,
+encoded as a rule. This file already argued the opposite for categories and rules ("the whole point
+of configurable tabs is not deciding that on their behalf") and then did the deciding anyway for four
+others. The opinion belongs in `DEFAULT_TAB_ORDER`, where it still is.
+
+**Import is deliberately not a destination**, though `/import` is still a real route. Being a
+destination and being in the navigation are separable, and conflating them is what put a task most
+people do once at the start permanently in front of everybody. It is reached from Manage accounts,
+which is the same job — getting account data in. Anything that removes that link orphans the screen:
+nothing else reaches it, including the More sheet, which lists the registry.
 
 - **Mobile:** installable PWA — full manifest, service worker, offline shell, standalone display, iOS
   splash/icon sets, safe-area insets. Fixed bottom tab bar with exactly five slots; the fifth is
