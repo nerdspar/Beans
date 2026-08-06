@@ -183,28 +183,36 @@ describeIntegration('balance history rebuild', () => {
     })
 
     /**
-     * The drift this detects produces a smooth, plausible chart rather than an error — it is the
-     * only automated signal that an institution reports balances and transactions in opposite sign
-     * conventions.
+     * `checkReconstruction` cannot detect a sign convention error, and this records why rather
+     * than pretending otherwise.
+     *
+     * The series is reconstructed *from* the current balance, and `reconstructBackward` explicitly
+     * preserves "the invariant that the last entry equals the observed balance exactly". So the
+     * check compares a value to the thing it was derived from: it can only fail if reconstruction
+     * itself is buggy, which is worth knowing but is not the failure it was written for.
+     *
+     * This test used to be called "reports inconsistency when the series cannot reconcile" while
+     * asserting the opposite, which made it read as coverage for a detector that does not exist.
+     * The real one lives in `analyseDrift`, and works from two independent observations — the thing
+     * reconstruction cannot supply.
      */
-    it('reports inconsistency when the series cannot reconcile', async () => {
+    it('reconciles by construction, so it cannot see a sign convention error', async () => {
       const result = await withHouseholdContext(deps, USER, async (ctx) => {
         const accountId = await makeAccount(ctx, { type: 'depository', balanceCents: 100_000n })
         await addTransaction(ctx, accountId, '2026-08-01', -5_000n)
 
         await rebuildAccountHistory(ctx, accountId, TODAY)
 
-        // Simulate the balance moving without the transactions explaining it.
+        // The balance moves without any transaction explaining it — the shape of the failure.
         await ctx.client.query('update accounts set current_balance = $1 where id = $2', [
           ctx.cipher.encryptMoney(90_000n),
           accountId,
         ])
 
-        // The series is rebuilt from the new balance, so it reconciles again — the check is against
-        // whatever the series was actually derived from.
         return rebuildAccountHistory(ctx, accountId, TODAY)
       })
 
+      // Consistent, because the series was rebuilt from the new balance. Documented, not desired.
       expect(result.consistent).toBe(true)
     })
 

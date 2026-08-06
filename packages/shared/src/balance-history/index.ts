@@ -22,3 +22,12 @@ export {
   type ReconstructOptions,
   type SnapshotSource,
 } from './reconstruct.js'
+
+export {
+  analyseDrift,
+  type BalanceObservation,
+  type DriftAnalysis,
+  type DriftInterval,
+  type DriftOptions,
+  type DriftTransaction,
+} from './drift.js'

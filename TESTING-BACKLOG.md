@@ -85,8 +85,14 @@ behavior is a separate question.
       exists, while saying nothing about balances — which is why balances vary. If some institution
       inverts both, that account's derived history will **drift steadily rather than fail loudly**,
       because backward reconstruction subtracts transactions from the current balance and needs both
-      in the same sign space. The milestone 4 reconstruction check should catch it; verify against
-      real data for every card institution.
+      in the same sign space.
+
+      **The milestone 4 reconstruction check does not catch it**, contrary to what this list used to
+      say. It compares the derived series to the balance it was derived from, which is an invariant
+      of the algorithm rather than a fact about the data. `analyseDrift` is the real detector — two
+      independent observations and the transactions between them — but it needs several readings
+      before it can say anything, so a newly connected account is unprotected for its first weeks.
+      Check every card institution by hand regardless.
 - [ ] `errlist` surfaces to the UI rather than being swallowed
 - [ ] Reconnect preserves history and creates no duplicate accounts
 - [ ] Confirm the daily request budget is not exceeded under the real schedule
