@@ -4,10 +4,11 @@ import {
   TRANSACTIONS_COPY,
   compareDates,
   formatCents,
+  parseDecimalToCents,
   resolveWindow,
   sliceToWindow,
 } from '@beans/shared'
-import { Search, X } from 'lucide-react'
+import { ChevronRight, Search, X } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   useCallback,
@@ -70,6 +71,14 @@ export function Transactions(): ReactNode {
   const [query, setQuery] = useState('')
 
   /*
+   * Amount bounds, as typed. Kept as strings rather than parsed numbers because a half-typed "1."
+   * is a legitimate intermediate state, and re-formatting the field under the cursor is the fastest
+   * way to make a number input unusable.
+   */
+  const [amountMin, setAmountMin] = useState('')
+  const [amountMax, setAmountMax] = useState('')
+
+  /*
    * Deferred so typing stays responsive on a large set. The list re-filters at React's convenience
    * rather than on every keystroke, and the input itself never lags behind the keyboard.
    */
@@ -122,7 +131,29 @@ export function Transactions(): ReactNode {
     observerRef.current = observer
   }, [])
 
+  /**
+   * A typed bound as cents, or null when it is blank or not yet a number.
+   *
+   * Tolerant on purpose: "1." and "" and "abc" all mean "no bound yet" rather than an error. A
+   * filter that shouts at half-typed input is a filter people stop using, and the worst outcome of
+   * ignoring an unparseable bound is that the list stays wider than intended for one keystroke.
+   *
+   * Through the money parser, never `parseFloat` — the same rule as everywhere else money is read.
+   */
+  const parseBound = (raw: string): bigint | null => {
+    const trimmed = raw.trim()
+    if (trimmed === '') return null
+    try {
+      const cents = parseDecimalToCents(trimmed.includes('.') ? trimmed : `${trimmed}.00`)
+      return cents < 0n ? -cents : cents
+    } catch {
+      return null
+    }
+  }
+
   const { visible, total } = useMemo(() => {
+    const minCents = parseBound(amountMin)
+    const maxCents = parseBound(amountMax)
     const window = resolveWindow(range, today)
     const inWindow = sliceToWindow(
       workingSet.transactions.map((transaction) => ({ ...transaction, date: transaction.postedDate })),
@@ -143,6 +174,19 @@ export function Transactions(): ReactNode {
       if (flow === 'out' && transaction.amountCents >= 0n) return false
 
       if (categoryId !== '' && transaction.categoryId !== categoryId) return false
+
+      /*
+       * Compared on magnitude, so one bound answers "anything over a hundred" whichever direction
+       * it went. Direction is what the Money in / Money out tabs are for.
+       *
+       * Parsed to cents through the money parser rather than `parseFloat`, which is the rule
+       * everywhere else and matters here too: a bound typed as 0.1 must not become 0.099999.
+       */
+      if (minCents !== null || maxCents !== null) {
+        const magnitude = transaction.amountCents < 0n ? -transaction.amountCents : transaction.amountCents
+        if (minCents !== null && magnitude < minCents) return false
+        if (maxCents !== null && magnitude > maxCents) return false
+      }
 
       if (needle === '') return true
 
@@ -168,7 +212,8 @@ export function Transactions(): ReactNode {
     )
 
     return { visible: matched, total: inWindow.length }
-  }, [workingSet.transactions, range, today, accountId, flow, categoryId, deferredQuery])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- parseBound is pure and stable.
+  }, [workingSet.transactions, range, today, accountId, flow, categoryId, deferredQuery, amountMin, amountMax])
 
   if (workingSet.isLoading) {
     return <Message title={TRANSACTIONS_COPY.loading} />
@@ -184,7 +229,21 @@ export function Transactions(): ReactNode {
     )
   }
 
-  const byDate = groupByDate(visible)
+  /*
+   * The net of the filtered list. Signed sum — money in less money out — computed over `visible`
+   * rather than the window, because the figure is about what is on screen.
+   */
+  const netCents = visible.reduce((sum, transaction) => sum + transaction.amountCents, 0n)
+
+  /*
+   * Pending rows lifted out of the date grouping.
+   *
+   * They are the ones that can still change — amount, date, or vanishing entirely, which SimpleFIN
+   * does without a tombstone — and they are what somebody is looking for right after spending
+   * something. Sorted in by date they scatter among settled rows that will never move again.
+   */
+  const pending = visible.filter((transaction) => transaction.pending)
+  const byDate = groupByDate(visible.filter((transaction) => !transaction.pending))
 
   return (
     <div className="mx-auto max-w-2xl pb-16">
@@ -297,7 +356,97 @@ export function Transactions(): ReactNode {
             {TRANSACTIONS_COPY.showing(visible.length, total)}
           </span>
         </div>
+
+        {/*
+          Category and amount, behind a disclosure.
+
+          The category filter has existed and been applied since cash flow could link here — there
+          was simply nothing to *set* it with, so it could only arrive from another screen. That is
+          the gap this closes.
+
+          Collapsed because the row above answers most questions and a five-control filter block on
+          a phone pushes the list itself off the screen. Open by default whenever either is set, so
+          a filter can never be applied and hidden at the same time.
+        */}
+        <details className="group mt-2" open={categoryId !== '' || amountMin !== '' || amountMax !== ''}>
+          <summary
+            className={cn(
+              'flex cursor-pointer list-none items-center gap-1 text-xs font-medium',
+              'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200',
+              'focus-visible:outline-2 focus-visible:outline-sky-500',
+              '[&::-webkit-details-marker]:hidden',
+            )}
+          >
+            <ChevronRight
+              className="size-3 transition-transform group-open:rotate-90 motion-reduce:transition-none"
+              aria-hidden
+            />
+            {TRANSACTIONS_COPY.moreFilters}
+          </summary>
+
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <SearchableSelect
+              className="w-56"
+              value={categoryId}
+              onChange={setCategoryId}
+              label={TRANSACTIONS_COPY.allCategories}
+              options={[
+                { value: '', label: TRANSACTIONS_COPY.allCategories },
+                ...(categories.data ?? []).map((category) => ({
+                  value: category.id,
+                  label: category.name,
+                })),
+              ]}
+            />
+
+            <AmountBound
+              label={TRANSACTIONS_COPY.amountMin}
+              value={amountMin}
+              onChange={setAmountMin}
+            />
+            <AmountBound
+              label={TRANSACTIONS_COPY.amountMax}
+              value={amountMax}
+              onChange={setAmountMax}
+            />
+          </div>
+
+          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+            {TRANSACTIONS_COPY.amountHelp}
+          </p>
+        </details>
       </div>
+
+      {pending.length > 0 && (
+        <section>
+          <h2
+            className={cn(
+              'flex items-baseline justify-between gap-3 px-5 pb-1 pt-3 text-xs font-semibold',
+              'text-amber-700 dark:text-amber-400',
+            )}
+          >
+            {TRANSACTIONS_COPY.pendingHeading}
+            <span className="font-normal text-slate-500 dark:text-slate-400">
+              {TRANSACTIONS_COPY.pendingNote}
+            </span>
+          </h2>
+          <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+            {pending.map((transaction) => (
+              <Row
+                key={transaction.id}
+                transaction={transaction}
+                accountName={accounts?.get(transaction.accountId)?.name ?? ''}
+                categoryName={
+                  transaction.categoryId === null
+                    ? null
+                    : (workingSet.categories.get(transaction.categoryId)?.name ?? null)
+                }
+                returnTo={here}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
 
       {visible.length === 0 ? (
         <Message
@@ -350,8 +499,78 @@ export function Transactions(): ReactNode {
         ))
       )}
 
-      
+      {/*
+        The net of what is listed, pinned above the tab bar.
+
+        Of the *filtered* list, which is the whole point: filter to a category and it answers how
+        much went there; filter to an account and it answers what moved through it. A figure that
+        ignored the filters would be the range's net repeated on every screen.
+
+        Sticky rather than at the end of the list, so it is readable while scrolling — the question
+        it answers is asked while looking at the rows, not after reaching the last one.
+      */}
+      {visible.length > 0 && (
+        <div
+          className={cn(
+            'sticky bottom-0 z-20 mt-2 flex items-baseline justify-between gap-3 px-5 py-2.5',
+            'border-t border-slate-200 bg-slate-50/95 dark:border-slate-800 dark:bg-slate-950/95',
+          )}
+        >
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+            {TRANSACTIONS_COPY.runningNet}
+            <span className="ml-1.5 font-normal">{TRANSACTIONS_COPY.runningNetFiltered}</span>
+          </span>
+          <span
+            className={cn(
+              'text-sm font-semibold tabular-nums',
+              /*
+               * Coloured, but never celebratory. Green for a positive net and plain slate for a
+               * negative one rather than red: spending more than you earned over a filtered window
+               * is ordinary, and a red number is an alarm about something that is usually just a
+               * month with rent in it.
+               */
+              netCents > 0n ? 'text-emerald-600 dark:text-emerald-400' : '',
+            )}
+          >
+            {formatCents(netCents)}
+          </span>
+        </div>
+      )}
     </div>
+  )
+}
+
+/**
+ * One end of the amount range.
+ *
+ * `inputMode="decimal"` rather than `type="number"`: a number input on iOS still shows a keypad
+ * without a decimal point in some locales, and its spinner arrows are meaningless for money.
+ */
+function AmountBound({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: string
+  onChange: (next: string) => void
+}): ReactNode {
+  return (
+    <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+      {label}
+      <input
+        type="text"
+        inputMode="decimal"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="—"
+        className={cn(
+          'mt-0.5 block min-h-9 w-24 rounded-lg border px-2 text-sm tabular-nums',
+          'border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900',
+          'focus-visible:outline-2 focus-visible:outline-sky-500',
+        )}
+      />
+    </label>
   )
 }
 

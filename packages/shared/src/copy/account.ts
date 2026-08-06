@@ -26,6 +26,8 @@ export const ACCOUNT_COPY = {
   availableBalance: 'Available',
   /** Searching one account's activity, which is the common case for "when did I pay that". */
   searchActivity: 'Search this account',
+  /** Distinct from having no activity at all — one is a fact, the other is a narrowed view. */
+  activityNoMatches: 'Nothing here matches that.',
   connection: 'Connection',
 
   /** Values that are an absence rather than a number. */

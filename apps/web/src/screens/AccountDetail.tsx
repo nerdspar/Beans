@@ -16,7 +16,7 @@ import {
   type TaxTreatment,
 } from '@beans/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ChevronLeft, Info, Pencil, Plus } from 'lucide-react'
+import { AlertTriangle, ChevronLeft, Info, Pencil, Plus, Search } from 'lucide-react'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'wouter'
 import { AccountEditor, ManualBalanceForm } from '../accounts/AccountForms.js'
@@ -56,6 +56,9 @@ const MIN_CARRIED_DAYS_TO_MENTION = 3
 /** Enough to recognize the account's rhythm without becoming the Activity screen. */
 const RECENT_TRANSACTION_COUNT = 8
 
+/** Enough that a search feels like it answered, without turning this into the Activity screen. */
+const SEARCH_RESULT_COUNT = 50
+
 export function AccountDetail({ params }: { params: { id: string } }): ReactNode {
   const [range, setRange] = useState<RangeSelection>(DEFAULT_RANGE)
   const workingSet = useWorkingSet()
@@ -64,15 +67,21 @@ export function AccountDetail({ params }: { params: { id: string } }): ReactNode
    * Newest first, and computed before the early returns so the hook order does not change between
    * a loading account and a loaded one.
    */
-  const recent = useMemo(
+  /*
+   * The whole account's activity, newest first — not the handful shown by default.
+   *
+   * The slice moved into the view because searching has to look past it: a search box that only
+   * looked at the eight rows already on screen would be a filter on the visible list rather than a
+   * search of the account, and would find nothing the reader could not already see.
+   */
+  const accountTransactions = useMemo(
     () =>
       workingSet.transactions
         .filter((transaction) => transaction.accountId === params.id)
         .sort(
           (left, right) =>
             compareDates(right.postedDate, left.postedDate) || left.id.localeCompare(right.id),
-        )
-        .slice(0, RECENT_TRANSACTION_COUNT),
+        ),
     [workingSet.transactions, params.id],
   )
 
@@ -123,7 +132,7 @@ export function AccountDetail({ params }: { params: { id: string } }): ReactNode
       section={account.section}
       range={range}
       onRange={setRange}
-      recent={recent}
+      recent={accountTransactions}
       accountMove={accountMove}
     />
   )
@@ -152,6 +161,7 @@ function AccountView({
    */
   const here = useHere(account.name)
   const [sheet, setSheet] = useState<'none' | 'edit' | 'value'>('none')
+  const [activityQuery, setActivityQuery] = useState('')
   const [scrubIndex, setScrubIndex] = useState<number | null>(null)
   const queryClient = useQueryClient()
 
@@ -172,6 +182,25 @@ function AccountView({
     await queryClient.invalidateQueries({ queryKey: ['working-set', 'sync'] })
     await queryClient.invalidateQueries({ queryKey: WORKING_SET_KEY })
   }
+  /*
+   * What the activity list shows: the newest few, or everything matching a search.
+   *
+   * Searching switches the list from "a sample of this account's rhythm" to "the answer to a
+   * question", so the cap changes with it — eight is right for a glance and useless for "when did
+   * I pay that".
+   */
+  const needle = activityQuery.trim().toLowerCase()
+  const activity = useMemo(() => {
+    if (needle === '') return recent.slice(0, RECENT_TRANSACTION_COUNT)
+    return recent
+      .filter((transaction) =>
+        [transaction.description, transaction.payee]
+          .filter((field): field is string => typeof field === 'string')
+          .some((field) => field.toLowerCase().includes(needle)),
+      )
+      .slice(0, SEARCH_RESULT_COUNT)
+  }, [recent, needle])
+
   const today = todayIso()
   const { assessment, banner } = accountHealth(account, today)
 
@@ -486,13 +515,36 @@ function AccountView({
         )}
       </div>
 
-      {recent.length === 0 ? (
+      {recent.length > 0 && (
+        <div className="px-5 pb-2">
+          <label className="relative block">
+            <span className="sr-only">{ACCOUNT_COPY.searchActivity}</span>
+            <Search
+              className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400"
+              aria-hidden
+            />
+            <input
+              type="search"
+              value={activityQuery}
+              onChange={(event) => setActivityQuery(event.target.value)}
+              placeholder={ACCOUNT_COPY.searchActivity}
+              className={cn(
+                'min-h-10 w-full rounded-lg border pl-8 pr-3 text-sm',
+                'border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900',
+                'focus-visible:outline-2 focus-visible:outline-sky-500',
+              )}
+            />
+          </label>
+        </div>
+      )}
+
+      {activity.length === 0 ? (
         <p className="px-5 text-sm text-slate-500 dark:text-slate-400">
-          {ACCOUNT_COPY.activityUnavailable}
+          {needle === '' ? ACCOUNT_COPY.activityUnavailable : ACCOUNT_COPY.activityNoMatches}
         </p>
       ) : (
         <ul className="divide-y divide-slate-200 px-5 dark:divide-slate-800">
-          {recent.map((transaction) => (
+          {activity.map((transaction) => (
             <li key={transaction.id}>
               {/*
                 The same transaction page the activity screen opens.

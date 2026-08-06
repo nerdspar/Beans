@@ -61,6 +61,23 @@ export const TRANSACTIONS_COPY = {
    * Called net rather than total because it is a sum of signed amounts — money in less money out —
    * and "total" invites reading it as spending.
    */
+  allCategories: 'All categories',
+  /**
+   * Filtering by amount.
+   *
+   * Two open-ended bounds rather than a slider: the useful questions are one-sided — "everything
+   * over a hundred", "anything under five" — and a slider needs a max, which means inventing one
+   * from data that changes under it.
+   *
+   * Magnitudes, not signed values. Somebody looking for a large charge and somebody looking for a
+   * large deposit are asking the same question about size, and the Money in / Money out tabs above
+   * already answer the direction one.
+   */
+  amountMin: 'Min amount',
+  amountMax: 'Max amount',
+  amountHelp: 'Ignores the sign — use Money in or Money out for direction.',
+  moreFilters: 'More filters',
+
   runningNet: 'Net',
   /** Said once, at the foot, so nobody mistakes a filtered net for the whole range's. */
   runningNetFiltered: 'of the filtered list',
