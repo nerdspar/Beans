@@ -21,8 +21,15 @@ export function ManagementPage({
   children: ReactNode
 }): ReactNode {
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+    /*
+     * The same container and title as every browsing screen — `max-w-2xl`, the same padding, the
+     * same `text-2xl` heading. It was `max-w-3xl p-6` with a smaller title, which made Categories
+     * and Household read as a different kind of page from Accounts and Portfolio. They are not:
+     * they are top-level destinations reached the same way, and looking like a settings sub-page
+     * was a leftover from when they genuinely were one.
+     */
+    <div className="mx-auto max-w-2xl px-5 pb-16 pt-6">
+      <h1 className="text-2xl font-semibold">{title}</h1>
       {blurb !== undefined && (
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{blurb}</p>
       )}

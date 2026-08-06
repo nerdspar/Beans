@@ -75,8 +75,9 @@ export function TabSettings(): ReactNode {
   }
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <h1 className="text-xl font-semibold tracking-tight">{SETTINGS_COPY.title}</h1>
+    /* Same container and title as the browsing screens — see ManagementPage for why. */
+    <div className="mx-auto max-w-2xl px-5 pb-16 pt-6">
+      <h1 className="text-2xl font-semibold">{SETTINGS_COPY.title}</h1>
       <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{SETTINGS_COPY.blurb}</p>
 
       <section className="mt-8" aria-labelledby="tabs-heading">
