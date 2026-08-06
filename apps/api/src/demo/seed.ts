@@ -53,7 +53,7 @@ export async function seedDemoHousehold(
   const random = seededRandom(SEED)
   const start = monthsBefore(today, HISTORY_MONTHS)
 
-  const accountIds = await createAccounts(context, today)
+  const accountIds = await createAccounts(context, start, today)
   const categories = await loadCategoryIds(context)
 
   let transactions = 0
@@ -172,26 +172,52 @@ async function clearHousehold(context: HouseholdContext): Promise<void> {
 
 async function createAccounts(
   context: HouseholdContext,
+  start: IsoDate,
   today: IsoDate,
 ): Promise<Map<DemoAccountKind, string>> {
   const ids = new Map<DemoAccountKind, string>()
 
+  /*
+   * One row per institution, not per account.
+   *
+   * A household banks with an institution and holds several accounts there — checking and savings
+   * at one bank, a brokerage and a 401(k) at one broker. A row per account would duplicate them,
+   * break the grouping the accounts screen is built around, and collide on
+   * `institutions_household_domain_uq`, which is what caught it.
+   */
+  const institutionIds = new Map<string, string>()
+
   for (const account of DEMO_ACCOUNTS) {
-    const institution = await context.client.query<{ id: string }>(
-      `insert into institutions (household_id, name) values ($1, $2) returning id`,
-      [context.householdId, context.cipher.encryptText(account.institution)],
-    )
+    let institutionId = institutionIds.get(account.institution)
+
+    if (institutionId === undefined) {
+      /*
+       * `simplefin_org_domain` is the provider's stable key and is NOT NULL — it exists so a
+       * resync finds the same institution again. Nothing here comes from SimpleFIN, so the demo
+       * derives a `demo.` domain from the name: stable, unique, and obviously not a real one.
+       */
+      const domain = `demo.${account.institution.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+
+      const created = await context.client.query<{ id: string }>(
+        `insert into institutions (household_id, simplefin_org_domain, name)
+         values ($1, $2, $3) returning id`,
+        [context.householdId, domain, context.cipher.encryptText(account.institution)],
+      )
+
+      institutionId = created.rows[0]?.id
+      if (institutionId !== undefined) institutionIds.set(account.institution, institutionId)
+    }
 
     const result = await context.client.query<{ id: string }>(
       `insert into accounts (
          household_id, institution_id, type, display_name, mask, currency,
          current_balance, balance_as_of, is_manual, confirmed_at, tax_treatment,
-         is_closed, closed_on
-       ) values ($1,$2,$3,$4,$5,'USD',$6,$7,$8,$7,$9,$10,$11)
+         is_closed, closed_on, coverage_start_date
+       ) values ($1,$2,$3,$4,$5,'USD',$6,$7,$8,$7,$9,$10,$11,$12)
        returning id`,
       [
         context.householdId,
-        institution.rows[0]?.id ?? null,
+        institutionId ?? null,
         account.type,
         context.cipher.encryptText(account.name),
         account.mask === null ? null : context.cipher.encryptText(account.mask),
@@ -201,6 +227,17 @@ async function createAccounts(
         account.taxTreatment,
         account.closedOn !== undefined,
         account.closedOn ?? null,
+        /*
+         * Set here because nothing else will.
+         *
+         * `ensureCoverageStart` runs during sync, and the demo never syncs — so without this every
+         * reconstructable account has a null boundary, `rebuildAccountHistory` returns early, and
+         * cash, credit, the mortgage and the loan have no history at all. Which is the net worth
+         * screen: the first thing anybody opens, empty.
+         *
+         * Investments and the manual account overwrite this later with their own first observation.
+         */
+        start,
       ],
     )
 

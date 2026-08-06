@@ -5,6 +5,8 @@ import { createDatabase, createPool } from '../db/client.js'
 import { DataKeyCache } from '../crypto/data-key-cache.js'
 import { LocalMasterKeyProvider } from '../crypto/local-master-key-provider.js'
 import {
+  NoHouseholdError,
+  createHousehold,
   withHouseholdContext,
   type ContextDependencies,
 } from '../repositories/household-context.js'
@@ -66,6 +68,27 @@ async function main(): Promise<void> {
       pool,
       keyProvider: await LocalMasterKeyProvider.fromFile(config.masterKeyFile),
       keyCache: new DataKeyCache(),
+    }
+
+    /*
+     * A household, if this user has none yet.
+     *
+     * Signing up does not create one — the app does it explicitly on first load, and the seeder
+     * never goes near that path. Without this the first run creates the account and then fails on
+     * `NoHouseholdError`, leaving a demo user who exists and cannot be signed into usefully.
+     *
+     * Checked rather than attempted-and-caught, so a re-seed does not depend on an error to know
+     * that the household is already there.
+     */
+    const belongs = await withHouseholdContext(deps, userId, async (context) => context.householdId)
+      .then(() => true)
+      .catch((error: unknown) => {
+        if (error instanceof NoHouseholdError) return false
+        throw error
+      })
+
+    if (!belongs) {
+      await createHousehold(deps, userId, 'Demo Household')
     }
 
     const result = await withHouseholdContext(deps, userId, async (context) =>
