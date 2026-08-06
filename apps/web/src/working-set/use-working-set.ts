@@ -9,6 +9,7 @@ import {
 } from './db.js'
 import { usePreferences } from '../preferences/use-preferences.js'
 import { deriveWorkingSet, type DerivedWorkingSet } from './derive.js'
+import { resolveWorkingSetPhase } from './phase.js'
 import { NoHouseholdYetError, NotSignedInError, syncWorkingSet } from './sync.js'
 
 /**
@@ -129,20 +130,35 @@ export function useWorkingSet(): WorkingSetState {
     })
   }, [expired, queryClient])
 
+  /*
+   * One decision, not two.
+   *
+   * `isLoading` and `isEmpty` used to be computed independently, and on a first sign-in they took
+   * turns being wrong — an empty chart, then "connect an institution", then the real data. Deriving
+   * both from a single phase makes "loading and empty at once" unrepresentable rather than merely
+   * unlikely. See `phase.ts` for why an empty store is not an empty household.
+   */
+  const phase = resolveWorkingSetPhase({
+    storeLoading: stored.isLoading,
+    storeIsEmpty: derived === null || derived.sections.length === 0,
+    syncLoading: sync.isLoading,
+    syncChangedCount: changed,
+    storeUpdatedAt: stored.dataUpdatedAt,
+    syncUpdatedAt: sync.dataUpdatedAt,
+  })
+
   return {
     data: derived,
     transactions,
     confirmedTransferIds,
     categories,
-    // Loading only while there is nothing to show. Once the store has content, a sync in flight is
-    // a background refresh and must not blank the screen the user is reading.
-    isLoading: stored.isLoading || (derived === null && sync.isLoading),
+    isLoading: phase === 'loading',
     needsHousehold: syncError instanceof NoHouseholdYetError,
     needsSignIn: syncError instanceof NotSignedInError,
     error:
       syncError instanceof NoHouseholdYetError || syncError instanceof NotSignedInError
         ? null
         : syncError,
-    isEmpty: derived !== null && derived.sections.length === 0 && !sync.isLoading,
+    isEmpty: phase === 'empty',
   }
 }
