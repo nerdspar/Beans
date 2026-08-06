@@ -23,6 +23,19 @@ import { compareDates, type IsoDate } from './dates.js'
  * movement over the period, in the same direction as the movement — which is a signature rather
  * than a smell, and is why `likelyInverted` can say so specifically instead of shrugging at a
  * number being large.
+ *
+ * ---
+ *
+ * **Not wired to anything yet, and here is the blocker.** Cash, credit, loan and mortgage accounts
+ * are rebuilt by backward reconstruction, which writes an entirely `derived` series — the balance
+ * the provider reported on a given day is used as the anchor and then thrown away. Nothing in the
+ * API writes an `observed` snapshot for them at all; the only such insert anywhere is the zero
+ * after a closed account's closing date.
+ *
+ * So the independent readings this needs do not exist for precisely the accounts it is for. Making
+ * it work means retaining each sync's reported balance as an `observed` snapshot and stopping
+ * reconstruction from overwriting it — a change to how history is stored and drawn rather than a
+ * wiring job, which is why this is finished and idle instead of half-connected.
  */
 
 export type BalanceObservation = {
