@@ -197,6 +197,20 @@ export const ACCOUNTS_COPY = {
   institution: 'Institution',
   type: 'Type',
   taxTreatment: 'Tax treatment',
+  /**
+   * Sharing an account with the rest of the household, or keeping it to yourself.
+   *
+   * Phrased as the *shared* state rather than the private one, because shared is the default and a
+   * checkbox reads best when ticked means the normal thing. The help says what private actually
+   * does, since "private" alone leaves open whether it means hidden from the totals, from the other
+   * members, or from both.
+   */
+  isShared: 'Shared with the household',
+  isSharedHelp:
+    'Everyone in the household can see this account. Turn it off and only you can — it disappears from their net worth, their transactions and their exports.',
+  /** Marks a private account in the list, so its absence elsewhere is not a mystery. */
+  privateBadge: 'Private',
+
   signInverted: 'Record the opposite of what the provider sends',
   /** Stated because the consequence is invisible on the chart, which plots liabilities as magnitudes. */
   signInvertedHelp:

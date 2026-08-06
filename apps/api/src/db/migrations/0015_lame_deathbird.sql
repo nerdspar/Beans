@@ -1,0 +1,4 @@
+ALTER TABLE "accounts" ADD COLUMN "owner_user_id" text;--> statement-breakpoint
+ALTER TABLE "accounts" ADD CONSTRAINT "accounts_owner_user_id_auth_user_id_fk" FOREIGN KEY ("owner_user_id") REFERENCES "public"."auth_user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER POLICY "accounts_household_isolation" ON "accounts" TO public USING (household_id = nullif(current_setting('app.current_household', true), '')::uuid
+                 and (is_shared or owner_user_id = nullif(current_setting('app.current_user_id', true), ''))) WITH CHECK (household_id = nullif(current_setting('app.current_household', true), '')::uuid);

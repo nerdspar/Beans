@@ -125,6 +125,7 @@ export function AccountEditor({
   const [isClosed, setIsClosed] = useState(account.isClosed)
   const [closedOn, setClosedOn] = useState(account.closedOn ?? '')
   const [signInverted, setSignInverted] = useState(account.signInverted)
+  const [isShared, setIsShared] = useState(account.isShared)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const remove = useMutation({ mutationFn: () => deleteAccount(account.id), onSuccess: onSaved })
@@ -147,6 +148,7 @@ export function AccountEditor({
         // Only sent for a synced account: a manual balance is typed with the sign already decided,
         // so there is no provider convention to invert.
         ...(account.isManual ? {} : { signInverted }),
+        isShared,
       }),
     onSuccess: onSaved,
   })
@@ -224,6 +226,25 @@ export function AccountEditor({
             </span>
           </label>
         )}
+
+        {/*
+          Sharing, offered for every account including manual ones — a private valuation is as
+          reasonable a thing to want as a private brokerage.
+        */}
+        <label className="mt-4 flex items-start gap-2 text-xs font-medium">
+          <input
+            type="checkbox"
+            checked={isShared}
+            onChange={(event) => setIsShared(event.target.checked)}
+            className="mt-0.5 size-4 shrink-0 accent-sky-600"
+          />
+          <span>
+            {ACCOUNTS_COPY.isShared}
+            <span className="mt-0.5 block font-normal text-slate-500 dark:text-slate-400">
+              {ACCOUNTS_COPY.isSharedHelp}
+            </span>
+          </span>
+        </label>
 
         <label className="mt-4 flex items-start gap-2 text-xs font-medium">
           <input

@@ -55,12 +55,13 @@ export async function listManagedAccounts(context: HouseholdContext): Promise<Ma
     is_closed: boolean
     closed_on: IsoDate | null
     provider_sign_inverted: boolean
+    is_shared: boolean
     transaction_count: string
   }>(
     `select a.id, a.connection_id, i.name as institution_name, a.display_name, a.provider_name,
             a.mask, a.type, a.tax_treatment, a.current_balance, a.is_manual, a.is_closed,
             a.closed_on,
-            a.provider_sign_inverted,
+            a.provider_sign_inverted, a.is_shared,
             (select count(*) from transactions t where t.account_id = a.id) as transaction_count
        from accounts a
        left join institutions i on i.id = a.institution_id
@@ -90,6 +91,7 @@ export async function listManagedAccounts(context: HouseholdContext): Promise<Ma
     isClosed: row.is_closed,
     closedOn: row.closed_on,
     signInverted: row.provider_sign_inverted,
+    isShared: row.is_shared,
     transactionCount: Number(row.transaction_count),
   }))
 }
@@ -102,6 +104,15 @@ export type AccountPatch = {
   /** Only consulted when closing. Defaults to today, and is cleared when reopening. */
   closedOn?: IsoDate | undefined
   signInverted?: boolean | undefined
+  /**
+   * Shared with the household, or private to whoever set it.
+   *
+   * Making an account private stamps the acting user as its owner in the same statement — the two
+   * are one fact, and a private account with no owner is one nobody can see, including the person
+   * who just hid it. Sharing it again leaves the owner in place, which is harmless and means
+   * toggling twice does not lose who it belongs to.
+   */
+  isShared?: boolean | undefined
 }
 
 /**
@@ -161,7 +172,14 @@ export async function updateAccount(
               else null
             end,
             provider_sign_inverted = coalesce($6, provider_sign_inverted),
-            current_balance = coalesce($7, current_balance)
+            current_balance = coalesce($7, current_balance),
+            is_shared = coalesce($11, is_shared),
+            -- Claimed on the way to private, never cleared. An owner on a shared account is
+            -- unused; an owner missing from a private one makes it invisible to everybody.
+            owner_user_id = case
+              when $11::boolean is false then coalesce(owner_user_id, $12::text)
+              else owner_user_id
+            end
       where id = $1`,
     [
       accountId,
@@ -174,6 +192,8 @@ export async function updateAccount(
       patch.isClosed ?? null,
       patch.closedOn ?? null,
       today,
+      patch.isShared ?? null,
+      context.userId,
     ],
   )
 

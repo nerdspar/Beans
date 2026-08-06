@@ -61,6 +61,33 @@ describeIntegration('tenant isolation', () => {
     }
   }
 
+  /**
+   * As above, plus the acting user — which is what within-household visibility keys on.
+   *
+   * Two members of one household differ only in this setting, so a test that set the household and
+   * not the user would be testing nothing about privacy.
+   */
+  async function asMember<T>(
+    householdId: string,
+    userId: string,
+    fn: (client: PoolClient) => Promise<T>,
+  ): Promise<T> {
+    const client = await pool.connect()
+    try {
+      await client.query('begin')
+      await client.query('select set_config($1, $2, true)', ['app.current_household', householdId])
+      await client.query('select set_config($1, $2, true)', ['app.current_user_id', userId])
+      const result = await fn(client)
+      await client.query('commit')
+      return result
+    } catch (error) {
+      await client.query('rollback')
+      throw error
+    } finally {
+      client.release()
+    }
+  }
+
   async function seedHousehold(householdId: string, accountName: string): Promise<void> {
     const provider = LocalMasterKeyProvider.fromObject({
       currentVersion: 1,
@@ -152,6 +179,117 @@ describeIntegration('tenant isolation', () => {
         ),
       )
       expect(result.rows.map((r) => r.household_id)).toEqual([HOUSEHOLD_A])
+    })
+  })
+
+  /**
+   * Visibility *within* a household, which is a different question from tenancy.
+   *
+   * The household clause is untouched and ANDed underneath all of this — nothing here can widen
+   * cross-tenant access, only narrow within one tenant. That ordering is the whole safety argument,
+   * so these sit beside the cross-tenant tests rather than in a file of their own.
+   */
+  describe('private accounts', () => {
+    const OWNER = 'isolation-owner'
+    const OTHER = 'isolation-other'
+
+    beforeEach(async () => {
+      await pool.query(
+        `insert into auth_user (id, name, email, email_verified)
+         values ($1,'Owner','owner@example.com',false), ($2,'Other','other@example.com',false)
+         on conflict (id) do nothing`,
+        [OWNER, OTHER],
+      )
+    })
+
+    /** A private account belonging to OWNER, with one transaction on it. */
+    async function seedPrivate(): Promise<string> {
+      return asMember(HOUSEHOLD_A, OWNER, async (client) => {
+        const account = await client.query<{ id: string }>(
+          `insert into accounts (household_id, type, currency, is_shared, owner_user_id)
+           values ($1,'depository','USD',false,$2) returning id`,
+          [HOUSEHOLD_A, OWNER],
+        )
+        const id = account.rows[0]!.id
+        await client.query(
+          `insert into transactions (household_id, account_id, posted_date, amount, status, source)
+           values ($1,$2,'2026-08-01',$3,'active','synced')`,
+          [HOUSEHOLD_A, id, Buffer.from('x')],
+        )
+        return id
+      })
+    }
+
+    it('is visible to its owner', async () => {
+      const id = await seedPrivate()
+      const rows = await asMember(HOUSEHOLD_A, OWNER, (client) =>
+        client.query('select id from accounts where id = $1', [id]),
+      )
+      expect(rows.rows).toHaveLength(1)
+    })
+
+    it('is invisible to another member of the same household', async () => {
+      const id = await seedPrivate()
+      const rows = await asMember(HOUSEHOLD_A, OTHER, (client) =>
+        client.query('select id from accounts where id = $1', [id]),
+      )
+      expect(rows.rows).toHaveLength(0)
+    })
+
+    it('hides its transactions from another member, through the join', async () => {
+      /*
+       * `transactions` is isolated by household alone, deliberately — adding a per-row visibility
+       * subquery to a table with a hundred thousand rows in it would be a real cost. Every read
+       * path joins accounts instead, so account visibility decides what comes back. This asserts
+       * the join actually does that, because the alternative is a leak that nothing else catches.
+       */
+      const id = await seedPrivate()
+      const rows = await asMember(HOUSEHOLD_A, OTHER, (client) =>
+        client.query(
+          `select t.id from transactions t join accounts a on a.id = t.account_id
+            where t.account_id = $1`,
+          [id],
+        ),
+      )
+      expect(rows.rows).toHaveLength(0)
+    })
+
+    it('is invisible to everybody when private with no owner, rather than visible to all', async () => {
+      /*
+       * The direction a visibility rule must fail in. `is_shared or owner = me` with a null owner
+       * resolves to false for every member — including the one who hid it, which is recoverable.
+       * The opposite default would show somebody's separate finances to the person they hid them
+       * from, which is not.
+       */
+      /*
+       * The id is supplied rather than returned, because `RETURNING` reads the row back and the
+       * row is — by construction — invisible to the inserter. That is the behaviour under test, so
+       * the test must not depend on being able to read it.
+       */
+      const id = '33333333-3333-4333-8333-333333333333'
+      await asMember(HOUSEHOLD_A, OWNER, (client) =>
+        client.query(
+          `insert into accounts (id, household_id, type, currency, is_shared, owner_user_id)
+           values ($1,$2,'depository','USD',false,null)`,
+          [id, HOUSEHOLD_A],
+        ),
+      )
+
+      for (const user of [OWNER, OTHER]) {
+        const rows = await asMember(HOUSEHOLD_A, user, (client) =>
+          client.query('select id from accounts where id = $1', [id]),
+        )
+        expect(rows.rows).toHaveLength(0)
+      }
+    })
+
+    it('still cannot be seen from another household, owner or not', async () => {
+      // The property that must survive everything above: privacy narrows, it never widens.
+      const id = await seedPrivate()
+      const rows = await asMember(HOUSEHOLD_B, OWNER, (client) =>
+        client.query('select id from accounts where id = $1', [id]),
+      )
+      expect(rows.rows).toHaveLength(0)
     })
   })
 

@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import {
+  pgPolicy,
   boolean,
   date,
   index,
@@ -27,6 +28,7 @@ import {
   transactionSource,
   transactionStatus,
 } from './enums.js'
+import { authUser } from './auth.js'
 import { imports } from './imports.js'
 import { households } from './tenancy.js'
 
@@ -98,6 +100,20 @@ export const accounts = pgTable(
      * accounts are excluded from household rollups and invisible to other members.
      */
     isShared: boolean('is_shared').notNull().default(true),
+
+    /**
+     * Whose account this is, for the private case.
+     *
+     * `is_shared` shipped without this and could not have worked: "invisible to other members" has
+     * no meaning until something says which member it belongs to. Null on everything that predates
+     * it, which is correct — those are all shared, and a null owner on a shared account is simply
+     * unused.
+     *
+     * The pairing is enforced in the policy rather than by a constraint: private with no owner
+     * would be an account nobody can see, and the policy resolves that to *nobody* rather than to
+     * everybody. Failing closed is the only safe direction for a visibility rule.
+     */
+    ownerUserId: text('owner_user_id').references(() => authUser.id, { onDelete: 'set null' }),
 
     isClosed: boolean('is_closed').notNull().default(false),
 
@@ -173,7 +189,25 @@ export const accounts = pgTable(
 
     index('accounts_household_idx').on(table.householdId),
     index('accounts_household_updated_at_idx').on(table.householdId, table.updatedAt),
-    householdIsolationPolicy('accounts'),
+    /*
+     * Household isolation **and** within-household visibility, in that order.
+     *
+     * The household clause is untouched and ANDed, which is the property that matters: nothing here
+     * can widen cross-tenant access, only narrow within a tenant. A private account is visible to
+     * its owner alone.
+     *
+     * `is_shared or owner = me` fails closed. An account marked private with no owner is visible to
+     * nobody rather than to everybody — the wrong direction on a visibility rule is the one that
+     * shows somebody's separate finances to the person they hid them from.
+     */
+    pgPolicy('accounts_household_isolation', {
+      as: 'permissive',
+      for: 'all',
+      to: 'public',
+      using: sql`household_id = nullif(current_setting('app.current_household', true), '')::uuid
+                 and (is_shared or owner_user_id = nullif(current_setting('app.current_user_id', true), ''))`,
+      withCheck: sql`household_id = nullif(current_setting('app.current_household', true), '')::uuid`,
+    }),
   ],
 ).enableRLS()
 

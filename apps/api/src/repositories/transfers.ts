@@ -37,8 +37,17 @@ export async function detectTransfers(
     posted_date: string
     amount: Buffer
   }>(
+    /*
+     * Joined to accounts so a private account cannot be paired by somebody who cannot see it.
+     *
+     * `transactions` is isolated by household alone, which is right — but a proposal names two
+     * transactions, and one of them being from an account another member marked private would
+     * disclose both its existence and an amount. The join means account visibility decides what is
+     * pairable, without a second copy of that rule living here.
+     */
     `select t.id, t.account_id, t.posted_date, t.amount
        from transactions t
+       join accounts a on a.id = t.account_id
       where t.status = 'active'
         and t.posted_date >= current_date - ($1::int || ' days')::interval
       order by t.posted_date`,

@@ -17,6 +17,8 @@ export type ManagedAccount = {
   isClosed: boolean
   closedOn: string | null
   signInverted: boolean
+  /** False when only its owner can see it. Shared is the default. */
+  isShared: boolean
   /** What deletion would take with it. */
   transactionCount: number
 }
@@ -29,6 +31,7 @@ export type AccountPatch = {
   /** Only read when closing. Defaults to today on the server, and clears when reopening. */
   closedOn?: string
   signInverted?: boolean
+  isShared?: boolean
 }
 
 async function send<T>(path: string, init?: RequestInit): Promise<T> {

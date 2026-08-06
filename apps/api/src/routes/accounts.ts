@@ -56,6 +56,7 @@ const patchBody = z.object({
   isClosed: z.boolean().optional(),
   closedOn: isoDate.optional(),
   signInverted: z.boolean().optional(),
+  isShared: z.boolean().optional(),
 })
 
 const createBody = z.object({
