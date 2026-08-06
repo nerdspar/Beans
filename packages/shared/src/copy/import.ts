@@ -7,6 +7,19 @@
  */
 
 export const IMPORT_COPY = {
+  /**
+   * The example file, offered beside the file picker.
+   *
+   * "Not sure of the format" rather than "Download sample": it answers the question somebody has at
+   * that moment, which is whether their export will work, not whether they want a file. The sample
+   * follows the selected app above it, because a signed export and a debit/credit one are different
+   * files and showing the wrong one teaches the wrong thing.
+   */
+  sampleHeading: 'Not sure of the format?',
+  sampleDetail:
+    'Download a small example matching the app selected above. Beans reads what your app exports — there is no need to build a file by hand.',
+  sampleAction: 'Download an example',
+
   title: 'Import',
   blurb:
     'Bring history from another app. Nothing is added until you have seen the rows, and an import can be reversed afterwards.',

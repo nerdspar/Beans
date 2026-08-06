@@ -1,6 +1,8 @@
-import { ACCOUNT_TYPES, COLUMN_ROLES, IMPORT_COPY, IMPORT_PRESETS } from '@beans/shared'
+import { ACCOUNT_TYPES, COLUMN_ROLES, IMPORT_COPY, IMPORT_PRESETS, findPreset } from '@beans/shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { takePendingImportFile } from '../import/pending-file.js'
+import { sampleCsv, sampleCsvFilename } from '../import/sample-csv.js'
 import { formatShortDate } from '../net-worth/display.js'
 import { createManualAccount, listManagedAccounts } from '../accounts/api.js'
 import {
@@ -12,7 +14,7 @@ import {
   stageImport,
   type Inspection,
 } from '../import/api.js'
-import { Loader2 } from 'lucide-react'
+import { Download, Loader2 } from 'lucide-react'
 import { SETTINGS_COPY } from '@beans/shared'
 import { getHousehold, setTrustImportedHistory } from '../household/api.js'
 import { matchAccountsByMask } from '@beans/shared'
@@ -86,6 +88,20 @@ export function Import(): ReactNode {
       setStage({ kind: 'map', ...result })
     },
   })
+
+  /*
+   * A file chosen on Manage accounts, where the entry point is a real file input.
+   *
+   * Consumed once on arrival, so this screen opens at the mapping rather than asking for the file
+   * a second time. Reaching `/import` directly leaves it null and the chooser below is shown, which
+   * is also what a reload does — the reference does not survive one, and resurrecting a file from a
+   * previous visit would be the more surprising behaviour.
+   */
+  const startInspect = inspect.mutate
+  useEffect(() => {
+    const pending = takePendingImportFile()
+    if (pending !== null) startInspect(pending)
+  }, [startInspect])
 
   /*
    * The account values the file itself names, when a column has been mapped to `account`.
@@ -281,6 +297,32 @@ export function Import(): ReactNode {
             />
           </label>
           <Problem error={inspect.error} fallback={IMPORT_COPY.readFailed} />
+
+          {/*
+            The example, beside the picker rather than in documentation.
+
+            The question it answers — "will my export work?" — is had at exactly this moment, and a
+            sample two clicks away in a README is a sample nobody opens. Built in the browser from
+            the selected preset, so it costs no request and always matches the app named above.
+          */}
+          <div className="mt-6 rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+            <h2 className="text-xs font-semibold">{IMPORT_COPY.sampleHeading}</h2>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {IMPORT_COPY.sampleDetail}
+            </p>
+            <button
+              type="button"
+              onClick={() => downloadSample(presetId)}
+              className={cn(
+                'mt-2 inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-medium',
+                'border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800',
+                'focus-visible:outline-2 focus-visible:outline-sky-500',
+              )}
+            >
+              <Download className="size-3.5" aria-hidden />
+              {IMPORT_COPY.sampleAction}
+            </button>
+          </div>
         </div>
       )}
 
@@ -903,4 +945,27 @@ function ImportHistory({ onReversed }: { onReversed: () => Promise<void> }): Rea
       <Problem error={reverse.error} fallback={IMPORT_COPY.commitFailed} />
     </section>
   )
+}
+
+/**
+ * Hands the browser a generated file.
+ *
+ * An object URL rather than a `data:` URI: Safari caps those at a couple of megabytes and silently
+ * does nothing past it. The sample is tiny today, but a download that quietly fails on one browser
+ * is the kind of thing nobody reports — they conclude the button is broken and give up on the
+ * import instead.
+ *
+ * Revoked immediately after the click. The blob is held alive by the download itself, and leaving
+ * the URL registered leaks it for the life of the document.
+ */
+function downloadSample(presetId: string): void {
+  const preset = findPreset(presetId) ?? findPreset('custom')
+  if (preset === undefined) return
+
+  const url = URL.createObjectURL(new Blob([sampleCsv(preset)], { type: 'text/csv' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = sampleCsvFilename(preset)
+  link.click()
+  URL.revokeObjectURL(url)
 }

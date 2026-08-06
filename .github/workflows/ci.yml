@@ -86,7 +86,20 @@ jobs:
     # failing tests still published `latest` — for an app holding a household's finances, publishing
     # ahead of the tests is the wrong way round.
     needs: check
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+
+    # Tags and manual runs only — **not** every push to main.
+    #
+    # Building an image per commit meant eight of them in an afternoon, most for intermediate states
+    # nobody deployed, and it moved `latest` under a running NAS between deploys. It also put steady
+    # pressure on limits that are free until they are not: two ghcr.io 403s in an hour, on pushes
+    # whose tests had passed, after the build minutes had already run short once.
+    #
+    # Tests still run on every push and every pull request. That is the part that protects the code.
+    # This part produces something to deploy, which is a decision rather than a consequence.
+    #
+    #   Cut a release:  git tag v0.4.0 && git push origin v0.4.0
+    #   Or build now:   gh workflow run ci.yml
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     # Twenty minutes. A normal build here is under two.
@@ -120,7 +133,11 @@ jobs:
           # Lowercased explicitly: the repository is `nerdspar/Beans` and GHCR rejects uppercase.
           images: ghcr.io/nerdspar/beans
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            # Unconditional now: this job only runs when an image is actually wanted, so anything it
+            # builds is the newest deployable thing. `is_default_branch` was the guard for a job
+            # that also ran on every commit, and on a tag build it is false — which would have left
+            # a release publishing no `latest` at all.
+            type=raw,value=latest
             type=sha,format=long
             type=ref,event=tag
 
@@ -131,11 +148,11 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # amd64 on every push; arm64 only on a tag.
+          # amd64 always; arm64 on a tagged release only.
           #
           # The NAS is x86, so amd64 is the image that actually gets deployed. arm64 exists so the
-          # same image runs on an Apple Silicon machine for reproducing a production problem, which
-          # is worth having and is not worth building sixty times between releases.
+          # same image runs on an Apple Silicon machine for reproducing a production problem — worth
+          # having on a release, not worth waiting for on a manual build you wanted now.
           #
           # It is also the risky half. There is no arm64 runner here, so that leg is emulated under
           # QEMU, and emulated `pnpm install` intermittently deadlocks — it had succeeded in about

@@ -168,7 +168,16 @@ export const ACCOUNTS_COPY = {
   importHeading: 'Import from a file',
   importDetail:
     'History from before you connected, or an institution SimpleFIN does not reach. Transactions or balances, from a CSV.',
-  importAction: 'Import a file',
+  /**
+   * The control is a file input, so the label names the click rather than the destination.
+   *
+   * It said "Import a file" and led to a page with another button on it — promising the action and
+   * delivering a link. Choosing the file *is* the first step now, so the label says so and the page
+   * it lands on opens at the mapping.
+   */
+  importAction: 'Choose a file',
+  /** The other reason to open the import page: seeing what was imported, and undoing one. */
+  importHistoryLink: 'Past imports',
 
   /**
    * The last four digits, appended to an account name.

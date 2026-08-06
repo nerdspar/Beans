@@ -26,9 +26,10 @@ import {
   type ConnectionSummary,
   type Discovery,
 } from '../connections/api.js'
+import { setPendingImportFile } from '../import/pending-file.js'
 import { cn } from '../lib/cn.js'
 import { WORKING_SET_KEY } from '../working-set/use-working-set.js'
-import { Link } from 'wouter'
+import { Link, useLocation } from 'wouter'
 import { localToday } from '../lib/today.js'
 
 /**
@@ -63,6 +64,7 @@ type Stage =
   | { kind: 'reconnect'; connectionId: string }
 
 export function Accounts(): ReactNode {
+  const [, navigate] = useLocation()
   const [sheet, setSheet] = useState<Sheet>({ kind: 'none' })
   const [stage, setStage] = useState<Stage>({ kind: 'list' })
   const [showClosed, setShowClosed] = useState(false)
@@ -314,16 +316,49 @@ export function Accounts(): ReactNode {
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           {ACCOUNTS_COPY.importDetail}
         </p>
-        <Link
-          href="/import"
+        {/*
+          A real file input, not a link.
+
+          It used to be a link labelled "Import a file" that led to a page with a file picker on it
+          — the label promised the action and delivered a journey. Choosing the file is the first
+          step of importing, so it happens on the first click, and the page opens at the mapping
+          with the file already read.
+        */}
+        <label
           className={cn(
-            'mt-3 inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-medium',
+            'mt-3 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm font-medium',
             'border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800',
-            'focus-visible:outline-2 focus-visible:outline-sky-500',
+            'focus-within:outline-2 focus-within:outline-sky-500',
           )}
         >
           <Upload className="size-4" aria-hidden />
           {ACCOUNTS_COPY.importAction}
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            className="sr-only"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (file === undefined) return
+              setPendingImportFile(file)
+              navigate('/import')
+            }}
+          />
+        </label>
+
+        {/*
+          The other reason to open that page, and the reason it cannot simply be a file dialog: it
+          also lists past imports and is where an import gets undone. Quiet, because it is the
+          second thing somebody wants here, but present, because nothing else reaches it.
+        */}
+        <Link
+          href="/import"
+          className={cn(
+            'ml-3 text-xs font-medium text-sky-600 hover:underline dark:text-sky-400',
+            'focus-visible:outline-2 focus-visible:outline-sky-500',
+          )}
+        >
+          {ACCOUNTS_COPY.importHistoryLink}
         </Link>
       </section>
 
