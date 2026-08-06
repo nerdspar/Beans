@@ -3,6 +3,10 @@ name: CI
 on:
   push:
     branches: [main]
+    # Tags build too, and they are the only thing that builds arm64 — see `platforms` below.
+    # `metadata-action` already had a `type=ref,event=tag` rule, which until now could never fire
+    # because nothing here triggered on one.
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -10,6 +14,11 @@ jobs:
   check:
     name: Typecheck and tests
     runs-on: ubuntu-latest
+
+    # This job runs in about four minutes. Ten is generous and still catches a hung integration
+    # test — the suite shares one database and pins to a single worker, so a deadlock there stalls
+    # rather than fails. GitHub's default is six hours, which is not a limit, it is a bill.
+    timeout-minutes: 10
 
     # Integration tests run against a real Postgres — never a mock, never SQLite (ARCHITECTURE.md §14).
     services:
@@ -77,8 +86,16 @@ jobs:
     # failing tests still published `latest` — for an app holding a household's finances, publishing
     # ahead of the tests is the wrong way round.
     needs: check
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+
+    # Twenty minutes. A normal build here is under two.
+    #
+    # This is the guard that was missing when an emulated arm64 `pnpm install` deadlocked and ran
+    # for **five hours fifty-nine minutes** before GitHub's six-hour default killed it — silently,
+    # having produced no output since the first second and no notification at any point. The build
+    # was not slow. It was hung, and nothing was watching.
+    timeout-minutes: 20
 
     permissions:
       contents: read
@@ -114,8 +131,20 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # The NAS is x86. arm64 is here so the image also runs on an Apple Silicon machine for
-          # reproducing a production problem locally.
-          platforms: linux/amd64,linux/arm64
+          # amd64 on every push; arm64 only on a tag.
+          #
+          # The NAS is x86, so amd64 is the image that actually gets deployed. arm64 exists so the
+          # same image runs on an Apple Silicon machine for reproducing a production problem, which
+          # is worth having and is not worth building sixty times between releases.
+          #
+          # It is also the risky half. There is no arm64 runner here, so that leg is emulated under
+          # QEMU, and emulated `pnpm install` intermittently deadlocks — it had succeeded in about
+          # four minutes for weeks before hanging for six hours on an identical configuration. The
+          # timeout above bounds the damage; building it less often reduces how frequently the dice
+          # are rolled. Both, because either alone leaves the other failure open.
+          #
+          # To get an arm64 image on demand without waiting for a release, push a tag, or build it
+          # locally: `docker build --platform linux/arm64 -f docker/Dockerfile .`
+          platforms: ${{ startsWith(github.ref, 'refs/tags/') && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
