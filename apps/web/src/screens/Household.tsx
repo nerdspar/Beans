@@ -1,6 +1,6 @@
 import { HOUSEHOLD_COPY, NET_WORTH_STATE_COPY } from '@beans/shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Copy, Trash2 } from 'lucide-react'
+import { Check, Copy, Download, Trash2 } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import {
   createInvite,
@@ -247,6 +247,58 @@ export function Household(): ReactNode {
           )}
         </>
       )}
+
+      {/*
+        The way out.
+
+        Beans exists because eight years of history sat in another app behind a one-month-at-a-time
+        PDF export. A plain link per table, always available, is the answer to that — and it is here
+        rather than buried in settings because leaving is a household-level act.
+
+        Plain anchors, not fetch-and-blob: the browser handles a `content-disposition` attachment
+        natively, streams it, and shows its own progress. The balances file for a decade across
+        thirty accounts is around a hundred thousand rows, and holding that in memory to hand it
+        back to the same browser would be work for nothing.
+      */}
+      <section className="mt-10" aria-labelledby="export-heading">
+        <h2 id="export-heading" className="text-base font-semibold">
+          {HOUSEHOLD_COPY.exportHeading}
+        </h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          {HOUSEHOLD_COPY.exportDetail}
+        </p>
+
+        <ul className="mt-3 space-y-2">
+          {(
+            [
+              ['balances', HOUSEHOLD_COPY.exportBalances, HOUSEHOLD_COPY.exportBalancesHint],
+              [
+                'transactions',
+                HOUSEHOLD_COPY.exportTransactions,
+                HOUSEHOLD_COPY.exportTransactionsHint,
+              ],
+              ['accounts', HOUSEHOLD_COPY.exportAccounts, HOUSEHOLD_COPY.exportAccountsHint],
+            ] as const
+          ).map(([name, label, hint]) => (
+            <li key={name}>
+              <a
+                href={`/api/export/${name}.csv`}
+                className={cn(
+                  'flex min-h-12 items-center gap-3 rounded-xl border px-3 py-2',
+                  'border-slate-200 hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-slate-800',
+                  'focus-visible:outline-2 focus-visible:outline-sky-500',
+                )}
+              >
+                <Download className="size-4 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">{label}</span>
+                  <span className="block text-xs text-slate-500 dark:text-slate-400">{hint}</span>
+                </span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
     </div>
   )
 }

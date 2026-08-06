@@ -7,6 +7,27 @@
  */
 
 export const HOUSEHOLD_COPY = {
+  /**
+   * Taking your data with you.
+   *
+   * Stated plainly and without reassurance, because the reassurance is the download itself. Beans
+   * exists because eight years of history sat in another app behind a one-month-at-a-time PDF
+   * export; the answer to that is a button, not a paragraph promising there is no lock-in.
+   *
+   * The balances file is named for what it is rather than by table, because it is the one somebody
+   * leaving actually needs and the one no other file can be rebuilt into.
+   */
+  exportHeading: 'Export your data',
+  exportDetail:
+    'Everything Beans holds, as CSV. Nothing here is locked in — take it whenever you like.',
+  exportAccounts: 'Accounts',
+  exportAccountsHint: 'Names, types, institutions, current balances.',
+  exportBalances: 'Daily balances',
+  exportBalancesHint:
+    'One row per account per day, including loans and investments. The history nothing else can rebuild.',
+  exportTransactions: 'Transactions',
+  exportTransactionsHint: 'Every transaction with its category, including voided ones.',
+
   title: 'Household',
   loading: 'Counting the beans.',
 
