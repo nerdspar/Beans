@@ -51,10 +51,8 @@ export function CategoryTree({
 
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          {CATEGORY_COPY.categoriesNote}
-        </p>
+      {/* The note that used to sit here explained the schema, not the screen. See CATEGORY_COPY. */}
+      <div className="flex items-baseline justify-end gap-3">
         <button
           type="button"
           onClick={() => setEditing({ kind: 'add', parentId: null })}

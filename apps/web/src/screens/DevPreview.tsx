@@ -3,6 +3,7 @@ import { AreaChart } from '../charts/AreaChart.js'
 import { CategoryChart } from '../charts/CategoryChart.js'
 import { CumulativeFlow } from '../charts/CumulativeFlow.js'
 import { MonthlyBars } from '../charts/MonthlyBars.js'
+import { InfoNote } from '../lib/InfoNote.js'
 import { SearchableSelect } from '../lib/SearchableSelect.js'
 import { cn } from '../lib/cn.js'
 
@@ -138,6 +139,17 @@ export function DevPreview(): ReactNode {
             options={[{ value: '', label: 'Skip' }, ...ACCOUNTS]}
           />
         </div>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold">InfoNote — collapsed explanation</h2>
+        <p className="text-xs text-slate-500">
+          As under the portfolio charts. Collapsed by default; the question is the affordance.
+        </p>
+        <InfoNote question="Why does this differ from my balance?">
+          Your portfolio rebased to 0% at the start of the range. Money paid in or taken out is
+          removed day by day, so this is what the market did rather than what the balance did.
+        </InfoNote>
       </section>
 
       <section className="space-y-2">

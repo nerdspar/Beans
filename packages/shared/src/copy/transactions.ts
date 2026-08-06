@@ -128,7 +128,7 @@ export const CATEGORY_COPY = {
   ruleEditAction: 'Edit',
 
   // ── Suggested rules ────────────────────────────────────────────────────────
-  suggestionsHeading: 'Worth a rule',
+  suggestionsHeading: 'Suggested rules',
   /**
    * Says where these come from, because "how did it know that" is the first question.
    *
@@ -143,8 +143,12 @@ export const CATEGORY_COPY = {
       : `${count} uncategorized · you usually call this ${category}`,
 
   categoriesHeading: 'Categories',
-  categoriesNote:
-    'Rules reference a category’s stable slug rather than its label, so renaming one never breaks them.',
+  /*
+   * No note here any more. It used to explain that rules reference a category's stable slug rather
+   * than its label, so renaming never breaks them — true, and a fact about the schema. Nothing the
+   * reader does changes because of it, and the reassurance it offers is for a worry the screen had
+   * just introduced by mentioning it.
+   */
 
   // ── Editing categories ─────────────────────────────────────────────────────
   categoryAdd: 'Add category',

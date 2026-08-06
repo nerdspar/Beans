@@ -15,6 +15,7 @@ import { readHoldingDetail } from '../accounts/api.js'
 import { useBackTarget, useHere, withReturn } from '../lib/back.js'
 import { AreaChart } from '../charts/AreaChart.js'
 import { cn } from '../lib/cn.js'
+import { InfoNote } from '../lib/InfoNote.js'
 import { SECTION_COLORS } from '../net-worth/colors.js'
 import { formatAxisValue, formatShortDate } from '../net-worth/display.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
@@ -150,9 +151,9 @@ export function HoldingDetail({ params }: { params: { key: string } }): ReactNod
             balance can — a share price moving is not something anybody posts — so this line starts
             where Beans started looking, not where the position started.
           */}
-          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+          <InfoNote question={HOLDINGS_COPY.historyQuestion}>
             {HOLDINGS_COPY.historyNote}
-          </p>
+          </InfoNote>
         </div>
       )}
 

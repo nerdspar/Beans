@@ -22,6 +22,7 @@ import { useHere, withReturn } from '../lib/back.js'
 import { AreaChart } from '../charts/AreaChart.js'
 import { StackedArea } from '../charts/StackedArea.js'
 import { cn } from '../lib/cn.js'
+import { InfoNote } from '../lib/InfoNote.js'
 import { SECTION_COLORS } from '../net-worth/colors.js'
 import { formatAxisValue, formatShortDate } from '../net-worth/display.js'
 import { RangeControl } from '../net-worth/RangeControl.js'
@@ -342,9 +343,9 @@ export function Portfolio(): ReactNode {
             scrubLabel={PORTFOLIO_COPY.indexScrubLabel}
             tableLabel={PORTFOLIO_COPY.indexTableLabel}
           />
-          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+          <InfoNote question={PORTFOLIO_COPY.indexQuestion}>
             {reportsFlows ? PORTFOLIO_COPY.indexNote : PORTFOLIO_COPY.indexNoteWithoutFlows}
-          </p>
+          </InfoNote>
         </div>
       )}
 
@@ -365,9 +366,9 @@ export function Portfolio(): ReactNode {
       )}
 
       {grouping === 'account' && (
-        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+        <InfoNote question={PORTFOLIO_COPY.historyQuestion}>
           {PORTFOLIO_COPY.historyNote}
-        </p>
+        </InfoNote>
       )}
 
       <div className="mt-6 flex items-baseline justify-between gap-3">

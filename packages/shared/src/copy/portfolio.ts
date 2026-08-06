@@ -38,6 +38,8 @@ export const PORTFOLIO_COPY = {
    */
   indexTableLabel: 'Portfolio return',
   allocationTableLabel: 'Portfolio by account',
+  /** The question behind the rebasing explanation. It is the one people actually ask. */
+  indexQuestion: 'Why does this differ from my balance?',
   indexNote:
     'Your portfolio rebased to 0% at the start of the range. Money paid in or taken out is removed day by day, so this is what the market did rather than what the balance did.',
   indexNoteWithoutFlows:
@@ -96,6 +98,13 @@ export const PORTFOLIO_COPY = {
    * begins when Beans first saw the account, and a short chart is a fact about Beans rather than
    * about the account.
    */
+  /**
+   * The question, for the disclosure that holds the answer.
+   *
+   * Phrased as the reader would ask it rather than as a label. "Note" or "About this chart" tells
+   * somebody nothing about whether it is worth opening; this tells them exactly.
+   */
+  historyQuestion: 'Why does history start here?',
   historyNote:
     'History starts when Beans first saw each account. An investment balance moves with the market, so earlier values cannot be worked out from transactions the way a cash balance can.',
 } as const

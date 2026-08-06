@@ -79,6 +79,7 @@ export const HOLDINGS_COPY = {
    * looking rather than where the position started, and saying so beats a line that implies the
    * holding was opened the day we first saw it.
    */
+  historyQuestion: 'Why does history start here?',
   historyNote:
     'History starts when Beans first recorded this position. A holding’s past value cannot be worked out from transactions the way a cash balance can.',
 
