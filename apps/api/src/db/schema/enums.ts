@@ -31,6 +31,7 @@ export const taxTreatment = pgEnum('tax_treatment', [
   'taxable',
   'traditional',
   'roth',
+  'after_tax',
   'hsa',
   'education',
   'none',
@@ -99,6 +100,16 @@ export const importRowStatus = pgEnum('import_row_status', [
   'skipped',
   'failed',
 ])
+
+/**
+ * What happens to a spending category once someone retires.
+ *
+ * Three values rather than a nullable percentage because "continues unchanged" and "continues at
+ * 70%" are different answers the user gave, and an `adjusted` row whose percentage is missing is a
+ * bug rather than a default. `stops` is not `adjusted` at 0% for the same reason: a mortgage ending
+ * at its payoff date is a fact, not an estimate, and the projection treats the two differently.
+ */
+export const spendingTreatment = pgEnum('spending_treatment', ['continues', 'stops', 'adjusted'])
 
 /** Entity types recorded in the deletion log, so delta sync can report hard deletes. */
 export const deletionEntity = pgEnum('deletion_entity', [

@@ -18,10 +18,20 @@ export const ACCOUNT_TYPES = [
 
 export type AccountType = (typeof ACCOUNT_TYPES)[number]
 
+/**
+ * `after_tax` is **after-tax non-Roth money inside an employer plan**, not a taxable brokerage.
+ *
+ * Contributions are already-taxed basis; the earnings on them are taxed as ordinary income on
+ * withdrawal. That makes it a third thing, distinct from both `traditional` (all taxable later) and
+ * `roth` (none taxable later), and a 401(k) commonly holds all three at once. Folding it into
+ * either neighbour would misstate the after-tax equivalent in a specific direction, and it is the
+ * bucket the mega-backdoor rules are entirely about.
+ */
 export const TAX_TREATMENTS = [
   'taxable',
   'traditional',
   'roth',
+  'after_tax',
   'hsa',
   'education',
   'none',
@@ -126,6 +136,7 @@ export const TAX_TREATMENT_LABELS: Record<TaxTreatment, string> = {
   taxable: 'Taxable',
   traditional: 'Traditional (pre-tax)',
   roth: 'Roth (tax-free)',
+  after_tax: 'After-tax (non-Roth)',
   hsa: 'HSA',
   education: 'Education (529)',
   none: 'Not applicable',

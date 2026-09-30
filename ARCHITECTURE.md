@@ -1486,5 +1486,124 @@ Specific traps already hit or avoided:
 | Holdings                                    | **Built** — see §10.1. Positions are parsed, stored as dated snapshots, and shown per account and grouped by security across accounts.                                                                                                                                            |
 | Allocation and sectors                      | **Backlogged**, and the blocker is data rather than effort — see §10.2 for the decision and its reasoning, which should be read before anyone starts it.                                                                                                                          |
 | Budgeting (Phase 4)                         | Seam exists: `category_targets(category_id, month, amount)` attaches to stable `categories`. Not built.                                                                                                                                                                           |
-| Retirement (Phase 5), Tax profile (Phase 6) | New household-keyed tables. Depend on `tax_treatment` being populated and cash flow being clean, which is why both are handled properly in phase 1.                                                                                                                               |
+| Retirement (Phase 5)                        | **Phase A foundation in progress** — see §19. Tax buckets, carry-forward and the after-tax equivalent are built; the wizard and the projection are not. Phases B–D are not started, and B is blocked on user-supplied IRS reference data.                                          |
+| Tax profile (Phase 6)                       | New household-keyed tables. Depends on `tax_treatment` being populated and cash flow being clean, which is why both are handled properly in phase 1.                                                                                                                              |
 | Institution logos                           | If added, they go in a **separate global public table keyed by domain with no household reference**. The household-scoped row keeps its own encrypted name. Do not add a global FK from households to institutions — that would reveal which institutions a household banks with. |
+## 19. Retirement planning
+
+Phase A of `beans-retirement-spec.md`. The premise is that Beans replaces guesses with observations:
+it knows what is held, how it is taxed, what is actually spent, and — once asked — when the mortgage
+ends. Everything it cannot know is asked for or declared, never estimated quietly.
+
+**Nothing here writes back to the financial record.** The planner reads `accounts`, `transactions`
+and `balance_snapshots` and writes only to its own tables. A projection can be rerun, argued with or
+thrown away without a cent of observed history moving.
+
+### 19.1 Tax buckets carry forward; they are not a stored percentage
+
+A single 401(k) commonly holds pre-tax, Roth and after-tax non-Roth money at once, and SimpleFIN
+reports one balance for the account and will never break it out. So the split is a user-maintained
+overlay: they read a breakdown off their provider and enter it, and that row is an **anchor**.
+
+A fixed percentage is wrong and drifts. A frozen traditional balance beside an actively contributed
+Roth balance changes ratio every year on its own — growth alone preserves a ratio, contributions do
+not. `carryBucketsForward` models that year by year, and there is a test asserting exactly this case
+over a decade, with a control asserting that growth alone moves nothing.
+
+Two things fell out of building it that are worth keeping written down:
+
+- **Weights are carried unrounded.** Rounding each bucket every year left a 60/40 split off by a
+  cent after ten growth steps — growth appearing to move a ratio it mathematically cannot move. The
+  loop multiplies by `10_000 + rate` and tracks the matching power of ten thousand, deferring the
+  divisor to the end. The numbers get large and stay exact, which is the right trade for money.
+- **The carry-forward produces proportions, not balances.** The spec described carrying balances
+  forward directly. That would let a ten-year-old anchor drift away from the number the institution
+  reports today, which throws away the one thing Beans has that a calculator does not. Assumptions
+  decide how the pie is sliced; the provider decides how big it is.
+
+`accounts.tax_treatment` stays as the account-level fallback and remains authoritative for every
+account nobody has broken out. Net worth, the account list and every phase 1 view are unaffected.
+
+### 19.2 `after_tax` is a seventh tax treatment, not a flavour of taxable
+
+After-tax non-Roth money inside an employer plan is a third thing: the contributions are
+already-taxed basis, and the earnings on them are taxed as **ordinary income** on withdrawal.
+Folding it into `taxable` or `traditional` would misstate the after-tax equivalent in a specific
+direction, and it is the bucket the mega-backdoor rules are entirely about.
+
+Adding it exposed a drift the schema had been carrying quietly: `TAX_TREATMENTS`, the Postgres enum
+and two hand-written `z.enum([...])` literals in the routes were four copies of one vocabulary, and
+only two of them moved. The validators now derive from the shared constant, so that failure is a
+type error rather than a 400 nobody can explain.
+
+### 19.3 The after-tax equivalent, and the two things it cannot see
+
+A million dollars in a traditional 401(k) is not a million dollars, and almost no tool says so. The
+figure is shown **beside** net worth, never instead of it, with the assumed rate inline: net worth
+is a fact, and this is a fact plus an assumption.
+
+Only `traditional` carries a deferred tax bill. Two deliberate exclusions:
+
+- **HSA and 529 are not pre-tax.** Qualified withdrawals are tax-free, which is the entire point of
+  holding them. Taxing them would tell somebody their HSA is worth less than it is. They become
+  taxable only on a non-qualified withdrawal — a choice the holder has not made and Beans must not
+  assume for them.
+- **`taxable` and `after_tax` are taken at face value with a flag**, not a guessed haircut. The
+  unknowns differ — embedded capital gains in one, ordinary-income earnings in the other — but the
+  cause is the same: no cost basis (§10.1), and no basis-versus-earnings split from any provider.
+  `ignoresEmbeddedGains` is what lets the UI say so out loud instead of quietly shaving 15%. It sets
+  only when such a balance is actually present, so the note does not become furniture.
+
+### 19.4 Schema, and three departures from the spec
+
+Eight tables, all household-scoped, all `FORCE ROW LEVEL SECURITY`, all carrying the `updated_at`
+trigger except `projection_runs`, which is immutable and has `created_at` alone.
+
+- **No `dollars_basis` column.** The spec fixes it to `real`. A column with one legal value
+  advertises a choice that does not exist. Real dollars is a property of the engine, stated on
+  screen beside every figure.
+- **No `is_anchor` on `account_tax_buckets`.** Carry-forward is computed, not persisted, so every
+  row is an anchor by construction. A column that is always true eventually gets written false.
+- **No planning-horizon column.** `retirement_members.life_expectancy` already determines it, and
+  two sources for one number is how they come to disagree.
+
+Smaller ones, each for a reason the codebase supplies:
+
+- `projection_runs.inputs` and `.results` are **`bytea`, not `jsonb`** — encrypted JSON. The spec
+  asked for both at once and they are mutually exclusive (§3.1, §7).
+- `account_contribution_routing` stores an **annual amount, not a percentage of salary**. Beans has
+  no salary figure: pay arrives as deposits net of withholding, and a 401(k) deferral never appears
+  as a transaction at all.
+- `retirement_scenarios` shifts retirement by **years, not to an absolute date**. Members retire on
+  different dates, so one date on the scenario would have to overwrite both — and "retire two years
+  earlier" is the question people actually ask.
+- `retirement_members` is separate from `household_members`. A spouse who never signs in still
+  retires on a date and claims Social Security on a schedule.
+
+**The three account-scoped tables must be read through a join on `accounts`.** Their RLS policies
+check `household_id` alone; the private-account rule (`is_shared or owner_user_id = me`, §6.4) lives
+on the `accounts` policy, so it reaches a child row only when the query joins `accounts` and lets
+that policy filter it. Every existing child query does this — `transactions`, `balance_snapshots`
+and `holdings` in both the working set and the export all join `accounts` rather than filtering by
+`account_id` alone, which is what keeps one member's private account private. A repository that
+selects from `account_tax_buckets` by `account_id` alone would quietly hand another member the tax
+breakdown of an account they cannot see.
+
+`accounts.payoff_date` is **asked for, not derived**. Beans has a balance and a transaction history,
+not an amortization schedule — no rate, no term, no principal/interest split, and extra payments are
+indistinguishable from ordinary ones. It lives on `accounts` because it is a fact about the loan,
+true whether or not anyone opens the planner.
+
+### 19.5 What is deliberately absent
+
+`contribution_limits` and `opportunity_states` are phase B and **not created yet**. An empty
+`contribution_limits` table invites a seed written from model memory, and that is the one line of
+the retirement spec that does not bend: contribution limits, phaseout thresholds, catch-up tiers and
+RMD ages change every year and have phased in on staggered schedules. Every figure must arrive from
+a current IRS publication with its `source_url` and `retrieved_at`, be verified by the operator
+before the feature ships, and a missing year must produce a visible "not yet updated" state rather
+than a silent fallback to last year's number.
+
+Social Security is the same shape of problem and gets the same answer: the benefit is **read off an
+SSA statement and typed in**, never computed. The formula needs a full indexed wage history that
+Beans does not have.

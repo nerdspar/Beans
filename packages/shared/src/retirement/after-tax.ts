@@ -33,13 +33,21 @@ export type AfterTaxBreakdown = {
   /** The difference, which is the number worth showing: what is owed rather than owned. */
   deferredTaxCents: bigint
   /**
-   * True when any balance is taxable, meaning the figure ignores embedded capital gains.
+   * True when some balance carries gains Beans cannot see, so the figure is optimistic by an
+   * unknown amount.
    *
-   * Surfaced rather than silently corrected. Beans has no cost basis (§10.1 — holdings coverage is
-   * thin and carries none), so any haircut here would be a guess dressed as arithmetic. Saying "this
-   * ignores capital gains" is honest; quietly shaving 15% is not.
+   * Two different unknowns, both with the same cause and the same honest answer:
+   *
+   * - `taxable` — embedded **capital** gains. Beans has no cost basis (§10.1 — holdings coverage is
+   *   thin and carries none of it).
+   * - `after_tax` — the earnings on after-tax contributions inside an employer plan, taxed as
+   *   **ordinary income** on withdrawal. The basis-versus-earnings split is not something a provider
+   *   reports through SimpleFIN.
+   *
+   * Surfaced rather than silently corrected. Any haircut here would be a guess dressed as
+   * arithmetic; saying "this ignores gains we cannot see" is honest, quietly shaving 15% is not.
    */
-  ignoresCapitalGains: boolean
+  ignoresEmbeddedGains: boolean
 }
 
 /**
@@ -53,8 +61,18 @@ export type AfterTaxBreakdown = {
  */
 const DEFERRED: ReadonlySet<TaxTreatment> = new Set<TaxTreatment>(['traditional'])
 
-/** Treatments whose value is reduced by unknown embedded gains rather than by a known tax. */
-const HAS_EMBEDDED_GAINS: ReadonlySet<TaxTreatment> = new Set<TaxTreatment>(['taxable'])
+/**
+ * Treatments whose value is reduced by unknown embedded gains rather than by a known tax.
+ *
+ * `after_tax` is here rather than in `DEFERRED` for the same reason `taxable` is: the contributions
+ * are already-taxed basis and only the *earnings* are owed, and nothing tells Beans where the line
+ * between them falls. Taxing the whole balance would overstate the bill as badly as taxing none of
+ * it understates it — so it is taken at face value and the shortfall is declared instead of guessed.
+ */
+const HAS_EMBEDDED_GAINS: ReadonlySet<TaxTreatment> = new Set<TaxTreatment>([
+  'taxable',
+  'after_tax',
+])
 
 export function afterTaxEquivalent(
   balances: readonly BucketBalance[],
@@ -64,13 +82,13 @@ export function afterTaxEquivalent(
 
   let nominalCents = 0n
   let deferredTaxCents = 0n
-  let ignoresCapitalGains = false
+  let ignoresEmbeddedGains = false
 
   for (const balance of balances) {
     nominalCents += balance.balanceCents
 
     if (HAS_EMBEDDED_GAINS.has(balance.treatment) && balance.balanceCents !== 0n) {
-      ignoresCapitalGains = true
+      ignoresEmbeddedGains = true
     }
 
     if (!DEFERRED.has(balance.treatment)) continue
@@ -91,6 +109,6 @@ export function afterTaxEquivalent(
     nominalCents,
     afterTaxCents: nominalCents - deferredTaxCents,
     deferredTaxCents,
-    ignoresCapitalGains,
+    ignoresEmbeddedGains,
   }
 }

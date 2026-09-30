@@ -46,7 +46,7 @@ describe('afterTaxEquivalent', () => {
     expect(result.deferredTaxCents).toBe(0n)
   })
 
-  it('takes taxable at face value and says that it is ignoring capital gains', () => {
+  it('takes taxable at face value and says that it is ignoring the gains', () => {
     /*
      * Beans has no cost basis, so any haircut would be a guess dressed as arithmetic. The flag is
      * what lets the UI say so out loud instead of quietly shaving 15%.
@@ -54,16 +54,30 @@ describe('afterTaxEquivalent', () => {
     const result = afterTaxEquivalent([bucket('taxable', 500_000_00n)], at22)
 
     expect(result.afterTaxCents).toBe(500_000_00n)
-    expect(result.ignoresCapitalGains).toBe(true)
+    expect(result.ignoresEmbeddedGains).toBe(true)
   })
 
-  it('does not claim to ignore capital gains when there is no taxable money', () => {
+  it('does not tax after-tax non-Roth money as if it were pre-tax', () => {
+    /*
+     * The third bucket in a 401(k), and the one the mega-backdoor rules are about. Contributions
+     * are already-taxed basis; only the earnings are owed. Taxing the whole balance would overstate
+     * the bill as badly as taxing none of it understates it, and SimpleFIN reports neither half —
+     * so it is taken at face value and the shortfall is declared rather than guessed.
+     */
+    const result = afterTaxEquivalent([bucket('after_tax', 200_000_00n)], at22)
+
+    expect(result.deferredTaxCents).toBe(0n)
+    expect(result.afterTaxCents).toBe(200_000_00n)
+    expect(result.ignoresEmbeddedGains).toBe(true)
+  })
+
+  it('does not claim to ignore gains when every balance has a known treatment', () => {
     // The note only earns its place when it applies. Shown always, it becomes furniture.
     const result = afterTaxEquivalent(
       [bucket('traditional', 100_000_00n), bucket('roth', 100_000_00n)],
       at22,
     )
-    expect(result.ignoresCapitalGains).toBe(false)
+    expect(result.ignoresEmbeddedGains).toBe(false)
   })
 
   it('does not produce a refund from a negative pre-tax bucket', () => {

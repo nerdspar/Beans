@@ -129,6 +129,23 @@ export const accounts = pgTable(
      */
     closedOn: date('closed_on'),
 
+    /**
+     * When a loan or mortgage is scheduled to be paid off. Null on everything else, and null on a
+     * loan nobody has told us about.
+     *
+     * **Asked for, not derived.** Beans has a balance and a transaction history, not an amortization
+     * schedule: no rate, no term, no split between principal and interest, and extra payments are
+     * indistinguishable from ordinary ones. Inferring a payoff date from a trailing payment average
+     * would produce a confident date that moves every month, and the retirement projection drops an
+     * entire mortgage payment on it — a wrong date there is worth tens of thousands of dollars in
+     * the wrong direction.
+     *
+     * On `accounts` rather than inside the retirement tables because it is a fact about the loan,
+     * true whether or not anyone ever opens the planner, and the account detail screen is where
+     * somebody would look for it.
+     */
+    payoffDate: date('payoff_date'),
+
     taxTreatment: taxTreatment('tax_treatment').notNull().default('none'),
 
     /**

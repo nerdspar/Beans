@@ -1,4 +1,4 @@
-import { parseDecimalToCents } from '@beans/shared'
+import { ACCOUNT_TYPES, TAX_TREATMENTS, parseDecimalToCents } from '@beans/shared'
 import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import type { Auth } from '../auth/auth.js'
@@ -34,17 +34,16 @@ export type AccountRoutesOptions = {
   deps: ContextDependencies
 }
 
-const accountType = z.enum([
-  'depository',
-  'credit',
-  'loan',
-  'mortgage',
-  'investment',
-  'other_asset',
-  'other_liability',
-])
+/*
+ * Derived from the shared vocabularies rather than restated.
+ *
+ * These were literal lists until `after_tax` was added to `TAX_TREATMENTS` and the API kept
+ * rejecting it — the schema, the client and the validator each held their own copy, and only two of
+ * them moved. Deriving makes that class of drift a type error instead of a 400 nobody can explain.
+ */
+const accountType = z.enum(ACCOUNT_TYPES)
 
-const taxTreatment = z.enum(['taxable', 'traditional', 'roth', 'hsa', 'education', 'none'])
+const taxTreatment = z.enum(TAX_TREATMENTS)
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 /** Money arrives as a decimal string, never a JSON number. */
 const money = z.string().regex(/^-?\d+(\.\d{1,2})?$/)

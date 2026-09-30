@@ -1,4 +1,9 @@
-import { CONNECTION_COPY, centsToDecimalString } from '@beans/shared'
+import {
+  ACCOUNT_TYPES,
+  CONNECTION_COPY,
+  TAX_TREATMENTS,
+  centsToDecimalString,
+} from '@beans/shared'
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import type { Auth } from '../auth/auth.js'
@@ -43,20 +48,10 @@ const confirmBody = z.object({
     .array(
       z.object({
         simplefinAccountId: z.string().min(1),
-        type: z.enum([
-          'depository',
-          'credit',
-          'loan',
-          'mortgage',
-          'investment',
-          'other_asset',
-          'other_liability',
-        ]),
+        type: z.enum(ACCOUNT_TYPES),
         signInverted: z.boolean(),
         displayName: z.string().trim().min(1).max(120).optional(),
-        taxTreatment: z
-          .enum(['taxable', 'traditional', 'roth', 'hsa', 'education', 'none'])
-          .optional(),
+        taxTreatment: z.enum(TAX_TREATMENTS).optional(),
         include: z.boolean(),
       }),
     )
