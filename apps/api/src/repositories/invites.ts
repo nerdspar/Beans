@@ -40,7 +40,20 @@ function hashToken(token: string): string {
 
 export async function createInvite(
   context: HouseholdContext,
-  options: { role?: HouseholdRole; email?: string; expiresInDays?: number } = {},
+  options: {
+    role?: HouseholdRole
+    email?: string
+    expiresInDays?: number
+    /**
+     * When the clock starts, injectable for tests. Defaults to now.
+     *
+     * `acceptInvite` has always taken one; this did not, so an invite's expiry came from the wall
+     * clock while the test checking it used fixed dates. That test asserted "expired" and passed
+     * only while the real date happened to be far enough behind the fixture — it went green for
+     * months and then failed on a Tuesday, having tested nothing in between.
+     */
+    now?: Date
+  } = {},
 ): Promise<CreatedInvite> {
   if (context.role !== 'owner') {
     throw new InviteError('Only a household owner can invite members')
@@ -48,8 +61,9 @@ export async function createInvite(
 
   const token = randomBytes(TOKEN_BYTES).toString('base64url')
   const role = options.role ?? 'member'
+  const issuedAt = options.now ?? new Date()
   const expiresAt = new Date(
-    Date.now() + (options.expiresInDays ?? DEFAULT_EXPIRY_DAYS) * 24 * 60 * 60 * 1000,
+    issuedAt.getTime() + (options.expiresInDays ?? DEFAULT_EXPIRY_DAYS) * 24 * 60 * 60 * 1000,
   )
 
   await context.client.query(

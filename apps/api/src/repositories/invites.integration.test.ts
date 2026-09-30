@@ -66,7 +66,8 @@ describeIntegration('household invites', () => {
 
   async function inviteFrom(userId: string, email?: string): Promise<string> {
     return withHouseholdContext(deps, userId, async (ctx) => {
-      const invite = await createInvite(ctx, email === undefined ? {} : { email })
+      // Issued at the fixture clock, not the wall clock, so expiry is fixed relative to NOW/LATER.
+      const invite = await createInvite(ctx, email === undefined ? { now: NOW } : { email, now: NOW })
       return invite.token
     })
   }
