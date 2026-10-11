@@ -7,6 +7,7 @@ import {
   Repeat,
   Settings,
   Tags,
+  Umbrella,
   Users,
   Wallet,
 } from 'lucide-react'
@@ -27,6 +28,7 @@ export type DestinationKey =
   | 'cash-flow'
   | 'portfolio'
   | 'subscriptions'
+  | 'retirement'
   | 'accounts'
   | 'categories'
   | 'rules'
@@ -88,6 +90,17 @@ export const DESTINATIONS: readonly Destination[] = [
     label: 'Subscriptions',
     short: 'Recurring',
     icon: Repeat,
+  },
+  /**
+   * A browse destination like any other, so it can be put in the tab bar by anyone who wants it
+   * there (§12.0). A planner nobody can reach from a phone is a planner nobody opens.
+   */
+  {
+    key: 'retirement',
+    path: '/retirement',
+    label: 'Retirement',
+    short: 'Retire',
+    icon: Umbrella,
   },
   /**
    * Deliberately **not** a browse destination.

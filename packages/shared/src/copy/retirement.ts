@@ -241,6 +241,13 @@ export const RETIREMENT_COPY = {
   /** Table fallback for the band chart. Every chart here needs one. */
   table: {
     caption: 'Projected balance by year, for each set of return assumptions',
+    /**
+     * Replaces the shared sampled-rows sentence, which mentions a slider and talks about days.
+     * This chart has neither: it plots calendar years and is not scrubbable, so pointing a
+     * screen-reader user at a slider would send them looking for a control that is not there.
+     */
+    sampledNote: (shown: number, total: number): string =>
+      `${shown} of ${total} years, evenly spaced.`,
     year: 'Year',
     total: 'Total',
     spending: 'Spending',

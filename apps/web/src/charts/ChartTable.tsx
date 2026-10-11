@@ -35,9 +35,24 @@ export type ChartTableProps = {
    * a "24 of 24" note tells the reader nothing and implies something was withheld.
    */
   sampledFrom?: number | undefined
+  /**
+   * Replaces the default sampled-rows sentence.
+   *
+   * The default mentions a slider and talks about days, which is right for the five daily charts it
+   * was written for and wrong for anything else. A projection plots calendar years and has no
+   * slider, so telling a screen-reader user to reach for one sends them looking for a control that
+   * is not there.
+   */
+  sampledNote?: ((shown: number, total: number) => string) | undefined
 }
 
-export function ChartTable({ label, columns, rows, sampledFrom }: ChartTableProps): ReactNode {
+export function ChartTable({
+  label,
+  columns,
+  rows,
+  sampledFrom,
+  sampledNote,
+}: ChartTableProps): ReactNode {
   if (rows.length === 0) return null
 
   const sampled = sampledFrom !== undefined && sampledFrom > rows.length
@@ -59,7 +74,9 @@ export function ChartTable({ label, columns, rows, sampledFrom }: ChartTableProp
       <table>
         <caption>
           {CHART_COPY.tableCaption(label)}
-          {sampled ? `. ${CHART_COPY.sampledNote(rows.length, sampledFrom)}` : ''}
+          {sampled
+            ? `. ${(sampledNote ?? CHART_COPY.sampledNote)(rows.length, sampledFrom)}`
+            : ''}
         </caption>
         <thead>
           <tr>

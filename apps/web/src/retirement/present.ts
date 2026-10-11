@@ -101,9 +101,17 @@ export function fundedOutcome(projection: ScenarioProjection): FundedOutcome {
   }
 }
 
-/** Basis points as a whole-percent string. 7350 is "74%". */
+/**
+ * Basis points as a percentage, keeping a decimal place only when there is one.
+ *
+ * 2200 is "22%", 350 is "3.5%", 7350 is "73.5%". Rounding everything to whole percents rendered a
+ * seeded 3.5% post-retirement return as "4%" — so the assumption shown beside the figures was not
+ * the assumption that produced them, which is precisely what the "no number without its
+ * assumption" rule exists to prevent.
+ */
 export function percentFromBasisPoints(basisPoints: number): string {
-  return `${Math.round(basisPoints / 100)}%`
+  const percent = Math.round(basisPoints / 10) / 10
+  return `${Number.isInteger(percent) ? percent : percent.toFixed(1)}%`
 }
 
 /**

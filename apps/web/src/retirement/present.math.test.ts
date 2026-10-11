@@ -146,10 +146,22 @@ describe('fundedOutcome', () => {
 })
 
 describe('percentFromBasisPoints', () => {
-  it('rounds to a whole percent', () => {
+  it('keeps a decimal place only when there is one', () => {
+    /*
+     * Rounding everything to whole percents rendered the seeded 3.5% post-retirement return as
+     * "4%", so the assumption shown beside the figures was not the one that produced them. Caught
+     * by reading the rendered screen, not by a test.
+     */
+    expect(percentFromBasisPoints(350)).toBe('3.5%')
+    expect(percentFromBasisPoints(2_200)).toBe('22%')
     expect(percentFromBasisPoints(10_000)).toBe('100%')
-    expect(percentFromBasisPoints(7_350)).toBe('74%')
+    expect(percentFromBasisPoints(7_350)).toBe('73.5%')
     expect(percentFromBasisPoints(0)).toBe('0%')
+  })
+
+  it('rounds to one decimal rather than inventing precision', () => {
+    expect(percentFromBasisPoints(7_355)).toBe('73.6%')
+    expect(percentFromBasisPoints(1_234)).toBe('12.3%')
   })
 })
 
