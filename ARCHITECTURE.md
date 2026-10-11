@@ -1594,6 +1594,55 @@ not an amortization schedule — no rate, no term, no principal/interest split, 
 indistinguishable from ordinary ones. It lives on `accounts` because it is a fact about the loan,
 true whether or not anyone opens the planner.
 
+### 19.4a The projection, and the order it does things in
+
+Annual timestep, real dollars, three scenarios at once rendered as a **band rather than a line**.
+A point estimate implies a precision that does not exist.
+
+The per-year order deviates from the spec's in two places, and every difference moves the number
+**down**: withdrawals happen before growth, so a year's spending does not earn a year's return on
+its way out; contributions happen after growth, so a year's contributions do not earn a full year
+of return in the year they are spread across. The second also matches `carryBucketsForward`, and
+the two disagreeing would make the bucket split and the balance path tell different stories about
+the same account. For a retirement projection the safe direction is down — a model that flatters by
+a few percent a year compounds into a plan that says somebody can stop working a year early.
+
+**Tax on a pre-tax withdrawal is grossed up analytically.** Withdrawing exactly what is needed and
+then paying tax out of it leaves the year short by the tax while the plan reports that it held. For
+a flat rate the gross-up is exact, so no iterate-until-it-converges loop is needed.
+
+**The household retires when its first member does**, which is when contributions stop and
+withdrawals start. Deliberate and conservative: where one person keeps working their wages really
+do fund part of the household, but Beans has no salary figure, so the choice is between starting
+the drawdown early — which understates the plan — and inventing an income, which flatters it.
+Modelling the gap years properly is phase D.
+
+**`hsa` and `education` are not in the withdrawal order.** They hold real money the plan does not
+spend: an HSA is for medical costs and a 529 carries a penalty for anything else. Their balance is
+reported as `heldBackCents` so the terminal figure cannot read as money available for spending.
+
+**Social Security starts at each member's own claim age**, never averaged. The years between one
+member claiming and the other are exactly the years a plan is most likely to come up short, and
+smearing them hides that. A null claim age counts nothing — unasked is not the same as zero.
+
+Rounding is **half away from zero**, in one place (`rates.ts`). Spending is negative throughout, so
+BigInt truncation toward zero would shave a cent off every cost, every year, always in the
+flattering direction. Bias in a retirement number is worse than error.
+
+**What the projection does not model, it declares.** `notModelled` carries
+`required_minimum_distributions` and `social_security_taxation`, and the UI is obliged to state
+them beside the figures. RMDs are blocked on two things rather than one: the statutory start age
+and lifetime table must come from the reference table, **and** buckets would have to be
+attributable to an individual member, which the schema supports only through a thin account-owner
+chain. This is the lesson from the drift detector written down — a check that cannot fire and looks
+like it did is worse than an absence that says so.
+
+Monte Carlo is phase C and earns its place for one reason worth stating: **sequence-of-returns
+risk**. A deterministic model averaging six percent and a real market averaging six percent diverge
+badly when the poor years land in the first five years of retirement, and a deterministic path
+cannot express that because it has no sequence. Historical bootstrapping is preferred to random
+normal draws.
+
 ### 19.5 What is deliberately absent
 
 `contribution_limits` and `opportunity_states` are phase B and **not created yet**. An empty
