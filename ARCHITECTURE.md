@@ -1637,6 +1637,17 @@ attributable to an individual member, which the schema supports only through a t
 chain. This is the lesson from the drift detector written down — a check that cannot fire and looks
 like it did is worse than an absence that says so.
 
+**The funded ratio is read off the simulated path, not computed from a parallel present-value
+model.** The obvious implementation — discount the spending, discount the benefits, divide — is a
+second model, and a second model disagrees with the first: it cannot see the tax gross-up, the
+withdrawal order, or the buckets the plan holds back. A headline saying "fully funded" above a chart
+that visibly runs dry is the single fastest way to lose a reader's trust in a planner. So the ratio
+is the present value of the need the simulation *met* over the need it faced, which makes a run with
+no shortfall exactly 10000 by construction. `gapCents` is the present value of what it could not
+fund — and, because it is discounted at the scenario's own return assumptions, also the amount that
+would have to be added today to close it. A horizon with no retirement year reports a **null** ratio
+rather than 100%: nothing to fund is not the same as fully funded.
+
 Monte Carlo is phase C and earns its place for one reason worth stating: **sequence-of-returns
 risk**. A deterministic model averaging six percent and a real market averaging six percent diverge
 badly when the poor years land in the first five years of retirement, and a deterministic path

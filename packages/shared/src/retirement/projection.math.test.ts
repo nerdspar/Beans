@@ -507,6 +507,128 @@ describe('projectScenario', () => {
     })
   })
 
+  describe('the funded ratio and the gap', () => {
+    /** Two retirement years, $25,000 needed each, $10,000 to meet it with. */
+    const underfunded: ProjectionInput = {
+      startYear: 2_030,
+      endYear: 2_031,
+      openingBuckets: [bucket('taxable', 10_000_00n)],
+      contributions: [],
+      spending: costs(-25_000_00n),
+      members: [member({ retirementYear: 2_030 })],
+      retirementEffectiveRateBasisPoints: 0,
+    }
+
+    it('is exactly fully funded when no year came up short', () => {
+      /*
+       * A construction guarantee, not a coincidence. The ratio is the present value of the need the
+       * simulation *met* over the need it faced, so a run with no shortfall cannot report anything
+       * but 10000 — which is the whole reason it is derived from the path rather than from a second
+       * present-value model that cannot see the tax gross-up or the withdrawal order.
+       */
+      const result = projectScenario(
+        { ...underfunded, openingBuckets: [bucket('taxable', 500_000_00n)] },
+        scenario(),
+      )
+
+      expect(result.depletionYear).toBeNull()
+      expect(result.fundedRatioBasisPoints).toBe(10_000)
+      expect(result.gapCents).toBe(0n)
+    })
+
+    it('matches a hand-computed ratio and gap when it falls short', () => {
+      /*
+       * Needs $25,000 twice and has $10,000. Returns are zero, so nothing discounts:
+       *   need met    = 10,000           of 50,000  → 2000 basis points
+       *   shortfalls  = 15,000 + 25,000  = 40,000   → the gap
+       */
+      const result = projectScenario(underfunded, scenario())
+
+      expect(result.fundedRatioBasisPoints).toBe(2_000)
+      expect(result.gapCents).toBe(40_000_00n)
+      expect(result.depletionYear).toBe(2_030)
+    })
+
+    it('discounts a later shortfall, so the gap is in today’s dollars', () => {
+      /*
+       * The same two shortfalls, once at a 0% assumed return and once at 10%. The second year's
+       * $25,000 is worth less today when money is assumed to grow, which is what makes the gap
+       * answerable as "how much would I have to add today".
+       *
+       * The balance is already empty by then, so the shortfalls themselves are identical between
+       * the two runs — only the discounting differs.
+       */
+      const undiscounted = projectScenario(underfunded, scenario())
+      const discounted = projectScenario(
+        underfunded,
+        scenario({ postRetirementReturnBasisPoints: 1_000 }),
+      )
+
+      const shortfalls = (result: { years: { shortfallCents: bigint }[] }) =>
+        result.years.map((year) => year.shortfallCents)
+
+      expect(shortfalls(discounted)).toEqual(shortfalls(undiscounted))
+      expect(discounted.gapCents).toBeLessThan(undiscounted.gapCents)
+      // 25,000 / 1.1 is 22,727.27, so the gap is 15,000 + that.
+      expect(discounted.gapCents).toBe(37_727_27n)
+    })
+
+    it('reports no ratio at all when the horizon contains no retirement year', () => {
+      // "Nothing to fund" is not "fully funded". A reassuring 100% on a plan that models only
+      // working years would be a lie with a comforting shape.
+      const result = projectScenario(
+        { ...underfunded, startYear: 2_026, endYear: 2_028, members: [member({ retirementYear: 2_040 })] },
+        scenario(),
+      )
+
+      expect(result.years.every((year) => !year.retired)).toBe(true)
+      expect(result.fundedRatioBasisPoints).toBeNull()
+      expect(result.gapCents).toBe(0n)
+    })
+
+    it('is fully funded when the benefits cover the whole baseline', () => {
+      // The portfolio is never drawn on, so there is no need to divide by. Stated rather than left
+      // to arithmetic.
+      const result = projectScenario(
+        {
+          ...underfunded,
+          spending: costs(-20_000_00n),
+          members: [
+            member({
+              birthYear: 1_960,
+              retirementYear: 2_030,
+              socialSecurityClaimAge: 67,
+              socialSecurityAnnualBenefitCents: 30_000_00n,
+            }),
+          ],
+        },
+        scenario(),
+      )
+
+      expect(result.years.every((year) => year.portfolioNeedCents === 0n)).toBe(true)
+      expect(result.fundedRatioBasisPoints).toBe(10_000)
+      expect(result.gapCents).toBe(0n)
+    })
+
+    it('records what the portfolio had to fund, so the ratio is traceable', () => {
+      // A summary figure nobody can trace back to a year is a figure nobody can argue with.
+      const result = projectScenario(underfunded, scenario())
+
+      expect(result.years.map((year) => year.portfolioNeedCents)).toEqual([
+        25_000_00n,
+        25_000_00n,
+      ])
+    })
+
+    it('refuses a real return of -100% or worse rather than projecting nonsense', () => {
+      // Not a pessimistic scenario — a broken input. It wipes the portfolio every year and makes
+      // the discount factor divide by zero.
+      expect(() =>
+        projectScenario(underfunded, scenario({ postRetirementReturnBasisPoints: -10_000 })),
+      ).toThrow(/cannot be projected/)
+    })
+  })
+
   describe('what it does not model', () => {
     it('says so, rather than leaving the omission invisible', () => {
       /*
@@ -601,6 +723,27 @@ describe('projectScenarios', () => {
       expect(mid?.year).toBe(high?.year)
       expect(low!.totalCents).toBeLessThanOrEqual(mid!.totalCents)
       expect(mid!.totalCents).toBeLessThanOrEqual(high!.totalCents)
+    }
+  })
+
+  it('never reports a funded ratio that contradicts its own chart', () => {
+    /*
+     * The failure this rules out is the one that destroys trust in a planner: a headline saying
+     * "fully funded" above a balance path that visibly runs dry. Because the ratio is read off the
+     * simulated path, a run with no depletion is exactly 10000 and a run with one cannot exceed it.
+     *
+     * Only asserted in that direction. A single stray cent of shortfall thirty years out discounts
+     * to nothing, so a depleting run *may* round to 10000 — which is a rounding artefact, not a
+     * contradiction.
+     */
+    for (const result of projectScenarios(input, band)) {
+      if (result.depletionYear === null) {
+        expect(result.fundedRatioBasisPoints).toBe(10_000)
+        expect(result.gapCents).toBe(0n)
+      } else {
+        expect(result.fundedRatioBasisPoints).toBeLessThanOrEqual(10_000)
+        expect(result.gapCents).toBeGreaterThanOrEqual(0n)
+      }
     }
   })
 

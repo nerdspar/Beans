@@ -101,6 +101,14 @@ export type ProjectionYear = {
   spendingCents: bigint
   socialSecurityCents: bigint
 
+  /**
+   * What the portfolio had to fund this year: spending the benefits did not cover.
+   *
+   * Recorded rather than recomputed, so the funded ratio is auditable against the path it came
+   * from. A summary figure nobody can trace back to a year is a figure nobody can argue with.
+   */
+  portfolioNeedCents: bigint
+
   /** Gross, including the amount withdrawn to pay the tax on itself. */
   withdrawalsCents: bigint
   /** The estimated tax on pre-tax withdrawals. */
@@ -122,6 +130,32 @@ export type ScenarioProjection = {
   terminalTotalCents: bigint
   /** The first year that could not be funded, or null if the money lasted. */
   depletionYear: number | null
+
+  /**
+   * How much of the plan's retirement spending is funded, in basis points. 10000 is fully funded.
+   *
+   * **Derived from the simulated path, not from a parallel present-value model.** The obvious
+   * implementation — discount the spending, discount the benefits, divide — is a second model, and
+   * a second model disagrees with the first: it cannot see the tax gross-up, the withdrawal order,
+   * or the buckets the plan holds back. A headline ratio that says "fully funded" above a chart
+   * that runs dry in 2051 is worse than no ratio at all.
+   *
+   * So this is the present value of the need the simulation *met*, over the present value of the
+   * need it faced. A run with no shortfall is exactly 10000 by construction.
+   *
+   * Null when the horizon contains no retirement year. Reporting a plan with nothing to fund as
+   * fully funded would be a lie with a reassuring shape.
+   */
+  fundedRatioBasisPoints: number | null
+
+  /**
+   * What the plan is short, in today's dollars. Zero when it holds.
+   *
+   * The present value of the spending the portfolio could not cover, discounted at the scenario's
+   * own return assumptions — which makes it also, and usefully, the amount that would have to be
+   * added today to close the gap.
+   */
+  gapCents: bigint
 
   /**
    * Money the plan never spends, because its treatment is not in the withdrawal order.
@@ -183,6 +217,20 @@ export function projectScenario(
   input: ProjectionInput,
   scenario: ProjectionScenario,
 ): ScenarioProjection {
+  /*
+   * A real return of -100% or worse is not a pessimistic scenario, it is a broken input: it wipes
+   * the portfolio every year and makes the discount factor used by the funded ratio divide by zero
+   * or flip sign. Refusing is better than producing a confident figure out of nonsense.
+   */
+  for (const rate of [
+    scenario.preRetirementReturnBasisPoints,
+    scenario.postRetirementReturnBasisPoints,
+  ]) {
+    if (rate <= -10_000) {
+      throw new RangeError('projectScenario: a real return of -100% or worse cannot be projected')
+    }
+  }
+
   const order = input.withdrawalOrder ?? DEFAULT_WITHDRAWAL_ORDER
   const drawable = new Set(order)
 
@@ -231,6 +279,7 @@ export function projectScenario(
     // Spending is negative; benefits are positive. What remains is what the portfolio must fund.
     let needCents = -(spendingCents + socialSecurityCents)
     if (needCents < 0n) needCents = 0n
+    const portfolioNeedCents = needCents
 
     let withdrawalsCents = 0n
     let taxCents = 0n
@@ -294,6 +343,7 @@ export function projectScenario(
       totalCents: [...balances.values()].reduce((sum, value) => sum + value, 0n),
       spendingCents,
       socialSecurityCents,
+      portfolioNeedCents,
       withdrawalsCents,
       taxCents,
       contributionsCents,
@@ -307,6 +357,8 @@ export function projectScenario(
     if (!drawable.has(treatment)) heldBackCents += balance
   }
 
+  const funding = summarizeFunding(years, scenario)
+
   return {
     scenarioId: scenario.id,
     name: scenario.name,
@@ -314,7 +366,69 @@ export function projectScenario(
     terminalTotalCents: years.at(-1)?.totalCents ?? 0n,
     depletionYear,
     heldBackCents,
+    fundedRatioBasisPoints: funding.fundedRatioBasisPoints,
+    gapCents: funding.gapCents,
     notModelled: ['required_minimum_distributions', 'social_security_taxation'],
+  }
+}
+
+/**
+ * The funded ratio and the gap, read off the path the simulation actually walked.
+ *
+ * Both are present values discounted at the scenario's own return assumptions — the pre-retirement
+ * rate for the years before the drawdown starts and the post-retirement rate after, because that is
+ * what the model assumes the money earns over each stretch. Discounting at one blended rate would
+ * be a third assumption nobody stated.
+ *
+ * The discount factor is carried as an exact rational — a numerator of `10_000^k` over the product
+ * of `(10_000 + rate)` — rather than as a float. Over a thirty-five year horizon the two differ by
+ * enough to move a headline dollar figure, and this is the figure somebody would act on.
+ */
+function summarizeFunding(
+  years: readonly ProjectionYear[],
+  scenario: ProjectionScenario,
+): { fundedRatioBasisPoints: number | null; gapCents: bigint } {
+  // The first modelled year is today, so it is not discounted at all.
+  let numerator = 1n
+  let denominator = 1n
+
+  let needPresentValue = 0n
+  let shortfallPresentValue = 0n
+  let hasRetirementYear = false
+
+  for (const year of years) {
+    if (year.retired) hasRetirementYear = true
+
+    if (year.portfolioNeedCents > 0n) {
+      needPresentValue += scaleSigned(year.portfolioNeedCents, numerator, denominator)
+      shortfallPresentValue += scaleSigned(year.shortfallCents, numerator, denominator)
+    }
+
+    const rate = year.retired
+      ? scenario.postRetirementReturnBasisPoints
+      : scenario.preRetirementReturnBasisPoints
+
+    numerator *= 10_000n
+    denominator *= 10_000n + BigInt(rate)
+  }
+
+  /*
+   * No retirement year in the horizon means there is nothing to be funded *for*, which is not the
+   * same as being fully funded. Null makes the UI say so rather than print a reassuring 100%.
+   */
+  if (!hasRetirementYear) return { fundedRatioBasisPoints: null, gapCents: 0n }
+
+  /*
+   * A need of zero across every retirement year — benefits covering the whole baseline — is
+   * genuinely fully funded, and dividing by it is not. Stated separately rather than left to
+   * arithmetic.
+   */
+  if (needPresentValue === 0n) return { fundedRatioBasisPoints: 10_000, gapCents: 0n }
+
+  const met = needPresentValue - shortfallPresentValue
+  return {
+    fundedRatioBasisPoints: Number((met * 10_000n) / needPresentValue),
+    gapCents: shortfallPresentValue,
   }
 }
 
