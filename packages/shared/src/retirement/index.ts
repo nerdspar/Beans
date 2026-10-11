@@ -11,3 +11,24 @@ export {
   type AfterTaxBreakdown,
   type AfterTaxOptions,
 } from './after-tax.js'
+export {
+  retirementSpending,
+  spendingInYear,
+  type RetirementSpending,
+  type RetirementSpendingOptions,
+  type SpendingAssumption,
+  type SpendingComponent,
+} from './spending.js'
+export {
+  DEFAULT_WITHDRAWAL_ORDER,
+  projectScenario,
+  projectScenarios,
+  type ProjectionInput,
+  type ProjectionMember,
+  type ProjectionScenario,
+  type ProjectionYear,
+  type ScenarioProjection,
+  type UnmodelledFactor,
+} from './projection.js'
+
+export { grossUpForTax, grow, scaleSigned } from './rates.js'
