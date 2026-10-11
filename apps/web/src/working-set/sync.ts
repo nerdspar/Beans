@@ -23,6 +23,8 @@ export type SyncOutcome = {
   accounts: number
   balances: number
   transactions: number
+  /** Decisions arrive whole, so a change is reported as a flag rather than a count. */
+  recurringDecisionsChanged: boolean
 }
 
 async function request(cursor: string | null, from?: string): Promise<WorkingSetResponse> {
@@ -110,21 +112,23 @@ export async function syncWorkingSet(): Promise<SyncOutcome> {
     await clearWorkingSet()
     response = await request(null)
 
-    await applyDelta(response)
+    const applied = await applyDelta(response)
     return {
       wasFullResync: true,
       accounts: response.accounts.length,
       balances: response.balances.length,
       transactions: response.transactions.length,
+      recurringDecisionsChanged: applied.recurringDecisionsChanged,
     }
   }
 
-  await applyDelta(response)
+  const applied = await applyDelta(response)
   return {
     wasFullResync: cursor === null,
     accounts: response.accounts.length,
     balances: response.balances.length,
     transactions: response.transactions.length,
+    recurringDecisionsChanged: applied.recurringDecisionsChanged,
   }
 }
 
@@ -147,12 +151,13 @@ export async function syncWorkingSet(): Promise<SyncOutcome> {
 export async function backfillWorkingSet(from: string): Promise<SyncOutcome> {
   const response = await request(null, from)
 
-  await applyDelta(response, { keepCursor: true })
+  const applied = await applyDelta(response, { keepCursor: true })
 
   return {
     wasFullResync: false,
     accounts: response.accounts.length,
     balances: response.balances.length,
     transactions: response.transactions.length,
+    recurringDecisionsChanged: applied.recurringDecisionsChanged,
   }
 }

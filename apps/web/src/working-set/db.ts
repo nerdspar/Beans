@@ -135,6 +135,21 @@ export type StoredCategory = {
   parentId: string | null
 }
 
+/** A person's override of a detected recurring series (ARCHITECTURE.md §20). */
+export type StoredRecurringDecision = {
+  id: string
+  merchantKey: string
+  decision: 'subscription' | 'bill' | 'ignored'
+}
+
+/** Replaced wholesale each sync, like categories. A removed decision is simply absent. */
+export async function readRecurringDecisions(): Promise<StoredRecurringDecision[]> {
+  const db = await workingSetDb()
+  return (
+    ((await db.get('meta', 'recurringDecisions')) as StoredRecurringDecision[] | undefined) ?? []
+  )
+}
+
 /** Replaced wholesale each sync, for the same reason as the transfer ids: a partial set misleads. */
 export async function readCategories(): Promise<StoredCategory[]> {
   const db = await workingSetDb()
@@ -166,7 +181,7 @@ export async function readSyncState(): Promise<SyncState> {
 export async function applyDelta(
   response: WorkingSetResponse,
   options: { keepCursor?: boolean } = {},
-): Promise<void> {
+): Promise<{ recurringDecisionsChanged: boolean }> {
   const db = await workingSetDb()
   const tx = db.transaction(['accounts', 'balances', 'transactions', 'meta'], 'readwrite')
 
@@ -248,6 +263,16 @@ export async function applyDelta(
 
   await tx.objectStore('meta').put(response.confirmedTransferIds, 'confirmedTransferIds')
   await tx.objectStore('meta').put(response.categories, 'categories')
+
+  /*
+   * Compared before writing, because the screens re-read the store only when a sync changed
+   * something — and a decision made on another device changes nothing else. Without this it would
+   * stay invisible until an unrelated transaction happened to post.
+   */
+  const previousDecisions = await tx.objectStore('meta').get('recurringDecisions')
+  const recurringDecisionsChanged =
+    JSON.stringify(previousDecisions ?? []) !== JSON.stringify(response.recurringDecisions)
+  await tx.objectStore('meta').put(response.recurringDecisions, 'recurringDecisions')
   await tx.objectStore('meta').put(response.householdId, 'householdId')
 
   /*
@@ -273,6 +298,7 @@ export async function applyDelta(
   await tx.objectStore('meta').put(widest, 'coverageFrom')
 
   await tx.done
+  return { recurringDecisionsChanged }
 }
 
 /**
@@ -301,14 +327,17 @@ export async function readAll(): Promise<{
   transactions: StoredTransaction[]
   confirmedTransferIds: string[]
   categories: StoredCategory[]
+  recurringDecisions: StoredRecurringDecision[]
 }> {
   const db = await workingSetDb()
-  const [accounts, balances, transactions, confirmedTransferIds, categories] = await Promise.all([
-    db.getAll('accounts'),
-    db.getAll('balances'),
-    db.getAll('transactions'),
-    readConfirmedTransferIds(),
-    readCategories(),
-  ])
-  return { accounts, balances, transactions, confirmedTransferIds, categories }
+  const [accounts, balances, transactions, confirmedTransferIds, categories, recurringDecisions] =
+    await Promise.all([
+      db.getAll('accounts'),
+      db.getAll('balances'),
+      db.getAll('transactions'),
+      readConfirmedTransferIds(),
+      readCategories(),
+      readRecurringDecisions(),
+    ])
+  return { accounts, balances, transactions, confirmedTransferIds, categories, recurringDecisions }
 }

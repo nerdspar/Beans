@@ -4,6 +4,7 @@ import {
   ChartLine,
   Filter,
   PiggyBank,
+  Repeat,
   Settings,
   Tags,
   Users,
@@ -25,6 +26,7 @@ export type DestinationKey =
   | 'transactions'
   | 'cash-flow'
   | 'portfolio'
+  | 'subscriptions'
   | 'accounts'
   | 'categories'
   | 'rules'
@@ -75,6 +77,17 @@ export const DESTINATIONS: readonly Destination[] = [
     label: 'Portfolio',
     short: 'Portfolio',
     icon: PiggyBank,
+  },
+  /*
+   * A browse destination, but not in the default four. The registry puts it in the sidebar and the
+   * More sheet; anybody who checks it often can promote it to the bar from settings.
+   */
+  {
+    key: 'subscriptions',
+    path: '/subscriptions',
+    label: 'Subscriptions',
+    short: 'Recurring',
+    icon: Repeat,
   },
   /**
    * Deliberately **not** a browse destination.

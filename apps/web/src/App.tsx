@@ -21,6 +21,7 @@ import { ScreenBoundary } from './lib/ScreenBoundary.js'
 import { Accounts } from './screens/Accounts.js'
 import { Portfolio } from './screens/Portfolio.js'
 import { CashFlow } from './screens/CashFlow.js'
+import { Subscriptions } from './screens/Subscriptions.js'
 import { Transactions } from './screens/Transactions.js'
 import { CreateHousehold } from './screens/CreateHousehold.js'
 import { JoinHousehold } from './screens/JoinHousehold.js'
@@ -130,6 +131,7 @@ function Routes(): ReactNode {
       <Route path="/transactions" component={Transactions} />
       <Route path="/cash-flow" component={CashFlow} />
       <Route path="/portfolio" component={Portfolio} />
+      <Route path="/subscriptions" component={Subscriptions} />
       <Route path="/settings" component={TabSettings} />
 
       {/*

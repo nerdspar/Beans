@@ -5,6 +5,7 @@ import {
   clearWorkingSet,
   readAll,
   type StoredCategory,
+  type StoredRecurringDecision,
   type StoredTransaction,
 } from './db.js'
 import { usePreferences } from '../preferences/use-preferences.js'
@@ -30,6 +31,8 @@ export type WorkingSetState = {
   confirmedTransferIds: ReadonlySet<string>
   /** Every category, by id. */
   categories: ReadonlyMap<string, StoredCategory>
+  /** Overrides of detected recurring series (ARCHITECTURE.md §20). */
+  recurringDecisions: readonly StoredRecurringDecision[]
   isLoading: boolean
   /** Signed in but not yet in a household — onboarding, not a failure. */
   needsHousehold: boolean
@@ -48,6 +51,7 @@ export function useWorkingSet(): WorkingSetState {
     transactions: unknown[]
     confirmedTransferIds: string[]
     categories: StoredCategory[]
+    recurringDecisions: StoredRecurringDecision[]
   }> = useQuery({
     queryKey: WORKING_SET_KEY,
     queryFn: readAll,
@@ -72,7 +76,10 @@ export function useWorkingSet(): WorkingSetState {
   const changed =
     sync.data === undefined
       ? 0
-      : sync.data.accounts + sync.data.balances + sync.data.transactions
+      : sync.data.accounts +
+        sync.data.balances +
+        sync.data.transactions +
+        (sync.data.recurringDecisionsChanged ? 1 : 0)
 
   useEffect(() => {
     if (changed > 0) {
@@ -111,6 +118,8 @@ export function useWorkingSet(): WorkingSetState {
     () => new Map((stored.data?.categories ?? []).map((category) => [category.id, category])),
     [stored.data],
   )
+
+  const recurringDecisions = useMemo(() => stored.data?.recurringDecisions ?? [], [stored.data])
 
   const syncError = sync.error instanceof Error ? sync.error : null
 
@@ -152,6 +161,7 @@ export function useWorkingSet(): WorkingSetState {
     transactions,
     confirmedTransferIds,
     categories,
+    recurringDecisions,
     isLoading: phase === 'loading',
     needsHousehold: syncError instanceof NoHouseholdYetError,
     needsSignIn: syncError instanceof NotSignedInError,
