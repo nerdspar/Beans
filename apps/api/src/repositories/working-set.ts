@@ -10,6 +10,7 @@ import {
   type WorkingSetTransaction,
 } from '@beans/shared'
 import { listCategories } from './categories.js'
+import { listRecurringDecisions } from './recurring-decisions.js'
 import { confirmedPairMembers } from './transfers.js'
 import type { HouseholdContext } from './household-context.js'
 
@@ -81,6 +82,7 @@ export async function readWorkingSet(
       householdId: context.householdId,
       confirmedTransferIds: [],
       categories: [],
+      recurringDecisions: [],
       accounts: [],
       balances: [],
       transactions: [],
@@ -109,6 +111,8 @@ export async function readWorkingSet(
     kind: category.kind,
     parentId: category.parentId,
   }))
+  // Sent whole as well, and filtered by account visibility inside the repository (§6.4).
+  const recurringDecisions = await listRecurringDecisions(context)
 
   return {
     cursor: nextCursor,
@@ -117,6 +121,7 @@ export async function readWorkingSet(
     householdId: context.householdId,
     confirmedTransferIds,
     categories,
+    recurringDecisions,
     accounts,
     balances,
     transactions,

@@ -72,6 +72,8 @@ const REDACTED_PATHS = [
   '*.payee',
   '*.memo',
   '*.mask',
+  // Recurring series are keyed by a normalized payee, so a key is a merchant name.
+  '*.merchantKey',
   '*.email',
 ] as const
 

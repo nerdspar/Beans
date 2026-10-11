@@ -121,3 +121,9 @@ export const deletionEntity = pgEnum('deletion_entity', [
   'transfer_match',
   'connection',
 ])
+
+/**
+ * What a person said about a recurring series (ARCHITECTURE.md §20): it is a subscription, it is a
+ * bill, or it is not recurring at all and should stop being shown.
+ */
+export const recurringDecision = pgEnum('recurring_decision', ['subscription', 'bill', 'ignored'])

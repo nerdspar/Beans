@@ -160,6 +160,7 @@ async function clearHousehold(context: HouseholdContext): Promise<void> {
     'transactions',
     'manual_balance_updates',
     'category_rules',
+    'recurring_decisions',
     'accounts',
     'connections',
     'institutions',

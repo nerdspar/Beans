@@ -99,6 +99,16 @@ export const workingSetTransactionSchema = z.object({
   status: z.enum(['active', 'void']),
 })
 
+/**
+ * A person's override of a detected recurring series (ARCHITECTURE.md §20). The key is the series
+ * key the detector produces; the client matches on it.
+ */
+export const workingSetRecurringDecisionSchema = z.object({
+  id: z.string().uuid(),
+  merchantKey: z.string(),
+  decision: z.enum(['subscription', 'bill', 'ignored']),
+})
+
 export const deletionSchema = z.object({
   entityType: z.enum([
     'account',
@@ -153,6 +163,12 @@ export const workingSetResponseSchema = z.object({
    */
   categories: z.array(workingSetCategorySchema),
 
+  /**
+   * Sent whole, like categories. A household has a few dozen at most, and sending the full set
+   * means a removed decision needs no tombstone — it is simply absent next time.
+   */
+  recurringDecisions: z.array(workingSetRecurringDecisionSchema),
+
   accounts: z.array(workingSetAccountSchema),
   balances: z.array(workingSetBalanceSchema),
   transactions: z.array(workingSetTransactionSchema),
@@ -160,6 +176,7 @@ export const workingSetResponseSchema = z.object({
 })
 
 export type WorkingSetCategory = z.infer<typeof workingSetCategorySchema>
+export type WorkingSetRecurringDecision = z.infer<typeof workingSetRecurringDecisionSchema>
 export type WorkingSetAccount = z.infer<typeof workingSetAccountSchema>
 export type WorkingSetBalance = z.infer<typeof workingSetBalanceSchema>
 export type WorkingSetTransaction = z.infer<typeof workingSetTransactionSchema>

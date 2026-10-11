@@ -17,6 +17,7 @@ import { importRoutes, MAX_IMPORT_BYTES } from './routes/imports.js'
 import { preferenceRoutes } from './routes/preferences.js'
 import { exportRoutes } from './routes/export.js'
 import { staticSiteRoutes } from './routes/static-site.js'
+import { recurringRoutes } from './routes/recurring.js'
 import { transferRoutes } from './routes/transfers.js'
 import { workingSetRoutes } from './routes/working-set.js'
 import type { Pool } from 'pg'
@@ -95,6 +96,7 @@ export async function buildServer({
   await fastify.register(preferenceRoutes, { auth, pool })
   await fastify.register(workingSetRoutes, { auth, context: contextDeps })
   await fastify.register(transferRoutes, { auth, deps: contextDeps })
+  await fastify.register(recurringRoutes, { auth, deps: contextDeps })
   await fastify.register(exportRoutes, { auth, deps: contextDeps })
 
   /**

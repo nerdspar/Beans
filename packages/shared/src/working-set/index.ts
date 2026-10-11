@@ -6,6 +6,7 @@ export {
   workingSetAccountSchema,
   workingSetBalanceSchema,
   workingSetCategorySchema,
+  workingSetRecurringDecisionSchema,
   workingSetResponseSchema,
   workingSetTransactionSchema,
   CURSOR_OVERLAP_SECONDS,
@@ -15,6 +16,7 @@ export {
   type WorkingSetAccount,
   type WorkingSetBalance,
   type WorkingSetCategory,
+  type WorkingSetRecurringDecision,
   type WorkingSetResponse,
   type WorkingSetTransaction,
 } from './types.js'

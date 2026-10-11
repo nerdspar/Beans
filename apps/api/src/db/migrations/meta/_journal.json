@@ -127,6 +127,13 @@
       "when": 1790777825607,
       "tag": "0017_mysterious_goliath",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791684411153,
+      "tag": "0018_misty_vampiro",
+      "breakpoints": true
     }
   ]
 }
