@@ -1,0 +1,1 @@
+ALTER TABLE "retirement_spending_assumptions" ADD COLUMN "last_year" integer;

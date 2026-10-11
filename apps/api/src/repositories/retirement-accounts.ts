@@ -304,3 +304,100 @@ export async function setPlanFeatures(
     ],
   )
 }
+
+/**
+ * The accounts whose balances the projection may draw on, as the engine needs them.
+ *
+ * Selected straight from `accounts`, so the policy applies without a join — including the
+ * private-account clause. Unconfirmed accounts are excluded for the same reason every rollup
+ * excludes them: a provider's sign has not been checked by a human yet (§3.3), and a flipped credit
+ * balance in a retirement projection is wrong by twice the number in a plausible direction.
+ *
+ * Closed accounts are excluded too. A closed account's balance is zero or historical, and carrying
+ * it would put money in the opening portfolio that nobody can spend.
+ */
+export async function readDrawableAccounts(
+  context: HouseholdContext,
+): Promise<
+  { id: string; type: string; taxTreatment: TaxTreatment; balanceCents: bigint | null }[]
+> {
+  const result = await context.client.query<{
+    id: string
+    type: string
+    tax_treatment: TaxTreatment
+    current_balance: Buffer | null
+  }>(
+    `select id, type, tax_treatment, current_balance
+       from accounts
+      where confirmed_at is not null
+        and not is_closed
+      order by created_at, id`,
+  )
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    type: row.type,
+    taxTreatment: row.tax_treatment,
+    balanceCents:
+      row.current_balance === null ? null : context.cipher.decryptMoney(row.current_balance),
+  }))
+}
+
+/**
+ * Transactions in a window, for building the retirement spending baseline.
+ *
+ * **Joins `accounts`, which is what settles a privacy question rather than a technical one.** A
+ * private account's spending is outside the household baseline, exactly as it is outside every
+ * other rollup (§6.4). The consequence is deliberate and worth stating plainly: two members of one
+ * household see *different* retirement projections, because the owner's baseline includes spending
+ * the other member cannot see.
+ *
+ * The alternative considered was summing every household account into the total while hiding the
+ * per-category breakdown. That keeps one coherent plan, but it leaks an aggregate — subtract the
+ * visible categories from the total and you have inferred roughly what is being spent on the hidden
+ * account. A privacy rule that can be defeated with arithmetic is not one.
+ *
+ * Amounts come back signed, as stored. Transfers and voided rows are **not** filtered here: that
+ * judgement lives in `isExcludedFromCashFlow`, which also needs the confirmed-pair set, and
+ * duplicating it in SQL is how the two come to disagree.
+ */
+export async function readSpendingWindow(
+  context: HouseholdContext,
+  from: IsoDate,
+  to: IsoDate,
+): Promise<
+  {
+    id: string
+    postedDate: IsoDate
+    amountCents: bigint
+    categoryId: string | null
+    categoryKind: 'income' | 'expense' | 'transfer' | undefined
+    status: 'active' | 'void'
+  }[]
+> {
+  const result = await context.client.query<{
+    id: string
+    posted_date: IsoDate
+    amount: Buffer
+    category_id: string | null
+    category_kind: 'income' | 'expense' | 'transfer' | null
+    status: 'active' | 'void'
+  }>(
+    `select t.id, t.posted_date, t.amount, t.category_id, c.kind as category_kind, t.status
+       from transactions t
+       join accounts a on a.id = t.account_id
+       left join categories c on c.id = t.category_id
+      where t.posted_date >= $1 and t.posted_date <= $2
+      order by t.posted_date, t.id`,
+    [from, to],
+  )
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    postedDate: row.posted_date,
+    amountCents: context.cipher.decryptMoney(row.amount),
+    categoryId: row.category_id,
+    categoryKind: row.category_kind ?? undefined,
+    status: row.status,
+  }))
+}

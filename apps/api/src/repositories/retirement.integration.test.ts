@@ -8,13 +8,18 @@ import {
   createHousehold,
   withHouseholdContext,
   type ContextDependencies,
+  type HouseholdContext,
 } from './household-context.js'
+import { createManualAccount } from './accounts.js'
 import {
   RetirementError,
   addRetirementMember,
   deleteRetirementMember,
   ensureRetirementPlan,
+  readLoanPayoffYears,
   readRetirementPlan,
+  readSpendingAssumptions,
+  setSpendingAssumption,
   setDefaultScenario,
   updateRetirementMember,
   updateRetirementProfile,
@@ -38,6 +43,9 @@ const MASTER_KEY = Buffer.alloc(32, 0x11).toString('base64')
 
 const OWNER = 'retire-owner-fixed-id'
 const OUTSIDER = 'retire-outsider-fixed-id'
+
+// Fixed, never the wall clock (CLAUDE.md).
+const REVIEWED = new Date('2026-10-01T12:00:00.000Z')
 
 const describeIntegration = TEST_DATABASE_URL === undefined ? describe.skip : describe
 
@@ -362,6 +370,150 @@ describeIntegration('retirement plan', () => {
 
       const after = await withHouseholdContext(deps, OWNER, readRetirementPlan)
       expect(after?.scenarios.find((s) => s.id === scenario.id)?.annualSpendingOverrideCents).toBeNull()
+    })
+  })
+
+  describe('spending assumptions', () => {
+    async function categoryId(context: HouseholdContext, slug: string): Promise<string> {
+      const rows = await context.client.query<{ id: string }>(
+        'select id from categories where slug = $1',
+        [slug],
+      )
+      const existing = rows.rows[0]
+      if (existing !== undefined) return existing.id
+
+      const created = await context.client.query<{ id: string }>(
+        `insert into categories (household_id, slug, name, kind) values ($1, $2, $3, 'expense')
+         returning id`,
+        [context.householdId, slug, slug],
+      )
+      return created.rows[0]!.id
+    }
+
+    it('round-trips a treatment and its percentage', async () => {
+      await createHousehold(deps, OWNER, 'The Goldbergs')
+
+      await withHouseholdContext(deps, OWNER, async (ctx) => {
+        const plan = await ensureRetirementPlan(ctx)
+        await setSpendingAssumption(ctx, plan.profile.id, {
+          categoryId: await categoryId(ctx, 'commuting'),
+          treatment: 'adjusted',
+          adjustmentBasisPoints: 2_500,
+          reviewedAt: REVIEWED,
+        })
+
+        const stored = await readSpendingAssumptions(ctx, plan.profile.id)
+        expect(stored).toHaveLength(1)
+        expect(stored[0]).toMatchObject({
+          treatment: 'adjusted',
+          adjustmentBasisPoints: 2_500,
+          lastYear: null,
+        })
+      })
+    })
+
+    it('refuses an adjusted category with no percentage', async () => {
+      /*
+       * Enforced here rather than by a CHECK so the error can say something useful. An `adjusted`
+       * row with no percentage is a bug, and the math module falls back to `continues` if one ever
+       * reaches it — overstating the cost, which is the safe direction but not a licence to write
+       * one.
+       */
+      await createHousehold(deps, OWNER, 'The Goldbergs')
+
+      await withHouseholdContext(deps, OWNER, async (ctx) => {
+        const plan = await ensureRetirementPlan(ctx)
+        await expect(
+          setSpendingAssumption(ctx, plan.profile.id, {
+            categoryId: await categoryId(ctx, 'commuting'),
+            treatment: 'adjusted',
+            reviewedAt: REVIEWED,
+          }),
+        ).rejects.toThrow(RetirementError)
+      })
+    })
+
+    it('clears a stale percentage when the treatment stops being adjusted', async () => {
+      // Otherwise switching back to `adjusted` later would silently pick up an old number nobody
+      // re-entered.
+      await createHousehold(deps, OWNER, 'The Goldbergs')
+
+      await withHouseholdContext(deps, OWNER, async (ctx) => {
+        const plan = await ensureRetirementPlan(ctx)
+        const category = await categoryId(ctx, 'commuting')
+
+        await setSpendingAssumption(ctx, plan.profile.id, {
+          categoryId: category,
+          treatment: 'adjusted',
+          adjustmentBasisPoints: 2_500,
+          reviewedAt: REVIEWED,
+        })
+        await setSpendingAssumption(ctx, plan.profile.id, {
+          categoryId: category,
+          treatment: 'continues',
+          reviewedAt: REVIEWED,
+        })
+
+        const stored = await readSpendingAssumptions(ctx, plan.profile.id)
+        expect(stored[0]).toMatchObject({ treatment: 'continues', adjustmentBasisPoints: null })
+      })
+    })
+
+    it('stores a payoff year per category rather than applying one to all of them', async () => {
+      /*
+       * The bug this exists for. The first version of the reader resolved `lastYear` with a
+       * subquery over `accounts.payoff_date` that was not correlated to the category — so every row
+       * got the mortgage's year, and the projection would have stopped buying groceries the month
+       * the house was paid off.
+       */
+      await createHousehold(deps, OWNER, 'The Goldbergs')
+
+      await withHouseholdContext(deps, OWNER, async (ctx) => {
+        const plan = await ensureRetirementPlan(ctx)
+
+        await setSpendingAssumption(ctx, plan.profile.id, {
+          categoryId: await categoryId(ctx, 'mortgage'),
+          treatment: 'continues',
+          lastYear: 2_034,
+          reviewedAt: REVIEWED,
+        })
+        await setSpendingAssumption(ctx, plan.profile.id, {
+          categoryId: await categoryId(ctx, 'groceries'),
+          treatment: 'continues',
+          reviewedAt: REVIEWED,
+        })
+
+        const stored = await readSpendingAssumptions(ctx, plan.profile.id)
+        const byCategory = new Map(stored.map((row) => [row.categoryId, row.lastYear]))
+        const mortgage = await categoryId(ctx, 'mortgage')
+        const groceries = await categoryId(ctx, 'groceries')
+
+        expect(byCategory.get(mortgage)).toBe(2_034)
+        // The one that matters: groceries did not inherit the mortgage's payoff year.
+        expect(byCategory.get(groceries)).toBeNull()
+      })
+    })
+
+    it('offers a loan’s payoff year for the wizard to pre-fill, without applying it', async () => {
+      // Which category pays which loan is something only the household knows, so this is an offer
+      // rather than a derivation.
+      await createHousehold(deps, OWNER, 'The Goldbergs')
+
+      await withHouseholdContext(deps, OWNER, async (ctx) => {
+        const { accountId } = await createManualAccount(ctx, {
+          name: 'Mortgage',
+          institutionName: 'Local Bank',
+          type: 'mortgage',
+          balanceCents: -300_000_00n,
+          effectiveDate: '2026-01-01',
+        })
+        await ctx.client.query('update accounts set payoff_date = $2 where id = $1', [
+          accountId,
+          '2034-09-01',
+        ])
+
+        expect(await readLoanPayoffYears(ctx)).toEqual([{ accountId, payoffYear: 2_034 }])
+      })
     })
   })
 

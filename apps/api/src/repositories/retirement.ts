@@ -79,10 +79,14 @@ export async function readRetirementPlan(
   const profileRow = profiles.rows[0]
   if (profileRow === undefined) return null
 
-  const [members, scenarios] = await Promise.all([
-    readMembers(context, profileRow.id),
-    readScenarios(context, profileRow.id),
-  ])
+  /*
+   * Sequential, deliberately. Both share the transaction's one `PoolClient`, and a single
+   * connection cannot run queries concurrently — node-postgres serializes them and warns that it
+   * will stop doing so in pg@9. `Promise.all` here buys nothing and breaks later. Same reasoning as
+   * `readWorkingSet`, which carries the same note.
+   */
+  const members = await readMembers(context, profileRow.id)
+  const scenarios = await readScenarios(context, profileRow.id)
 
   return { profile: toProfile(context, profileRow), members, scenarios }
 }
@@ -447,4 +451,143 @@ async function readScenarios(
     isDefault: row.is_default,
     sortOrder: row.sort_order,
   }))
+}
+
+/**
+ * What happens to each spending category in retirement.
+ *
+ * Shaped to feed `retirementSpending` directly: a discriminated union where an `adjusted` row
+ * cannot exist without its percentage. The column is nullable, so the conversion happens here — and
+ * a row claiming `adjusted` with no percentage is treated as `continues`, which is the expensive
+ * assumption and therefore the safe one to fall back on. The repository is what guarantees the
+ * pairing on write; this is the belt to that braces.
+ */
+export type StoredSpendingAssumption = {
+  categoryId: string
+  treatment: 'continues' | 'stops' | 'adjusted'
+  adjustmentBasisPoints: number | null
+  reviewedAt: Date | null
+  /** The last year this cost is incurred, from the payoff date of a loan it pays. */
+  lastYear: number | null
+}
+
+/**
+ * Every recorded assumption for this profile.
+ *
+ * `last_year` is **stored per category, not derived from the loan.** The first version of this
+ * query tried to be clever and resolved it with a subquery over `accounts.payoff_date` — which was
+ * not correlated to the category at all, so every row got the mortgage's payoff year and the
+ * projection would have stopped buying groceries the month the house was paid off. A derivation
+ * that silently applies to the wrong rows is worse than asking.
+ *
+ * There is also no link in the schema to derive it from. A mortgage payment is a transaction in a
+ * *checking* account under whatever category the household chose, and §9.1 is explicit that it is
+ * not a transfer to the mortgage account — the interest is a real expense. So nothing joins the
+ * category to the loan, and the honest design is the one the ground rules already call for: the
+ * wizard pre-fills the year from `accounts.payoff_date` and the user confirms it.
+ */
+export async function readSpendingAssumptions(
+  context: HouseholdContext,
+  profileId: string,
+): Promise<StoredSpendingAssumption[]> {
+  const result = await context.client.query<{
+    category_id: string
+    treatment: 'continues' | 'stops' | 'adjusted'
+    adjustment_basis_points: number | null
+    reviewed_at: Date | null
+    last_year: number | null
+  }>(
+    `select s.category_id, s.treatment, s.adjustment_basis_points, s.reviewed_at, s.last_year
+       from retirement_spending_assumptions s
+      where s.profile_id = $1
+      order by s.category_id`,
+    [profileId],
+  )
+
+  return result.rows.map((row) => ({
+    categoryId: row.category_id,
+    treatment: row.treatment,
+    adjustmentBasisPoints: row.adjustment_basis_points,
+    reviewedAt: row.reviewed_at,
+    lastYear: row.last_year,
+  }))
+}
+
+/**
+ * The payoff year of each loan or mortgage, for the wizard to pre-fill a spending answer with.
+ *
+ * Returned as a list for the UI to offer, never applied automatically. Which category pays which
+ * loan is something only the household knows, and the cost of guessing wrong is a projection that
+ * drops an entire category on the wrong date.
+ */
+export async function readLoanPayoffYears(
+  context: HouseholdContext,
+): Promise<{ accountId: string; payoffYear: number }[]> {
+  const result = await context.client.query<{ id: string; payoff_year: number }>(
+    `select id, extract(year from payoff_date)::int as payoff_year
+       from accounts
+      where payoff_date is not null
+        and type in ('mortgage', 'loan')
+      order by payoff_date`,
+  )
+
+  return result.rows.map((row) => ({ accountId: row.id, payoffYear: row.payoff_year }))
+}
+
+export type SpendingAssumptionInput = {
+  categoryId: string
+  treatment: 'continues' | 'stops' | 'adjusted'
+  /** Required when the treatment is `adjusted`, and rejected otherwise. */
+  adjustmentBasisPoints?: number | null | undefined
+  /**
+   * The last calendar year this cost is incurred, for a category that pays off a loan.
+   *
+   * Confirmed by the user, pre-filled from `accounts.payoff_date` by the wizard. Never inferred —
+   * see the note on {@link readSpendingAssumptions}.
+   */
+  lastYear?: number | null | undefined
+  reviewedAt: Date
+}
+
+export async function setSpendingAssumption(
+  context: HouseholdContext,
+  profileId: string,
+  input: SpendingAssumptionInput,
+): Promise<void> {
+  /*
+   * The pairing is enforced here rather than by a CHECK constraint, so the error can say something
+   * useful. "adjustment_basis_points is required when the treatment is adjusted" is a sentence; a
+   * constraint name met at 2am is not.
+   */
+  if (input.treatment === 'adjusted') {
+    if (input.adjustmentBasisPoints === undefined || input.adjustmentBasisPoints === null) {
+      throw new RetirementError('An adjusted category needs a percentage')
+    }
+    if (input.adjustmentBasisPoints < 0) {
+      throw new RetirementError('An adjustment cannot be negative')
+    }
+  }
+
+  await context.client.query(
+    `insert into retirement_spending_assumptions
+       (household_id, profile_id, category_id, treatment, adjustment_basis_points, last_year,
+        reviewed_at)
+     values ($1, $2, $3, $4, $5, $6, $7)
+     on conflict (profile_id, category_id) do update
+       set treatment = excluded.treatment,
+           adjustment_basis_points = excluded.adjustment_basis_points,
+           last_year = excluded.last_year,
+           reviewed_at = excluded.reviewed_at`,
+    [
+      context.householdId,
+      profileId,
+      input.categoryId,
+      input.treatment,
+      // Cleared whenever the treatment is not `adjusted`, so a stale percentage cannot linger and
+      // be picked up if somebody switches the treatment back.
+      input.treatment === 'adjusted' ? (input.adjustmentBasisPoints ?? null) : null,
+      input.lastYear ?? null,
+      input.reviewedAt,
+    ],
+  )
 }

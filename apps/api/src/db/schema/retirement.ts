@@ -232,6 +232,24 @@ export const retirementSpendingAssumptions = pgTable(
      */
     adjustmentBasisPoints: integer('adjustment_basis_points'),
 
+    /**
+     * The last calendar year this cost is incurred, for a category that pays off a loan.
+     *
+     * This is how a mortgage leaves the baseline: not at retirement, but on its own payoff date.
+     * Retiring at 62 with four years left on the mortgage is a materially different plan from
+     * retiring with it clear, and dropping the payment at either wrong moment is wrong by a whole
+     * payment a month.
+     *
+     * **Stored, not derived.** Nothing in the schema links a category to a loan — a mortgage
+     * payment is a transaction in a *checking* account under whatever category the household chose,
+     * and §9.1 is explicit that it is not a transfer to the mortgage account because the interest is
+     * a real expense. An earlier attempt to resolve it with a subquery over `accounts.payoff_date`
+     * was not correlated to the category and would have stopped every category — groceries
+     * included — the month the house was paid off. The wizard pre-fills this from the account and
+     * the user confirms it.
+     */
+    lastYear: integer('last_year'),
+
     /** When a human last looked at this row. Drives re-prompting; see the note above about nagging. */
     reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
 

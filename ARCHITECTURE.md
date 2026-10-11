@@ -1655,6 +1655,38 @@ badly when the poor years land in the first five years of retirement, and a dete
 cannot express that because it has no sequence. Historical bootstrapping is preferred to random
 normal draws.
 
+### 19.4b A private account's spending is outside the household baseline
+
+Decided deliberately, and the consequence is visible rather than hidden: **two members of one
+household see different retirement projections.** The owner's baseline includes spending the other
+member cannot see, so their plan is more expensive and less funded.
+
+This follows §6.4 — a private account is out of every rollup, and the retirement baseline is a
+rollup. `readSpendingWindow` joins `accounts`, so the `accounts` policy does the excluding and
+nothing in the retirement tables has to know about visibility.
+
+The alternative considered was summing every household account into the baseline total while hiding
+the per-category breakdown. That gives one coherent plan both members agree on, and it leaks:
+subtract the visible categories from the total and you have inferred roughly what is being spent on
+the hidden account. **A privacy rule that can be defeated with arithmetic is not one.** The
+per-viewer difference is the honest cost of marking an account private, and it is arguably the
+correct answer anyway — each person's projection reflects what they actually know.
+
+A third option — refusing to run the plan at all while a private account exists — was rejected
+because it lets one member's privacy choice disable a shared feature for the other.
+
+### 19.4c Reads on a household context are sequential, never `Promise.all`
+
+Not a style preference. Every repository call inside `withHouseholdContext` shares that
+transaction's single `PoolClient`, and one connection cannot run queries concurrently:
+node-postgres serializes them and warns that it will **stop doing so in pg@9**. So `Promise.all`
+over a context's reads reads as a speed-up, delivers none, and breaks on a major version bump.
+
+`readWorkingSet` has carried this note since it was written. The retirement plan reader and the
+projection service both reintroduced the mistake anyway, and what caught it was a deprecation
+warning in integration test output rather than any assertion — which is the argument for reading
+test output rather than only its pass count.
+
 ### 19.5 What is deliberately absent
 
 `contribution_limits` and `opportunity_states` are phase B and **not created yet**. An empty
