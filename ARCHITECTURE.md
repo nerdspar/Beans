@@ -1488,6 +1488,7 @@ Specific traps already hit or avoided:
 | Budgeting (Phase 4)                         | Seam exists: `category_targets(category_id, month, amount)` attaches to stable `categories`. Not built.                                                                                                                                                                           |
 | Retirement (Phase 5)                        | **Phase A foundation in progress** — see §19. Tax buckets, carry-forward and the after-tax equivalent are built; the wizard and the projection are not. Phases B–D are not started, and B is blocked on user-supplied IRS reference data.                                          |
 | Tax profile (Phase 6)                       | New household-keyed tables. Depends on `tax_treatment` being populated and cash flow being clean, which is why both are handled properly in phase 1.                                                                                                                              |
+| Subscriptions          | **Built** — see §20. Detection only; nothing cancels anything, and no notifications fire on a new series or a price rise.                                                                                                                                                         |
 | Institution logos                           | If added, they go in a **separate global public table keyed by domain with no household reference**. The household-scoped row keeps its own encrypted name. Do not add a global FK from households to institutions — that would reveal which institutions a household banks with. |
 ## 19. Retirement planning
 
@@ -1667,3 +1668,72 @@ than a silent fallback to last year's number.
 Social Security is the same shape of problem and gets the same answer: the benefit is **read off an
 SSA statement and typed in**, never computed. The formula needs a full indexed wage history that
 Beans does not have.
+
+---
+
+## 20. Recurring charges and subscriptions
+
+`/subscriptions` lists charges that repeat on a schedule, in two groups: **subscriptions** (the
+amount holds still — Netflix, iCloud, a gym) and **bills** (on a schedule but the amount moves, or
+fixed but too large to be what anybody means by a subscription — electricity, rent). It identifies;
+it does not cancel anything.
+
+### 20.1 Detection runs in the browser
+
+For the reason cash flow does (§7, §14.2): grouping charges by merchant means reading descriptions,
+and descriptions are ciphertext in Postgres. `detectRecurring` is a pure function in
+`packages/shared/src/recurring/`, run over the working set, so it is tested with fixed dates and no
+database. Nothing about a series is stored on the server. The only server state is a person's
+override of one (§20.3).
+
+The working set's default two-year window (§7.2) is enough for an annual charge to appear twice,
+which is the minimum. The screen says so rather than letting a missing yearly plan look like an
+error.
+
+### 20.2 How a series is found, and the choices that look arbitrary
+
+- **Merchant key.** `merchantKeyFor` strips what varies between charges from one merchant: digits
+  (reference, store and phone numbers, dates), processor prefixes (`SQ *`, `TST*`), card boilerplate
+  and a trailing state code. Three or more digits make a token a reference. The cut-off is there to
+  keep `1password`, `23andme` and `24 hour fitness` intact. The key only needs to be _stable_, not
+  pretty. **If this function changes, existing decisions stop matching** the series they were made
+  about. They are not lost, just orphaned until somebody decides again.
+- **Whole merchant first, then per amount.** Netflix with a price rise is one series, so the whole
+  merchant is tried first. `APPLE.COM/BILL` is iCloud, Apple TV and more on different days, and
+  `AMAZON` is Prime among a hundred one-off orders. Together they look irregular; split by exact
+  amount, each is a clean monthly series. Split series are keyed `merchant@amount`.
+- **Cadence** is weekly, two-weekly, monthly, quarterly or yearly. Three quarters of the gaps must fit,
+  **and the latest one must**, so the series can be forecast from. Minimum charges: four weekly,
+  three otherwise, two yearly.
+- **Excluded from detection** are pending, voided and refunded charges, plus anything
+  `isExcludedFromCashFlow` excludes. A card payment recurs monthly and is a transfer (§9), not a bill.
+  The exclusion is the cash flow function, called, not reimplemented.
+- **Subscription or bill.** "Fixed" allows one price change in a short run, or one in five in a
+  long one. Fixed and at most **$250 a charge** is a subscription; above that, or in a housing,
+  insurance or tax category, it is a bill. Rent is as fixed as Netflix, and listing it as a
+  subscription is the most visible way this screen could be wrong. Variable amounts in grocery,
+  dining, fuel, shopping or travel categories are dropped rather than called bills: a weekly shop
+  has exactly a utility bill's shape.
+- **Lapsed** means the next charge is overdue by more than half a period. The screen says that is
+  usually a cancellation and sometimes a new card, because it cannot tell which.
+- **Signs are not decided here.** Charges arrive negative and every amount and total stays negative
+  until display negates it (§3.2).
+
+### 20.3 Decisions — `recurring_decisions`
+
+A row exists only where somebody overrode the detector: subscription, bill, or `ignored`.
+`ignored` is sticky for the reason a rejected transfer is (§9). Undo deletes the row and returns
+the series to whatever detection concludes.
+
+- **The merchant key is encrypted.** It is derived from payee text, so a list of them is a list of
+  who the household pays, like rule match text (§5). That rules out a unique constraint: the
+  repository serializes writes per household with an advisory lock, and matches after decrypting.
+  The key is in the log redaction list.
+- **Each decision carries the `account_id` of the series' latest charge, and every read joins
+  `accounts`.** The account is not used for matching. It exists so that hiding a charge on a private
+  account does not send that merchant's name to every other member in their next working set (§6.4).
+  Tested both ways: invisible to the partner, refused when the partner tries to attach a decision to
+  an account they cannot see.
+- **Sent whole in the working set**, like categories, so a removed decision needs no tombstone. Sync
+  reports a changed set as a flag. Without it the screen would re-read the store only when a
+  transaction changed, and a decision made on another device would stay invisible until one did.
