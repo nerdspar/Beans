@@ -32,3 +32,5 @@ export {
 } from './projection.js'
 
 export { grossUpForTax, grow, scaleSigned } from './rates.js'
+
+export { SEED_SCENARIOS, type SeedScenario } from './scenarios.js'
