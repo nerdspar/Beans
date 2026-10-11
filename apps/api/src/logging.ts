@@ -65,6 +65,22 @@ const REDACTED_PATHS = [
   '*.matchAmountMin',
   '*.matchAmountMax',
 
+  /*
+   * Retirement planning money (§19). All of these arrive in request bodies as decimal strings,
+   * which is exactly the shape a logged body would carry through untouched.
+   *
+   * `*.balance` above already covers a bucket breakdown. The projection *response* is not logged —
+   * no handler logs a reply body — so its forty years of per-year figures are not enumerated here;
+   * the two headline numbers are, because they are the ones somebody would be tempted to log while
+   * debugging a plan that looked wrong.
+   */
+  '*.annualAmount',
+  '*.annualSpendingOverride',
+  '*.socialSecurityAnnualBenefit',
+  '*.pre65HealthcareAnnual',
+  '*.terminalTotal',
+  '*.gap',
+
   // Identifying strings.
   '*.displayName',
   '*.providerName',
@@ -74,6 +90,8 @@ const REDACTED_PATHS = [
   '*.mask',
   // Recurring series are keyed by a normalized payee, so a key is a merchant name.
   '*.merchantKey',
+  // An employer match formula describes somebody's compensation.
+  '*.employerMatchDescription',
   '*.email',
 ] as const
 
