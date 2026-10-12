@@ -86,6 +86,22 @@ export type ProjectionInput = {
 
   /** Null or absent uses {@link DEFAULT_WITHDRAWAL_ORDER}. */
   withdrawalOrder?: readonly TaxTreatment[] | null | undefined
+
+  /**
+   * Out-of-pocket healthcare between retiring and turning 65, per year. **Negative**, like all
+   * spending.
+   *
+   * Its own input rather than a line in the spending baseline, because it is the single largest
+   * unknown for anybody stopping work before Medicare and averaging it into a category makes it
+   * disappear — producing a cheerful, wrong projection for exactly the people who most need an
+   * accurate one.
+   *
+   * Applied in any year where **someone who has retired is still under 65**. That is the
+   * household-level reading: one figure, charged while anybody needs the bridge. Per-member costs,
+   * real plan pricing and the subsidy cliff are phase D, and this is deliberately the cruder thing
+   * that is visible rather than the finer thing that is absent.
+   */
+  pre65HealthcareAnnualCents?: bigint | undefined
 }
 
 export type ProjectionYear = {
@@ -260,9 +276,20 @@ export function projectScenario(
   for (let year = input.startYear; year <= input.endYear; year += 1) {
     const retired = year >= householdRetirementYear
 
-    const spendingCents = retired
+    const baselineCents = retired
       ? (scenario.annualSpendingOverrideCents ?? spendingInYear(input.spending, year))
       : 0n
+
+    /*
+     * The bridge is charged while anybody who has stopped working is still under 65. Checking the
+     * retirement year per member rather than the household's — somebody who retires at 67 never
+     * needs it, and charging the household for them would overstate every plan with an age gap.
+     */
+    const needsBridge = input.members.some(
+      (member) => year >= retirementYearOf(member, scenario) && ageIn(member, year) < 65,
+    )
+    const spendingCents =
+      baselineCents + (retired && needsBridge ? (input.pre65HealthcareAnnualCents ?? 0n) : 0n)
 
     /*
      * Benefits start at each member's own claim age, independently. Two people claim on different

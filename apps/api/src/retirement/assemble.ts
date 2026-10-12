@@ -225,6 +225,9 @@ export function assembleProjection(options: AssembleOptions): AssembledProjectio
     members,
     retirementEffectiveRateBasisPoints: plan.profile.retirementEffectiveRateBasisPoints,
     withdrawalOrder: plan.profile.withdrawalOrder,
+    ...(plan.profile.pre65HealthcareAnnualCents === null
+      ? {}
+      : { pre65HealthcareAnnualCents: plan.profile.pre65HealthcareAnnualCents }),
   }
 
   const scenarios: ProjectionScenario[] = plan.scenarios.map((scenario) => ({

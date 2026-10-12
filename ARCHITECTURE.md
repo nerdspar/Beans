@@ -1721,6 +1721,18 @@ Three things the screens deliberately do not do:
   employer plan.** Beans cannot know that. Each answer is yes / no / **don't know**, and the third
   is the load-bearing one.
 
+**Healthcare before 65 is its own input, charged while a retired member is under 65.** Averaging it
+into a spending category makes the expensive early years disappear — for exactly the people
+retiring early, who most need the figure to be right. It is checked per member rather than against
+the household's retirement year, so somebody who retires at 67 never triggers it. The entered cost
+is a household figure charged once while anybody needs the bridge; per-member costs, real plan
+pricing and the subsidy cliff are phase D. This is deliberately the cruder thing that is visible
+rather than the finer thing that is absent.
+
+**`projection_runs` is created and nothing writes to it yet.** Plan history is phase D. The table is
+inert rather than wrong — no code reads it and no screen implies it has contents — but it is dead
+schema until then, and worth knowing about rather than discovering.
+
 **The after-tax equivalent is shown on the retirement dashboard, not on the net worth screen.** The
 spec says "beside net worth", and this honours the intent rather than the letter: most households
 never open the planner, and putting a rate-dependent figure on the main screen would show everybody

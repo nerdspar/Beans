@@ -14,6 +14,7 @@ import { localToday } from '../lib/today.js'
 import {
   getRetirementPlan,
   makeScenarioDefault,
+  patchProfile,
   patchScenario,
   setBuckets,
   setPlanFeatures,
@@ -86,6 +87,7 @@ export function RetirementSetup(): ReactNode {
       <SpendingStep
         loanPayoffYears={plan.data.loanPayoffYears}
         answers={plan.data.spendingAssumptions}
+        pre65Healthcare={plan.data.profile.pre65HealthcareAnnual}
       />
       <ScenariosStep scenarios={plan.data.scenarios} />
 
@@ -534,9 +536,12 @@ function TriState({
 function SpendingStep({
   loanPayoffYears,
   answers,
+  pre65Healthcare,
 }: {
   loanPayoffYears: readonly { accountId: string; payoffYear: number }[]
   answers: readonly StoredSpendingAnswer[]
+  /** Stored negative, like all spending. The field below shows it as a positive cost. */
+  pre65Healthcare: string | null
 }): ReactNode {
   const workingSet = useWorkingSet()
   const today = localToday()
@@ -571,6 +576,8 @@ function SpendingStep({
         </p>
       )}
 
+      <HealthcareBridge stored={pre65Healthcare} />
+
       <ul className="mt-4 space-y-2">
         {review.rows.map((row) => (
           <li
@@ -598,6 +605,71 @@ function SpendingStep({
         ))}
       </ul>
     </Section>
+  )
+}
+
+/**
+ * Healthcare between retiring and 65, asked for separately.
+ *
+ * The single largest unknown for anybody stopping work before Medicare. Averaged into a category
+ * it disappears, which produces a cheerful and wrong projection for exactly the people who most
+ * need an accurate one.
+ */
+function HealthcareBridge({ stored }: { stored: string | null }): ReactNode {
+  const queryClient = useQueryClient()
+  const id = useId()
+
+  /*
+   * Shown as a positive cost because that is how somebody thinks about a bill, and negated on the
+   * way out. This is the ingest edge for this field — the one place its sign is decided (§3.2).
+   */
+  const [amount, setAmount] = useState(stored === null ? '' : stored.replace(/^-/, ''))
+
+  const save = useMutation({
+    mutationFn: () =>
+      patchProfile({
+        pre65HealthcareAnnual:
+          amount.trim() === '' ? null : `-${amount.trim().replace(/^-/, '')}`,
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: PLAN_KEY })
+      await queryClient.invalidateQueries({ queryKey: PROJECTION_KEY })
+    },
+  })
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault()
+        save.mutate()
+      }}
+      className="mt-4 rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-800"
+    >
+      <label htmlFor={id} className="font-medium">
+        {RETIREMENT_COPY.spending.healthcareBridge}
+      </label>
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        {RETIREMENT_COPY.spending.healthcareBridgeNote}
+      </p>
+      <div className="mt-2 flex gap-2">
+        <input
+          id={id}
+          inputMode="decimal"
+          placeholder="0.00"
+          value={amount}
+          onChange={(event) => setAmount(event.target.value)}
+          pattern="\d+(\.\d{1,2})?"
+          className={`${inputClass} flex-1`}
+        />
+        <button
+          type="submit"
+          disabled={save.isPending}
+          className="mt-1 shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-xs disabled:opacity-60 dark:border-slate-700"
+        >
+          Save
+        </button>
+      </div>
+    </form>
   )
 }
 

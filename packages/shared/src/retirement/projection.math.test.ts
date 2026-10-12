@@ -629,6 +629,82 @@ describe('projectScenario', () => {
     })
   })
 
+  describe('healthcare before 65', () => {
+    const base = {
+      startYear: 2_030,
+      endYear: 2_032,
+      openingBuckets: [bucket('taxable', 500_000_00n)],
+      contributions: [],
+      spending: costs(-20_000_00n),
+      retirementEffectiveRateBasisPoints: 0,
+      pre65HealthcareAnnualCents: -18_000_00n,
+    }
+
+    it('charges the bridge while a retired member is under 65, and stops at 65', () => {
+      /*
+       * Its own line rather than an average inside a category, because averaging it over thirty
+       * years makes the expensive early years disappear — for exactly the people retiring early,
+       * who most need the number to be right.
+       *
+       * Born 1967, so 63 in 2030 and 65 in 2032.
+       */
+      const result = projectScenario(
+        { ...base, members: [member({ birthYear: 1_967, retirementYear: 2_030 })] },
+        scenario(),
+      )
+
+      expect(result.years.map((y) => y.spendingCents)).toEqual([
+        -38_000_00n,
+        -38_000_00n,
+        -20_000_00n,
+      ])
+    })
+
+    it('does not charge it for somebody who retires at 65 or later', () => {
+      // Charging the household for a member who never needs the bridge would overstate every plan
+      // with an age gap in it.
+      const result = projectScenario(
+        {
+          ...base,
+          members: [
+            member({ id: 'early', birthYear: 1_967, retirementYear: 2_030 }),
+            member({ id: 'late', birthYear: 1_960, retirementYear: 2_030 }),
+          ],
+        },
+        scenario(),
+      )
+
+      // The younger one still needs it, so it is charged once rather than twice or not at all.
+      expect(result.years[0]?.spendingCents).toBe(-38_000_00n)
+    })
+
+    it('charges nothing while still working', () => {
+      const result = projectScenario(
+        {
+          ...base,
+          startYear: 2_029,
+          members: [member({ birthYear: 1_967, retirementYear: 2_030 })],
+        },
+        scenario(),
+      )
+
+      expect(result.years[0]?.spendingCents).toBe(0n)
+    })
+
+    it('is absent when nobody has entered one', () => {
+      const result = projectScenario(
+        {
+          ...base,
+          pre65HealthcareAnnualCents: undefined,
+          members: [member({ birthYear: 1_967, retirementYear: 2_030 })],
+        },
+        scenario(),
+      )
+
+      expect(result.years[0]?.spendingCents).toBe(-20_000_00n)
+    })
+  })
+
   describe('what it does not model', () => {
     it('says so, rather than leaving the omission invisible', () => {
       /*
