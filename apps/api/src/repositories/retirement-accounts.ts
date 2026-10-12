@@ -204,6 +204,8 @@ export async function deleteContributionRoute(
  */
 export type PlanFeatures = {
   accountId: string
+  /** Null means nobody has said whether this is an employer plan or an IRA. Blocks the pro-rata rule. */
+  isEmployerPlan: boolean | null
   allowsAfterTaxContributions: boolean | null
   allowsInPlanRothConversion: boolean | null
   allowsInServiceWithdrawal: boolean | null
@@ -215,6 +217,7 @@ export type PlanFeatures = {
 export async function readPlanFeatures(context: HouseholdContext): Promise<PlanFeatures[]> {
   const result = await context.client.query<{
     account_id: string
+    is_employer_plan: boolean | null
     allows_after_tax_contributions: boolean | null
     allows_in_plan_roth_conversion: boolean | null
     allows_in_service_withdrawal: boolean | null
@@ -222,7 +225,8 @@ export async function readPlanFeatures(context: HouseholdContext): Promise<PlanF
     employer_match_description: Buffer | null
     answered_at: Date | null
   }>(
-    `select f.account_id, f.allows_after_tax_contributions, f.allows_in_plan_roth_conversion,
+    `select f.account_id, f.is_employer_plan, f.allows_after_tax_contributions,
+            f.allows_in_plan_roth_conversion,
             f.allows_in_service_withdrawal, f.accepts_ira_roll_ins,
             f.employer_match_description, f.answered_at
        from plan_features f
@@ -232,6 +236,7 @@ export async function readPlanFeatures(context: HouseholdContext): Promise<PlanF
 
   return result.rows.map((row) => ({
     accountId: row.account_id,
+    isEmployerPlan: row.is_employer_plan,
     allowsAfterTaxContributions: row.allows_after_tax_contributions,
     allowsInPlanRothConversion: row.allows_in_plan_roth_conversion,
     allowsInServiceWithdrawal: row.allows_in_service_withdrawal,
@@ -245,6 +250,7 @@ export async function readPlanFeatures(context: HouseholdContext): Promise<PlanF
 }
 
 export type PlanFeaturesPatch = {
+  isEmployerPlan?: boolean | null | undefined
   allowsAfterTaxContributions?: boolean | null | undefined
   allowsInPlanRothConversion?: boolean | null | undefined
   allowsInServiceWithdrawal?: boolean | null | undefined
@@ -271,11 +277,13 @@ export async function setPlanFeatures(
     `insert into plan_features
        (household_id, account_id, allows_after_tax_contributions,
         allows_in_plan_roth_conversion, allows_in_service_withdrawal, accepts_ira_roll_ins,
-        employer_match_description, answered_at)
-     values ($1, $2, $3, $5, $7, $9, $11, $13)
+        employer_match_description, answered_at, is_employer_plan)
+     values ($1, $2, $3, $5, $7, $9, $11, $13, $14)
      on conflict (account_id) do update
        set allows_after_tax_contributions = case
              when $4 then $3 else plan_features.allows_after_tax_contributions end,
+           is_employer_plan = case
+             when $15 then $14 else plan_features.is_employer_plan end,
            allows_in_plan_roth_conversion = case
              when $6 then $5 else plan_features.allows_in_plan_roth_conversion end,
            allows_in_service_withdrawal = case
@@ -301,6 +309,8 @@ export async function setPlanFeatures(
         : context.cipher.encryptText(patch.employerMatchDescription),
       'employerMatchDescription' in patch,
       patch.answeredAt,
+      patch.isEmployerPlan ?? null,
+      'isEmployerPlan' in patch,
     ],
   )
 }
@@ -319,15 +329,23 @@ export async function setPlanFeatures(
 export async function readDrawableAccounts(
   context: HouseholdContext,
 ): Promise<
-  { id: string; type: string; taxTreatment: TaxTreatment; balanceCents: bigint | null }[]
+  {
+    id: string
+    name: string
+    type: string
+    taxTreatment: TaxTreatment
+    balanceCents: bigint | null
+  }[]
 > {
   const result = await context.client.query<{
     id: string
+    display_name: Buffer | null
+    provider_name: Buffer | null
     type: string
     tax_treatment: TaxTreatment
     current_balance: Buffer | null
   }>(
-    `select id, type, tax_treatment, current_balance
+    `select id, display_name, provider_name, type, tax_treatment, current_balance
        from accounts
       where confirmed_at is not null
         and not is_closed
@@ -336,6 +354,17 @@ export async function readDrawableAccounts(
 
   return result.rows.map((row) => ({
     id: row.id,
+    /*
+     * The name, decrypted here at the repository boundary.
+     *
+     * Added because the opportunities screen rendered a raw UUID at somebody — "still to answer:
+     * a1106ea9-…" is not a question anybody can act on. The user's own name wins over the
+     * provider's, matching every other account list.
+     */
+    name:
+      (row.display_name === null ? null : context.cipher.decryptText(row.display_name)) ??
+      (row.provider_name === null ? null : context.cipher.decryptText(row.provider_name)) ??
+      'Account',
     type: row.type,
     taxTreatment: row.tax_treatment,
     balanceCents:

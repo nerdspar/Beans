@@ -1,0 +1,1 @@
+ALTER TABLE "plan_features" ADD COLUMN "is_employer_plan" boolean;

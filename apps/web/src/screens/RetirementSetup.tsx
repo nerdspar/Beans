@@ -429,6 +429,7 @@ function PlanFeaturesForm({
   const matchId = useId()
 
   const [answers, setAnswers] = useState({
+    isEmployerPlan: row.features?.isEmployerPlan ?? null,
     allowsAfterTaxContributions: row.features?.allowsAfterTaxContributions ?? null,
     allowsInPlanRothConversion: row.features?.allowsInPlanRothConversion ?? null,
     allowsInServiceWithdrawal: row.features?.allowsInServiceWithdrawal ?? null,
@@ -449,6 +450,12 @@ function PlanFeaturesForm({
   })
 
   const questions: { key: keyof typeof answers; label: string }[] = [
+    /*
+     * First, because the pro-rata rule is blocked without it and because the other questions only
+     * make sense for an employer plan. Beans cannot tell a 401(k) from an IRA on its own — both
+     * arrive as an investment account with a traditional treatment.
+     */
+    { key: 'isEmployerPlan', label: RETIREMENT_COPY.setup.accounts.isEmployerPlan },
     { key: 'allowsAfterTaxContributions', label: RETIREMENT_COPY.setup.accounts.allowsAfterTax },
     { key: 'allowsInPlanRothConversion', label: RETIREMENT_COPY.setup.accounts.allowsInPlanRoth },
     { key: 'allowsInServiceWithdrawal', label: RETIREMENT_COPY.setup.accounts.allowsInService },

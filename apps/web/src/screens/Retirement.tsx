@@ -125,12 +125,20 @@ export function Retirement(): ReactNode {
 
       {view.kind === 'incomplete' && <Missing missing={view.missing} />}
 
-      <Link
-        href="/retirement/setup"
-        className="mt-5 inline-block rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium dark:border-slate-700"
-      >
-        {RETIREMENT_COPY.setup.title}
-      </Link>
+      <div className="mt-5 flex flex-wrap gap-2">
+        <Link
+          href="/retirement/setup"
+          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium dark:border-slate-700"
+        >
+          {RETIREMENT_COPY.setup.title}
+        </Link>
+        <Link
+          href="/retirement/opportunities"
+          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium dark:border-slate-700"
+        >
+          {RETIREMENT_COPY.opportunities.title}
+        </Link>
+      </div>
 
       {view.kind === 'ready' && (
         <>

@@ -1,6 +1,7 @@
 import {
   REFERENCE_DEFINITIONS,
   TAX_TREATMENTS,
+  evaluateOpportunities,
   centsToDecimalString,
   referenceReadiness,
   parseDecimalToCents,
@@ -44,6 +45,7 @@ import {
   ensureReferenceYear,
   revokeReference,
 } from '../repositories/reference.js'
+import { readDrawableAccounts } from '../repositories/retirement-accounts.js'
 import { runRetirementProjection } from '../retirement/plan.js'
 import { moneyIn, moneyOut, serializeProjection, toMemberInput } from '../retirement/wire.js'
 
@@ -131,6 +133,7 @@ const routingBody = z.object({
  * does not offer it.
  */
 const planFeaturesBody = z.object({
+  isEmployerPlan: z.boolean().nullable().optional(),
   allowsAfterTaxContributions: z.boolean().nullable().optional(),
   allowsInPlanRothConversion: z.boolean().nullable().optional(),
   allowsInServiceWithdrawal: z.boolean().nullable().optional(),
@@ -229,6 +232,7 @@ export const retirementRoutes: FastifyPluginAsync<RetirementRoutesOptions> = asy
           })),
           planFeatures: features.map((entry) => ({
             accountId: entry.accountId,
+            isEmployerPlan: entry.isEmployerPlan,
             allowsAfterTaxContributions: entry.allowsAfterTaxContributions,
             allowsInPlanRothConversion: entry.allowsInPlanRothConversion,
             allowsInServiceWithdrawal: entry.allowsInServiceWithdrawal,
@@ -559,6 +563,9 @@ export const retirementRoutes: FastifyPluginAsync<RetirementRoutesOptions> = asy
       try {
         await withHouseholdContext(deps, user.id, (context) =>
           setPlanFeatures(context, request.params.accountId, {
+            ...('isEmployerPlan' in body.data
+              ? { isEmployerPlan: body.data.isEmployerPlan ?? null }
+              : {}),
             ...('allowsAfterTaxContributions' in body.data
               ? { allowsAfterTaxContributions: body.data.allowsAfterTaxContributions ?? null }
               : {}),
@@ -747,6 +754,83 @@ export const retirementRoutes: FastifyPluginAsync<RetirementRoutesOptions> = asy
           revokeReference(context, year.data, request.params.key),
         )
         return reply.status(204).send()
+      } catch (error) {
+        return handleError(error, reply) ?? Promise.reject(error)
+      }
+    },
+  )
+
+  /**
+   * This year's opportunities (§19.6).
+   *
+   * Every rule always returns a row, including the ones that cannot answer — a rule that silently
+   * produces nothing is indistinguishable from one that does not exist, and "why doesn't it
+   * mention tax-loss harvesting" deserves an answer on the screen rather than in somebody's head.
+   */
+  fastify.get<{ Querystring: { year?: string } }>(
+    '/api/retirement/opportunities',
+    async (request, reply) => {
+      const user = await requireUser(request, reply)
+      if (user === null) return
+
+      const parsed = z.coerce
+        .number()
+        .int()
+        .min(2_000)
+        .max(2_200)
+        .safeParse(request.query.year ?? new Date().getUTCFullYear())
+      if (!parsed.success) return reply.status(400).send({ error: 'Invalid year' })
+      const taxYear = parsed.data
+
+      try {
+        const payload = await withHouseholdContext(deps, user.id, async (context) => {
+          const accounts = await readDrawableAccounts(context)
+          const features = await readPlanFeatures(context)
+          const reference = await ensureReferenceYear(context, taxYear)
+
+          const byAccount = new Map(features.map((entry) => [entry.accountId, entry]))
+
+          const opportunities = evaluateOpportunities({
+            taxYear,
+            accounts: accounts.map((account) => {
+              const plan = byAccount.get(account.id)
+              return {
+                id: account.id,
+                name: account.name,
+                type: account.type,
+                taxTreatment: account.taxTreatment,
+                balanceCents: account.balanceCents,
+                isEmployerPlan: plan?.isEmployerPlan ?? null,
+                allowsAfterTaxContributions: plan?.allowsAfterTaxContributions ?? null,
+                allowsInPlanRothConversion: plan?.allowsInPlanRothConversion ?? null,
+                allowsInServiceWithdrawal: plan?.allowsInServiceWithdrawal ?? null,
+                acceptsIraRollIns: plan?.acceptsIraRollIns ?? null,
+              }
+            }),
+            reference,
+          })
+
+          return {
+            taxYear,
+            opportunities: opportunities.map((entry) => ({
+              key: entry.key,
+              title: entry.title,
+              mechanism: entry.mechanism,
+              sourceUrl: entry.sourceUrl,
+              outcome:
+                entry.outcome.kind === 'informational' && entry.outcome.amountCents !== undefined
+                  ? {
+                      ...entry.outcome,
+                      // Money as a decimal string, as everywhere else on this boundary.
+                      amount: centsToDecimalString(entry.outcome.amountCents),
+                      amountCents: undefined,
+                    }
+                  : entry.outcome,
+            })),
+          }
+        })
+
+        return reply.send(payload)
       } catch (error) {
         return handleError(error, reply) ?? Promise.reject(error)
       }

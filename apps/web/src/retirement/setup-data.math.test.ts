@@ -202,6 +202,7 @@ describe('planAccounts', () => {
       planFeatures: [
         {
           accountId: 'a1',
+          isEmployerPlan: true,
           allowsAfterTaxContributions: true,
           allowsInPlanRothConversion: null,
           allowsInServiceWithdrawal: null,

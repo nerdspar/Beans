@@ -46,3 +46,12 @@ export {
   type ReferenceRow,
   type ReferenceUnit,
 } from './reference.js'
+
+export {
+  evaluateOpportunities,
+  type Opportunity,
+  type OpportunityAccount,
+  type OpportunityInput,
+  type OpportunityKey,
+  type OpportunityOutcome,
+} from './opportunities.js'

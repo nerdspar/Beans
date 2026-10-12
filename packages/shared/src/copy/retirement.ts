@@ -198,6 +198,13 @@ export const RETIREMENT_COPY = {
       planFeatures: 'What your plan allows',
       planFeaturesNote:
         'None of this is in any API — it’s in your plan documents. Beans won’t guess, and leaves a question unanswered rather than assuming.',
+      /**
+       * Asked first, and asked rather than guessed.
+       *
+       * The pro-rata rule needs it and inverts without it: IRA balances count toward a Roth
+       * conversion's taxable proportion and 401(k) balances do not. Both look identical to Beans.
+       */
+      isEmployerPlan: 'This is an employer plan, not an IRA',
       allowsAfterTax: 'After-tax contributions beyond the normal limit',
       allowsInPlanRoth: 'Converting those to Roth inside the plan',
       allowsInService: 'Withdrawing while still employed',
@@ -310,6 +317,36 @@ export const RETIREMENT_COPY = {
       years: 'A whole age in years',
       basis_points: 'In basis points — 1.5% is 150',
     },
+  },
+
+  /**
+   * This year's opportunities.
+   *
+   * **Nothing here is phrased as a recommendation**, and that is a hard line rather than a
+   * stylistic one. Each entry says what a mechanism *is*, shows the household's own figure against
+   * it, and links to the authority. It never says "you should". A rule that cannot answer says
+   * why, because an unexplained absence is a question the reader cannot resolve.
+   */
+  opportunities: {
+    title: 'This year',
+    blurb:
+      'Mechanisms worth knowing about, with your own numbers against them. Beans describes how each one works and links to the source; what to do about any of it is yours to decide.',
+
+    outcome: {
+      notApplicable: 'Does not apply',
+      needsReference: 'Waiting on a tax figure',
+      needsAnswer: 'Needs an answer from you',
+      unavailable: 'Beans can’t work this out',
+    },
+
+    needsReferenceNote:
+      'The figure this depends on is set by law and has not been approved yet.',
+    needsAnswerNote: (question: string): string => `Still to answer: ${question}`,
+    source: 'Read the rule',
+
+    /** The pro-rata figure, stated as a fact about the balance rather than as a warning. */
+    proRataAmount: (amount: string): string =>
+      `${amount} of pre-tax IRA money is counted in the proportion`,
   },
 
   /** Table fallback for the band chart. Every chart here needs one. */

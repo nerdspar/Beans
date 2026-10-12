@@ -444,6 +444,23 @@ export const planFeatures = pgTable(
       .notNull()
       .references(() => accounts.id, { onDelete: 'cascade' }),
 
+    /**
+     * Whether this is an employer plan rather than an IRA. **Asked, never inferred.**
+     *
+     * Needed by the pro-rata rule, which is the highest-value thing the opportunities engine can
+     * say: any non-zero balance across traditional, SEP and SIMPLE IRAs makes a backdoor Roth
+     * conversion partially taxable — and **401(k) balances do not count toward that calculation.**
+     * Getting the two confused inverts the answer.
+     *
+     * Beans cannot tell them apart on its own. Both arrive from SimpleFIN as an investment account
+     * with a `traditional` tax treatment, and the provider sends nothing that distinguishes them.
+     * Guessing from the institution's name would be wrong often enough to matter, and wrong in a
+     * direction that tells somebody a conversion is clean when it is not.
+     *
+     * Null means unasked, which blocks the rule rather than defaulting it either way.
+     */
+    isEmployerPlan: boolean('is_employer_plan'),
+
     allowsAfterTaxContributions: boolean('allows_after_tax_contributions'),
     allowsInPlanRothConversion: boolean('allows_in_plan_roth_conversion'),
     allowsInServiceWithdrawal: boolean('allows_in_service_withdrawal'),

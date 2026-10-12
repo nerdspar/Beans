@@ -28,6 +28,7 @@ import { JoinHousehold } from './screens/JoinHousehold.js'
 import { SignIn } from './screens/SignIn.js'
 import { NetWorth } from './screens/NetWorth.js'
 import { Retirement } from './screens/Retirement.js'
+import { RetirementOpportunities } from './screens/RetirementOpportunities.js'
 import { RetirementReference } from './screens/RetirementReference.js'
 import { RetirementSetup } from './screens/RetirementSetup.js'
 import { TabSettings } from './screens/TabSettings.js'
@@ -135,6 +136,7 @@ function Routes(): ReactNode {
       <Route path="/cash-flow" component={CashFlow} />
       <Route path="/portfolio" component={Portfolio} />
       <Route path="/subscriptions" component={Subscriptions} />
+      <Route path="/retirement/opportunities" component={RetirementOpportunities} />
       <Route path="/retirement/reference" component={RetirementReference} />
       <Route path="/retirement/setup" component={RetirementSetup} />
       <Route path="/retirement" component={Retirement} />

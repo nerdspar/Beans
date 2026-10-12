@@ -68,6 +68,8 @@ export type StoredSpendingAnswer = {
 
 export type AccountPlanFeatures = {
   accountId: string
+  /** Null means unasked. The pro-rata rule is blocked until this is answered. */
+  isEmployerPlan: boolean | null
   allowsAfterTaxContributions: boolean | null
   allowsInPlanRothConversion: boolean | null
   allowsInServiceWithdrawal: boolean | null
@@ -271,6 +273,7 @@ export function clearRouting(accountId: string, treatment: TaxTreatment): Promis
 }
 
 export type PlanFeaturesPatch = {
+  isEmployerPlan?: boolean | null
   allowsAfterTaxContributions?: boolean | null
   allowsInPlanRothConversion?: boolean | null
   allowsInServiceWithdrawal?: boolean | null
@@ -324,4 +327,30 @@ export function approveReference(input: {
 
 export function revokeReference(taxYear: number, key: string): Promise<void> {
   return write(`/api/retirement/reference/${taxYear}/${key}`, 'DELETE')
+}
+
+/* --------------------------------------------------------- this year's opportunities (§19.6) */
+
+export type OpportunityOutcome =
+  | { kind: 'not_applicable'; reason: string }
+  | { kind: 'needs_reference'; missing: string[] }
+  | { kind: 'needs_answer'; question: string }
+  | { kind: 'unavailable'; reason: string }
+  /** `amount` is a decimal string, present only when the rule produced a figure. */
+  | { kind: 'informational'; detail: string; amount?: string }
+
+export type Opportunity = {
+  key: string
+  title: string
+  /** What the mechanism is. Never advice — see the copy module. */
+  mechanism: string
+  sourceUrl: string
+  outcome: OpportunityOutcome
+}
+
+export function getOpportunities(year?: number): Promise<{
+  taxYear: number
+  opportunities: Opportunity[]
+}> {
+  return send(`/api/retirement/opportunities${year === undefined ? '' : `?year=${year}`}`)
 }

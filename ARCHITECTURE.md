@@ -1801,8 +1801,61 @@ an untouched row's value so a placeholder can never render, but sends a figure s
 later withdrew — wiping that would destroy the thing they were about to re-check. `retrieved_at` is
 the discriminator; this was found by walking the flow, not by a test.
 
-`opportunity_states` and the phase B rules engine remain unbuilt. The reference pipeline is their
-prerequisite and is now in place.
+### 19.6 The opportunities engine
+
+Seven rules, each declaring what it concluded as a union rather than a status string: `informational`,
+`not_applicable`, `needs_reference`, `needs_answer`, `unavailable`. A screen therefore cannot render
+a dollar figure next to "not applicable", and the four ways a rule can decline to answer stay
+distinct — a missing statutory figure is a different problem from an unanswered plan question, and
+conflating them sends somebody to the wrong screen.
+
+**Every rule always returns a row, including the ones that cannot answer.** A rule that silently
+produces nothing is indistinguishable from one that does not exist, and "why doesn't it mention
+tax-loss harvesting" deserves an answer on the screen rather than in somebody's head. Harvesting is
+present permanently as `unavailable`: it needs cost basis, which no provider reports to Beans.
+
+**Nothing is phrased as a recommendation**, and that is enforced rather than trusted — a test
+asserts no rule's text contains "you should", "we recommend" or "make sure to". Each rule states
+what a mechanism *is*, shows the household's figure against it, and links to the authority.
+
+#### Pro-rata, and the question Beans had to start asking
+
+The spec calls this the high-value rule and it is, because Beans can see the balances that cause it
+and the household usually cannot see the consequence until conversion time. It needed a new fact:
+**401(k) balances do not count toward the pro-rata calculation, and only IRAs do** — and Beans could
+not tell them apart. Both arrive from SimpleFIN as an investment account with a `traditional`
+treatment, and the provider sends nothing that distinguishes them. Guessing from the institution's
+name would be wrong often enough to matter, and wrong in the direction that tells somebody a
+conversion is clean when it is not.
+
+So `plan_features.is_employer_plan` is asked, never inferred, and a `null` blocks the rule rather
+than defaulting it either way. Mutation-tested in both directions: counting employer plans, and
+treating unanswered accounts as IRAs, each break a test.
+
+The boundary is exactly zero. A single dollar of pre-tax IRA money makes a conversion partially
+taxable; none at all makes it clean. There is no "nearly zero" in this rule, and the spec asks for a
+test at the boundary.
+
+#### What the rules will not claim
+
+- **Mega-backdoor headroom is gated on the plan allowing both** after-tax contributions *and* a way
+  to get them out. Without both the strategy does not exist for that household, and describing it
+  would be the confidently wrong statement this feature exists to avoid. Even when eligible, the
+  headroom subtraction is left to the reader: Beans cannot see payroll deferrals or employer
+  contributions, because neither ever appears as a transaction.
+- **The deferral limit shows no progress bar.** A 401(k) deferral is taken from pay before it
+  reaches any account Beans can see, so a bar fed by nothing would be worse than no bar.
+- **HSA invested share is `unavailable`**, not zero. Telling cash from investments inside an account
+  needs holdings, and coverage is thin (§10.1); reporting "0% invested" for an account whose
+  positions were never reported is a confident wrong answer, not a conservative one.
+
+`opportunity_states` — per-rule, per-year status with dismissals and manual year-to-date entry — is
+not built. The rules compute their outcome fresh on each read, which is right for the ones derived
+from balances and insufficient for the ones needing a human to record a payroll figure.
+
+Remaining rules not yet written: employer match capture, the age-tiered catch-up bands, backdoor
+Roth detection from transactions, spousal IRA, and the Roth conversion window (which depends on the
+projection). Several are blocked on reference figures regardless.
 
 Social Security is the same shape of problem and gets the same answer: the benefit is **read off an
 SSA statement and typed in**, never computed. The formula needs a full indexed wage history that
