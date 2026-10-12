@@ -1687,6 +1687,50 @@ projection service both reintroduced the mistake anyway, and what caught it was 
 warning in integration test output rather than any assertion — which is the argument for reading
 test output rather than only its pass count.
 
+### 19.4d The screens, and what they refuse to compute
+
+Two of them. `/retirement` is the dashboard plus the people in the plan; `/retirement/setup` is
+accounts, spending and return assumptions. Revisitable rather than a one-time flow — the spec calls
+it a wizard and the ordering keeps its intent, but it is a page you come back to and change one
+answer on, because that is what people do with a plan.
+
+**The projection is computed on the server; the setup screens are computed in the browser.** Not an
+inconsistency. The projection needs a trailing year of transactions plus every retirement table,
+none of which is in the working set, so shipping it all to the client to avoid one request would be
+the wrong trade. The spending review needs descriptions and amounts grouped by category, which the
+server cannot do without decrypting every row — and the client already holds the whole working set.
+Both run the *same* shared helpers over the same window (`spendingByCategory`, the 365-day
+baseline), so the review and the projection cannot disagree about what a year of spending was.
+
+**The band is drawn from values, never from the order scenarios arrive in.** The engine is monotonic
+in the return rate so the seeded three come back ordered, but every rate is editable: raise the
+return on "Markets disappoint" and a position-keyed band renders upside down with the fill inverted.
+
+**Zero is always on the projection's axis**, drawn solid where the gridlines are dashed. The question
+the chart answers is whether the money lasts, so a band scaled to its own minimum — making a plan
+that merely dips look like one that ended — would be answering a different question.
+
+Three things the screens deliberately do not do:
+
+- **The tax treatment is edited on the account, not in the setup.** Two screens writing one field is
+  how they come to disagree about it; the setup links across instead.
+- **A loan's payoff year is offered, never applied.** Which category pays which loan is something
+  only the household knows, and nothing in the schema links them (§19.4a). Guessing wrong drops a
+  whole category on the wrong date.
+- **Plan-feature questions are offered on investment accounts without claiming to know which is an
+  employer plan.** Beans cannot know that. Each answer is yes / no / **don't know**, and the third
+  is the load-bearing one.
+
+Copy lives in `packages/shared/src/copy/retirement.ts`, and this is the screen where the no-jokes
+rule matters most: a depletion year and a funding gap are numbers moving badly for the person
+reading them. They are stated flat, with the assumption beside them, and nothing is phrased as a
+recommendation.
+
+Two bugs here were found only by looking at the rendered page, which is the argument for looking: a
+seeded 3.5% return displayed as "4%", so the assumption shown was not the one that produced the
+figures; and the shared chart-table caption told screen-reader users to "use the chart slider for
+any single day" on a chart with no slider that plots calendar years.
+
 ### 19.5 What is deliberately absent
 
 `contribution_limits` and `opportunity_states` are phase B and **not created yet**. An empty

@@ -21,6 +21,7 @@ import {
   ensureRetirementPlan,
   readLoanPayoffYears,
   readRetirementPlan,
+  readSpendingAssumptions,
   setDefaultScenario,
   setSpendingAssumption,
   updateRetirementMember,
@@ -174,6 +175,7 @@ export const retirementRoutes: FastifyPluginAsync<RetirementRoutesOptions> = asy
         const routing = await readContributionRouting(context)
         const features = await readPlanFeatures(context)
         const payoffYears = await readLoanPayoffYears(context)
+        const assumptions = await readSpendingAssumptions(context, plan.profile.id)
 
         return {
           started: true as const,
@@ -226,6 +228,18 @@ export const retirementRoutes: FastifyPluginAsync<RetirementRoutesOptions> = asy
             acceptsIraRollIns: entry.acceptsIraRollIns,
             employerMatchDescription: entry.employerMatchDescription,
             answeredAt: entry.answeredAt?.toISOString() ?? null,
+          })),
+          /**
+           * The answers already given, so revisiting the review shows them rather than resetting
+           * every category to the default. A form that silently discards a previous answer is
+           * worse than one that never offered to remember it.
+           */
+          spendingAssumptions: assumptions.map((assumption) => ({
+            categoryId: assumption.categoryId,
+            treatment: assumption.treatment,
+            adjustmentBasisPoints: assumption.adjustmentBasisPoints,
+            lastYear: assumption.lastYear,
+            reviewedAt: assumption.reviewedAt?.toISOString() ?? null,
           })),
           /** Offered for the spending review to pre-fill with. Never applied automatically. */
           loanPayoffYears: payoffYears,

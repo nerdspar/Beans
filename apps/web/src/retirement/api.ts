@@ -58,6 +58,14 @@ export type AccountRouting = {
   active: boolean
 }
 
+export type StoredSpendingAnswer = {
+  categoryId: string
+  treatment: 'continues' | 'stops' | 'adjusted'
+  adjustmentBasisPoints: number | null
+  lastYear: number | null
+  reviewedAt: string | null
+}
+
 export type AccountPlanFeatures = {
   accountId: string
   allowsAfterTaxContributions: boolean | null
@@ -79,6 +87,8 @@ export type RetirementPlan =
       taxBuckets: AccountBuckets[]
       routing: AccountRouting[]
       planFeatures: AccountPlanFeatures[]
+      /** The answers already given, so the review shows them rather than resetting to defaults. */
+      spendingAssumptions: StoredSpendingAnswer[]
       /** Offered for the spending review to pre-fill with. Never applied on its own. */
       loanPayoffYears: { accountId: string; payoffYear: number }[]
     }

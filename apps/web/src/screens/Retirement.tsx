@@ -1,6 +1,7 @@
 import { RETIREMENT_COPY, formatCents, parseDecimalToCents } from '@beans/shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState, type ReactNode } from 'react'
+import { Link } from 'wouter'
 import { ProjectionBand } from '../charts/ProjectionBand.js'
 import { cn } from '../lib/cn.js'
 import {
@@ -114,6 +115,13 @@ export function Retirement(): ReactNode {
       {projection.isError && <ErrorState onRetry={() => void projection.refetch()} />}
 
       {view.kind === 'incomplete' && <Missing missing={view.missing} />}
+
+      <Link
+        href="/retirement/setup"
+        className="mt-5 inline-block rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium dark:border-slate-700"
+      >
+        {RETIREMENT_COPY.setup.title}
+      </Link>
 
       {view.kind === 'ready' && (
         <>

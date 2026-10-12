@@ -119,6 +119,12 @@ export const RETIREMENT_COPY = {
         ? '1 category hasn’t been reviewed. It’s counted as continuing, which is the more expensive assumption.'
         : `${count} categories haven’t been reviewed. They’re counted as continuing, which is the more expensive assumption.`,
 
+    /** Field labels for the review, so the screen never builds one by editing another string. */
+    adjustedLabel: 'Percent of today',
+    untilLabel: 'Last year paid',
+    uncategorizedNote:
+      'Uncategorized spending is counted as continuing. Categorize it to say otherwise.',
+
     /** How a mortgage leaves the baseline — on its payoff date, not at retirement. */
     endsAfter: (year: number): string => `Until ${year}`,
     payoffPrefill: (year: number): string => `A loan is scheduled to be paid off in ${year}`,
@@ -135,8 +141,15 @@ export const RETIREMENT_COPY = {
   /** The setup wizard. Ordered from what Beans knows to what only you know. */
   setup: {
     title: 'Set up your plan',
-    /** Said once, at the start, so the order makes sense. */
-    blurb: 'Six steps. The early ones Beans already has answers for; the later ones only you do.',
+    /**
+     * Said once, at the top, so the order makes sense — and it names what is *not* here.
+     *
+     * The people in the plan and their Social Security figures live on the dashboard, beside the
+     * numbers they move. An earlier draft of this line promised "six steps" and then showed three,
+     * which is the kind of small lie that makes a reader wonder what else is missing.
+     */
+    blurb:
+      'Three things Beans can make a start on: how your accounts are taxed, what you’ll spend, and what returns to assume. Who’s retiring and when is on the Retirement screen.',
 
     steps: {
       who: 'Who and when',
