@@ -1,10 +1,13 @@
 import {
   addDays,
+  afterTaxEquivalent,
   isExcludedFromCashFlow,
   projectScenarios,
   retirementSpending,
   spendingByCategory,
   type AccountType,
+  type AfterTaxBreakdown,
+  type BucketBalance,
   type IsoDate,
   type ScenarioProjection,
   type SpendingAssumption,
@@ -36,6 +39,18 @@ export type RetirementProjectionResult =
       /** Echoed back so the UI can show the assumptions beside the figures, as the spec requires. */
       startYear: number
       endYear: number
+
+      /**
+       * Today's portfolio split by tax treatment, and what it is actually worth.
+       *
+       * A million dollars in a traditional 401(k) is not a million dollars, and almost no tool says
+       * so. Computed here rather than in the browser because the rate lives on the profile and the
+       * split comes out of the same assembly the projection uses — two places computing it is two
+       * places to disagree about the household's net worth.
+       */
+      openingBuckets: BucketBalance[]
+      afterTax: AfterTaxBreakdown
+      retirementEffectiveRateBasisPoints: number
       /** Categories the review never answered. Non-empty means the baseline contains guesses. */
       unreviewedCategoryIds: (string | null)[]
       monthsObserved: number
@@ -122,11 +137,18 @@ export async function runRetirementProjection(
 
   if (!assembled.ready) return { ready: false, missing: assembled.missing }
 
+  const openingBuckets = [...assembled.input.openingBuckets]
+
   return {
     ready: true,
     projections: projectScenarios(assembled.input, assembled.scenarios),
     startYear: assembled.input.startYear,
     endYear: assembled.input.endYear,
+    openingBuckets,
+    afterTax: afterTaxEquivalent(openingBuckets, {
+      retirementEffectiveRateBasisPoints: BigInt(plan.profile.retirementEffectiveRateBasisPoints),
+    }),
+    retirementEffectiveRateBasisPoints: plan.profile.retirementEffectiveRateBasisPoints,
     unreviewedCategoryIds: spending.unreviewedCategoryIds,
     monthsObserved: spending.monthsObserved,
     annualizedFromPartialYear: spending.annualizedFromPartialYear,

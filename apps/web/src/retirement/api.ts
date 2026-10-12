@@ -129,6 +129,22 @@ export type Projection =
       endYear: number
       /** Non-empty means the baseline contains guesses, and the screen has to say so. */
       unreviewedCategoryIds: (string | null)[]
+      retirementEffectiveRateBasisPoints: number
+      /** Today's portfolio by tax treatment. */
+      openingBuckets: { treatment: TaxTreatment; balance: string }[]
+      /**
+       * What the portfolio is worth after the assumed tax on pre-tax money.
+       *
+       * Shown **beside** net worth, never instead of it: net worth is a fact, and this is a fact
+       * plus an assumption.
+       */
+      afterTax: {
+        nominal: string
+        afterTax: string
+        deferredTax: string
+        /** True when some balance carries gains Beans cannot see, so the figure is optimistic. */
+        ignoresEmbeddedGains: boolean
+      }
       monthsObserved: number
       annualizedFromPartialYear: boolean
       projections: ScenarioProjection[]

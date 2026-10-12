@@ -141,6 +141,31 @@ export function headlineProjection(
 }
 
 /**
+ * The earliest year any scenario runs out, and which one.
+ *
+ * The headline describes one scenario, so on its own it can say "lasts the whole plan" directly
+ * beneath a band whose low edge touches zero. That is the same failure as a funded ratio
+ * contradicting its own chart (§19.4b): the reader is told the plan holds while looking at a
+ * picture of it not holding.
+ *
+ * Null when every scenario lasts, so the line only appears when it has something to say.
+ */
+export function earliestDepletion(
+  projections: readonly ScenarioProjection[],
+): { year: number; scenarioName: string } | null {
+  let worst: { year: number; scenarioName: string } | null = null
+
+  for (const projection of projections) {
+    if (projection.depletionYear === null) continue
+    if (worst === null || projection.depletionYear < worst.year) {
+      worst = { year: projection.depletionYear, scenarioName: projection.name }
+    }
+  }
+
+  return worst
+}
+
+/**
  * The gaps the projection declares, shown beside the figures rather than in a footnote.
  *
  * Collected across scenarios and de-duplicated. They are the same for every scenario today, but
@@ -169,6 +194,14 @@ export type DashboardView =
       band: BandPoint[]
       headline: ScenarioProjection
       outcome: FundedOutcome
+      /**
+       * The earliest year *any* scenario runs out. Null when they all last.
+       *
+       * Separate from `outcome`, which is about the headline scenario alone. Both are shown,
+       * because "the plan holds under these assumptions, and runs out in 2057 under those" is the
+       * honest sentence and either half on its own is misleading.
+       */
+      earliestDepletion: { year: number; scenarioName: string } | null
       /** The lowest and highest terminal totals, which is the headline range. */
       terminalLow: string
       terminalHigh: string
@@ -176,6 +209,15 @@ export type DashboardView =
       unreviewedCount: number
       monthsObserved: number
       annualizedFromPartialYear: boolean
+      /** Today's split and what it is worth after the assumed tax. */
+      openingBuckets: { treatment: string; balance: string }[]
+      afterTax: {
+        nominal: string
+        afterTax: string
+        deferredTax: string
+        ignoresEmbeddedGains: boolean
+      }
+      effectiveRateBasisPoints: number
     }
 
 export function dashboardView(
@@ -199,11 +241,15 @@ export function dashboardView(
     band,
     headline,
     outcome: fundedOutcome(headline),
+    earliestDepletion: earliestDepletion(projection.projections),
     terminalLow: last?.low ?? '0.00',
     terminalHigh: last?.high ?? '0.00',
     disclosures: disclosures(projection.projections),
     unreviewedCount: projection.unreviewedCategoryIds.length,
     monthsObserved: projection.monthsObserved,
     annualizedFromPartialYear: projection.annualizedFromPartialYear,
+    openingBuckets: projection.openingBuckets,
+    afterTax: projection.afterTax,
+    effectiveRateBasisPoints: projection.retirementEffectiveRateBasisPoints,
   }
 }

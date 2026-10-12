@@ -1721,6 +1721,18 @@ Three things the screens deliberately do not do:
   employer plan.** Beans cannot know that. Each answer is yes / no / **don't know**, and the third
   is the load-bearing one.
 
+**The after-tax equivalent is shown on the retirement dashboard, not on the net worth screen.** The
+spec says "beside net worth", and this honours the intent rather than the letter: most households
+never open the planner, and putting a rate-dependent figure on the main screen would show everybody
+a number resting on a default nobody chose. Both figures appear together with the rate inline, and
+neither replaces the other — net worth is a fact, this is a fact plus an assumption.
+
+**Whenever any scenario runs out, the screen says so, even when the headline one does not.** The
+funded outcome describes the default scenario alone, which produced "Lasts the whole plan" directly
+beneath a band reading "$0.00 to $1,904,892.62" — the reader told the plan holds while looking at a
+picture of it not holding. It is the §19.4b failure in a different costume, and it was found by
+reading the rendered page rather than by any assertion.
+
 Copy lives in `packages/shared/src/copy/retirement.ts`, and this is the screen where the no-jokes
 rule matters most: a depletion year and a funding gap are numbers moving badly for the person
 reading them. They are stated flat, with the assumption beside them, and nothing is phrased as a

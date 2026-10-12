@@ -1,4 +1,10 @@
-import { RETIREMENT_COPY, formatCents, parseDecimalToCents } from '@beans/shared'
+import {
+  RETIREMENT_COPY,
+  TAX_TREATMENT_LABELS,
+  formatCents,
+  parseDecimalToCents,
+  type TaxTreatment,
+} from '@beans/shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState, type ReactNode } from 'react'
 import { Link } from 'wouter'
@@ -149,6 +155,7 @@ export function Retirement(): ReactNode {
             scenarios={plan.data.scenarios}
             heldBack={view.headline.heldBack}
           />
+          <TaxBreakdown view={view} />
           <Disclosures factors={view.disclosures} />
           <SpendingNotes
             unreviewedCount={view.unreviewedCount}
@@ -244,6 +251,99 @@ function Headline({
           </>
         )}
       </p>
+
+      {/*
+       * Said whenever any scenario runs out, even when the headline one does not. Without it the
+       * screen reads "Lasts the whole plan" above a band whose lower edge touches zero.
+       */}
+      {view.earliestDepletion !== null && view.outcome.kind !== 'short' && (
+        <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">
+          {RETIREMENT_COPY.funded.depletesUnder(
+            view.earliestDepletion.year,
+            view.earliestDepletion.scenarioName,
+          )}
+        </p>
+      )}
+    </section>
+  )
+}
+
+/**
+ * What the portfolio is worth after the assumed tax, beside what it nominally is.
+ *
+ * **Never instead of net worth.** Net worth is a fact — the sum of what the institutions report —
+ * and this is a fact plus an assumption, so both are shown and the assumption travels with the
+ * figure. Replacing one with the other would trade something true for something defensible, which
+ * is the wrong direction for a headline number in a finance app.
+ *
+ * It lives here rather than on the net worth screen deliberately. Most households never open the
+ * planner, and putting a rate-dependent figure on the main screen would mean showing everybody a
+ * number resting on a default nobody chose.
+ */
+function TaxBreakdown({
+  view,
+}: {
+  view: Extract<ReturnType<typeof dashboardView>, { kind: 'ready' }>
+}): ReactNode {
+  const headingId = useId()
+  if (view.openingBuckets.length === 0) return null
+
+  const deferred = parseDecimalToCents(view.afterTax.deferredTax)
+
+  return (
+    <section aria-labelledby={headingId} className="mt-8">
+      <h2 id={headingId} className="font-semibold">
+        {RETIREMENT_COPY.afterTax.label}
+      </h2>
+
+      <dl className="mt-3 grid grid-cols-2 gap-3">
+        <div className="rounded-xl border border-slate-200 px-4 py-3 dark:border-slate-800">
+          <dt className="text-xs text-slate-500 dark:text-slate-400">
+            {RETIREMENT_COPY.table.total}
+          </dt>
+          <dd className="mt-1 text-xl font-semibold tabular-nums">
+            {formatCents(parseDecimalToCents(view.afterTax.nominal))}
+          </dd>
+        </div>
+        <div className="rounded-xl border border-slate-200 px-4 py-3 dark:border-slate-800">
+          <dt className="text-xs text-slate-500 dark:text-slate-400">
+            {RETIREMENT_COPY.afterTax.label}
+          </dt>
+          <dd className="mt-1 text-xl font-semibold tabular-nums">
+            {formatCents(parseDecimalToCents(view.afterTax.afterTax))}
+          </dd>
+        </div>
+      </dl>
+
+      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+        {RETIREMENT_COPY.afterTax.note(percentFromBasisPoints(view.effectiveRateBasisPoints))}
+      </p>
+
+      {/* Only when something is actually owed. Shown always, it becomes furniture. */}
+      {deferred !== 0n && (
+        <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+          {RETIREMENT_COPY.afterTax.deferredTax(formatCents(deferred))}
+        </p>
+      )}
+
+      {view.afterTax.ignoresEmbeddedGains && (
+        <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+          {RETIREMENT_COPY.afterTax.ignoresGains}
+        </p>
+      )}
+
+      <ul className="mt-3 space-y-1 text-sm">
+        {view.openingBuckets.map((bucket) => (
+          <li key={bucket.treatment} className="flex justify-between gap-3">
+            <span className="text-slate-500 dark:text-slate-400">
+              {TAX_TREATMENT_LABELS[bucket.treatment as TaxTreatment] ?? bucket.treatment}
+            </span>
+            <span className="tabular-nums">
+              {formatCents(parseDecimalToCents(bucket.balance))}
+            </span>
+          </li>
+        ))}
+      </ul>
     </section>
   )
 }

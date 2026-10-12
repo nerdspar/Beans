@@ -609,6 +609,18 @@ export const retirementRoutes: FastifyPluginAsync<RetirementRoutesOptions> = asy
         endYear: result.endYear,
         /** Non-empty means the baseline contains guesses, and the UI must say so. */
         unreviewedCategoryIds: result.unreviewedCategoryIds,
+        retirementEffectiveRateBasisPoints: result.retirementEffectiveRateBasisPoints,
+        /** Today's split and what it is worth after the assumed tax. Money as strings, as always. */
+        openingBuckets: result.openingBuckets.map((bucket) => ({
+          treatment: bucket.treatment,
+          balance: centsToDecimalString(bucket.balanceCents),
+        })),
+        afterTax: {
+          nominal: centsToDecimalString(result.afterTax.nominalCents),
+          afterTax: centsToDecimalString(result.afterTax.afterTaxCents),
+          deferredTax: centsToDecimalString(result.afterTax.deferredTaxCents),
+          ignoresEmbeddedGains: result.afterTax.ignoresEmbeddedGains,
+        },
         monthsObserved: result.monthsObserved,
         annualizedFromPartialYear: result.annualizedFromPartialYear,
         projections: result.projections.map(serializeProjection),

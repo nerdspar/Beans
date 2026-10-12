@@ -59,6 +59,16 @@ export const RETIREMENT_COPY = {
     lasts: 'Lasts the whole plan',
     /** When there is nothing to be funded yet. Not the same as fully funded. */
     noHorizon: 'No retirement years in the plan yet',
+
+    /**
+     * Said whenever any scenario runs out, even when the headline one does not.
+     *
+     * Without it the screen can read "Lasts the whole plan" directly above a band whose lower edge
+     * touches zero — the reader told the plan holds while looking at a picture of it not holding.
+     * Flat, like everything else here: the year and which assumptions produce it.
+     */
+    depletesUnder: (year: number, scenario: string): string =>
+      `Runs out in ${year} if ${scenario.toLowerCase()}`,
   },
 
   /**

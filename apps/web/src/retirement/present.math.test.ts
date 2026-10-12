@@ -4,6 +4,7 @@ import {
   bandSeries,
   dashboardView,
   disclosures,
+  earliestDepletion,
   fundedOutcome,
   headlineProjection,
   percentFromBasisPoints,
@@ -217,12 +218,44 @@ describe('disclosures', () => {
   })
 })
 
+describe('earliestDepletion', () => {
+  it('reports the earliest year any scenario runs out, and which one', () => {
+    /*
+     * The headline describes one scenario, so on its own it can say "lasts the whole plan"
+     * directly beneath a band whose lower edge touches zero. Found by looking at the rendered
+     * screen, which showed "$0.00 to $1,904,892.62" above "Lasts the whole plan".
+     */
+    const worst = earliestDepletion([
+      scenario('mid', ['100.00']),
+      scenario('low', ['0.00'], { depletionYear: 2_057, name: 'Markets disappoint' }),
+      scenario('lower', ['0.00'], { depletionYear: 2_061, name: 'Worse still' }),
+    ])
+
+    expect(worst).toEqual({ year: 2_057, scenarioName: 'Markets disappoint' })
+  })
+
+  it('is null when every scenario lasts, so the line never appears without cause', () => {
+    expect(earliestDepletion([scenario('a', ['100.00']), scenario('b', ['200.00'])])).toBeNull()
+  })
+})
+
 describe('dashboardView', () => {
   const ready: Projection = {
     ready: true,
     startYear: 2_026,
     endYear: 2_041,
     unreviewedCategoryIds: ['groceries', null],
+    retirementEffectiveRateBasisPoints: 2_200,
+    openingBuckets: [
+      { treatment: 'traditional', balance: '400000.00' },
+      { treatment: 'taxable', balance: '200000.00' },
+    ],
+    afterTax: {
+      nominal: '600000.00',
+      afterTax: '512000.00',
+      deferredTax: '88000.00',
+      ignoresEmbeddedGains: true,
+    },
     monthsObserved: 12,
     annualizedFromPartialYear: false,
     projections: [
@@ -259,6 +292,28 @@ describe('dashboardView', () => {
     )
 
     expect(view).toEqual({ kind: 'incomplete', missing: ['members', 'life_expectancy'] })
+  })
+
+  it('surfaces a depleting scenario even when the headline one holds', () => {
+    // The contradiction this prevents: "Lasts the whole plan" above a band that reaches zero.
+    const view = dashboardView(
+      {
+        ...ready,
+        projections: [
+          scenario('low', ['100.00', '0.00'], { depletionYear: 2_041, name: 'Markets disappoint' }),
+          scenario('mid', ['500.00', '600.00']),
+          scenario('high', ['900.00', '1100.00']),
+        ],
+      },
+      [{ id: 'mid', isDefault: true }],
+      true,
+    )
+
+    expect(view.kind).toBe('ready')
+    if (view.kind !== 'ready') return
+
+    expect(view.outcome.kind).toBe('covered')
+    expect(view.earliestDepletion).toEqual({ year: 2_041, scenarioName: 'Markets disappoint' })
   })
 
   it('carries the partial-year flag so the screen can say the baseline was scaled', () => {
