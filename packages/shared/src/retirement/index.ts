@@ -34,3 +34,15 @@ export {
 export { grossUpForTax, grow, scaleSigned } from './rates.js'
 
 export { SEED_SCENARIOS, type SeedScenario } from './scenarios.js'
+
+export {
+  PLACEHOLDER_VALUE,
+  REFERENCE_DEFINITIONS,
+  lookupReference,
+  referenceReadiness,
+  type ReferenceDefinition,
+  type ReferenceKey,
+  type ReferenceLookup,
+  type ReferenceRow,
+  type ReferenceUnit,
+} from './reference.js'

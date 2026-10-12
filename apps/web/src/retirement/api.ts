@@ -281,3 +281,47 @@ export type PlanFeaturesPatch = {
 export function setPlanFeatures(accountId: string, patch: PlanFeaturesPatch): Promise<void> {
   return write(`/api/retirement/accounts/${accountId}/plan-features`, 'PUT', patch)
 }
+
+/* ------------------------------------------------- statutory reference data (§19.5) */
+
+export type ReferenceFigure = {
+  key: string
+  label: string
+  unit: 'cents' | 'years' | 'basis_points'
+  sourceUrl: string
+  verified: boolean
+  /**
+   * Null until approved.
+   *
+   * The server withholds an unapproved row's stored value deliberately: it is an absurd
+   * placeholder, and shipping it to a screen is how it ends up rendered somewhere as though it
+   * meant something.
+   */
+  value: string | null
+}
+
+export type ReferenceYear = {
+  taxYear: number
+  /** False when any figure is missing or unapproved. One is enough. */
+  ready: boolean
+  canApprove: boolean
+  figures: ReferenceFigure[]
+}
+
+export function getReference(year?: number): Promise<ReferenceYear> {
+  return send(`/api/retirement/reference${year === undefined ? '' : `?year=${year}`}`)
+}
+
+export function approveReference(input: {
+  taxYear: number
+  key: string
+  /** A plain integer string in the figure's own unit. Never a float, never a formatted amount. */
+  value: string
+  sourceUrl: string
+}): Promise<void> {
+  return write('/api/retirement/reference', 'PUT', input)
+}
+
+export function revokeReference(taxYear: number, key: string): Promise<void> {
+  return write(`/api/retirement/reference/${taxYear}/${key}`, 'DELETE')
+}

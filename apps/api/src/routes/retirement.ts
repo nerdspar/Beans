@@ -1,6 +1,8 @@
 import {
+  REFERENCE_DEFINITIONS,
   TAX_TREATMENTS,
   centsToDecimalString,
+  referenceReadiness,
   parseDecimalToCents,
   toIsoDate,
   type ScenarioProjection,
@@ -37,6 +39,11 @@ import {
   setContributionRoute,
   setPlanFeatures,
 } from '../repositories/retirement-accounts.js'
+import {
+  approveReference,
+  ensureReferenceYear,
+  revokeReference,
+} from '../repositories/reference.js'
 import { runRetirementProjection } from '../retirement/plan.js'
 import { moneyIn, moneyOut, serializeProjection, toMemberInput } from '../retirement/wire.js'
 
@@ -629,4 +636,120 @@ export const retirementRoutes: FastifyPluginAsync<RetirementRoutesOptions> = asy
       return handleError(error, reply) ?? Promise.reject(error)
     }
   })
+
+  /**
+   * The statutory figures and whether each has been approved (§19.5).
+   *
+   * Seeds the year's checklist on first read, so an operator gets a concrete list with a source
+   * link beside each item rather than an empty table.
+   */
+  fastify.get<{ Querystring: { year?: string } }>(
+    '/api/retirement/reference',
+    async (request, reply) => {
+      const user = await requireUser(request, reply)
+      if (user === null) return
+
+      const parsed = z.coerce
+        .number()
+        .int()
+        .min(2_000)
+        .max(2_200)
+        .safeParse(request.query.year ?? new Date().getUTCFullYear())
+      if (!parsed.success) return reply.status(400).send({ error: 'Invalid year' })
+      const taxYear = parsed.data
+
+      try {
+        const payload = await withHouseholdContext(deps, user.id, async (context) => {
+          const rows = await ensureReferenceYear(context, taxYear)
+          const readiness = referenceReadiness(rows, taxYear)
+          const labels = new Map(
+            REFERENCE_DEFINITIONS.map((definition) => [definition.key, definition]),
+          )
+
+          return {
+            taxYear,
+            ready: readiness.ready,
+            /** Owner-only, so the screen can explain rather than offer a control that will fail. */
+            canApprove: context.role === 'owner',
+            figures: rows.map((row) => ({
+              key: row.key,
+              label: labels.get(row.key as never)?.label ?? row.key,
+              unit: row.unit,
+              sourceUrl: row.sourceUrl,
+              verified: row.verifiedAt !== null,
+              /*
+               * Sent once a human has entered something, which is **not** the same as approved.
+               *
+               * A row nobody has touched still holds its deliberately absurd placeholder, and
+               * shipping that to a screen is how it ends up rendered as though it meant something.
+               * But a figure somebody typed and then withdrew approval from is real, and hiding it
+               * would throw away the thing they were about to re-check.
+               */
+              value: row.retrievedAt === null ? null : row.value.toString(),
+            })),
+          }
+        })
+
+        return reply.send(payload)
+      } catch (error) {
+        return handleError(error, reply) ?? Promise.reject(error)
+      }
+    },
+  )
+
+  fastify.put('/api/retirement/reference', async (request, reply) => {
+    const user = await requireUser(request, reply)
+    if (user === null) return
+
+    const body = z
+      .object({
+        taxYear: z.number().int().min(2_000).max(2_200),
+        key: z.enum(REFERENCE_DEFINITIONS.map((d) => d.key) as [string, ...string[]]),
+        /** A plain integer in the catalogue's unit — cents, years or basis points. */
+        value: z.string().regex(/^\d{1,15}$/),
+        sourceUrl: z.string().url().max(500),
+      })
+      .safeParse(request.body)
+
+    if (!body.success) return reply.status(400).send({ error: 'Invalid figure' })
+
+    try {
+      await withHouseholdContext(deps, user.id, (context) =>
+        approveReference(
+          context,
+          {
+            taxYear: body.data.taxYear,
+            key: body.data.key,
+            value: BigInt(body.data.value),
+            sourceUrl: body.data.sourceUrl,
+          },
+          // The clock, legitimately: this records when a human actually approved it.
+          new Date(),
+        ),
+      )
+      return reply.status(204).send()
+    } catch (error) {
+      return handleError(error, reply) ?? Promise.reject(error)
+    }
+  })
+
+  fastify.delete<{ Params: { year: string; key: string } }>(
+    '/api/retirement/reference/:year/:key',
+    async (request, reply) => {
+      const user = await requireUser(request, reply)
+      if (user === null) return
+
+      const year = z.coerce.number().int().min(2_000).max(2_200).safeParse(request.params.year)
+      if (!year.success) return reply.status(404).send({ error: 'Not found' })
+
+      try {
+        await withHouseholdContext(deps, user.id, (context) =>
+          revokeReference(context, year.data, request.params.key),
+        )
+        return reply.status(204).send()
+      } catch (error) {
+        return handleError(error, reply) ?? Promise.reject(error)
+      }
+    },
+  )
 }

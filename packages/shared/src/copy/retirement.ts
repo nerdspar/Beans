@@ -261,6 +261,57 @@ export const RETIREMENT_COPY = {
       'This ignores gains Beans can’t see. Taxable and after-tax balances are counted at face value because no provider reports what they cost you.',
   },
 
+  /**
+   * The unapproved-reference-data warning.
+   *
+   * The one place in Beans that gets a red banner. Everywhere else a caveat is a quiet note,
+   * because the thing being caveated is an assumption the reader can see and argue with. This is
+   * different in kind: a contribution limit is not an assumption, it is a fact with a right answer
+   * that somebody could act on and be wrong about by law. So it is loud, it names what is missing,
+   * and it links to the place to fix it.
+   *
+   * Still not funny, and not alarming beyond the facts. It says what is unverified and what that
+   * blocks.
+   */
+  reference: {
+    title: 'Tax figures not yet approved',
+    body: 'Contribution limits, catch-up tiers and the RMD age change every year, so Beans will not use one until a person has checked it against the IRS source. Nothing on this page depends on them yet — the parts that would are switched off.',
+    pending: (count: number): string =>
+      count === 1 ? '1 figure still needs checking' : `${count} figures still need checking`,
+    action: 'Review the figures',
+
+    reviewTitle: 'Tax figures',
+    reviewBlurb:
+      'Each figure is checked against its own source and approved on its own. Nothing uses a figure until you approve it, and approving one year never carries it into the next.',
+    /** Said plainly, because it is the reason the screen exists. */
+    whyBlurb:
+      'Beans ships these blank on purpose. These numbers change annually and several have phased in on staggered schedules, so a value guessed from memory would be confidently wrong about real money.',
+
+    year: 'Tax year',
+    figure: 'Figure',
+    source: 'Source',
+    value: 'Value',
+    needsFigure: 'Needs a figure',
+    approved: 'Approved',
+    approve: 'Save and approve',
+    revoke: 'Withdraw approval',
+    ownerOnly: 'Only a household owner can approve these.',
+
+    /**
+     * The unit a reviewer should type in, so nobody enters dollars where cents are wanted.
+     *
+     * The worked examples are deliberately **not** plausible as the figures themselves. The first
+     * draft used "23500.00 dollars is 2350000", which reads exactly like a contribution limit —
+     * and an example somebody could mistake for the answer is the precise failure this screen
+     * exists to prevent. $12.34 cannot be mistaken for anything.
+     */
+    unitHint: {
+      cents: 'In cents, with no decimal point — $12.34 is 1234',
+      years: 'A whole age in years',
+      basis_points: 'In basis points — 1.5% is 150',
+    },
+  },
+
   /** Table fallback for the band chart. Every chart here needs one. */
   table: {
     caption: 'Projected balance by year, for each set of return assumptions',

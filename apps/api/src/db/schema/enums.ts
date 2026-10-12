@@ -111,6 +111,15 @@ export const importRowStatus = pgEnum('import_row_status', [
  */
 export const spendingTreatment = pgEnum('spending_treatment', ['continues', 'stops', 'adjusted'])
 
+/**
+ * What a `contribution_limits` value means.
+ *
+ * Asserted on every read. The table holds money, ages and percentages side by side, and an age
+ * read as cents is the kind of mistake that produces a confident wrong answer rather than an
+ * error — in a table holding all three it is only a matter of time.
+ */
+export const referenceUnit = pgEnum('reference_unit', ['cents', 'years', 'basis_points'])
+
 /** Entity types recorded in the deletion log, so delta sync can report hard deletes. */
 export const deletionEntity = pgEnum('deletion_entity', [
   'account',

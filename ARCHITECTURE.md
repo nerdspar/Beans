@@ -1755,15 +1755,54 @@ seeded 3.5% return displayed as "4%", so the assumption shown was not the one th
 figures; and the shared chart-table caption told screen-reader users to "use the chart slider for
 any single day" on a chart with no slider that plots calendar years.
 
-### 19.5 What is deliberately absent
+### 19.5 Statutory figures, and the gate in front of them
 
-`contribution_limits` and `opportunity_states` are phase B and **not created yet**. An empty
-`contribution_limits` table invites a seed written from model memory, and that is the one line of
+`contribution_limits` exists and ships **empty of real figures on purpose**. This is the one line of
 the retirement spec that does not bend: contribution limits, phaseout thresholds, catch-up tiers and
-RMD ages change every year and have phased in on staggered schedules. Every figure must arrive from
-a current IRS publication with its `source_url` and `retrieved_at`, be verified by the operator
-before the feature ships, and a missing year must produce a visible "not yet updated" state rather
-than a silent fallback to last year's number.
+RMD ages change every year and several have phased in on staggered schedules with at least one delay
+along the way. A figure recalled rather than read is confidently wrong about somebody's real money.
+
+So the table ships as a **review checklist**: one row per figure the feature needs, each naming what
+to look up and linking to its source, each carrying a placeholder and `verified_at = null`.
+
+Four properties hold it together, and each is mutation-tested:
+
+- **Nothing may compute from a row until `verified_at` is set.** `lookupReference` returns a union —
+  `ok`, `missing`, `unverified`, `wrong_unit` — so "no figure available" cannot be mistaken for a
+  number. Returning `bigint | null` would have put the burden on every caller to remember the check,
+  and the one that forgot would produce a confident wrong answer.
+- **No figure is ever carried between years.** Last year's limit is not this year's, and a silent
+  fallback is indistinguishable from a correct answer right up until somebody acts on it.
+- **Placeholders are deliberately absurd.** `PLACEHOLDER_VALUE` is `1`. A placeholder of `2350000`
+  looks checked, and the next reader has no way to know it was invented — which is exactly the
+  failure being prevented. One cent is self-evidently not a contribution limit, so if one ever
+  escaped the gate it would read as broken rather than as an answer. The same rule governs the
+  screen's own worked examples: the first draft used "$23,500.00 is 2350000", which reads like the
+  answer, and now uses $12.34.
+- **The unit is checked before the gate.** The table holds money, ages and percentages side by side,
+  and an age read as cents is the kind of mistake that produces a wrong answer rather than an error.
+  Reporting it as merely "unverified" would send somebody to tick a box instead of to the code.
+
+**The red banner is the only one in Beans.** Everywhere else a caveat is a quiet note, because what
+is being caveated is an assumption the reader can see and argue with. A contribution limit is not an
+assumption — it is a published fact with a right answer that somebody could act on and be wrong
+about by law. The banner names how many figures are outstanding, links to the review screen, and
+disappears entirely once the year is complete; a banner that is always there is furniture.
+
+**`contribution_limits` is the one table with no `household_id` and no RLS.** These are figures the
+IRS publishes: the same for every household, personal to nobody, derived from nobody's data. One
+copy per household would be a guarantee they drift apart. Because it is the exception it lives in
+its own schema file and says so in its migration, so nobody inherits "no RLS" by copying a
+neighbour. Approval is **owner-only**, precisely because it changes what every household in the
+install is told about tax law.
+
+The screen distinguishes *never filled in* from *filled in and then unapproved*. The server withholds
+an untouched row's value so a placeholder can never render, but sends a figure somebody typed and
+later withdrew — wiping that would destroy the thing they were about to re-check. `retrieved_at` is
+the discriminator; this was found by walking the flow, not by a test.
+
+`opportunity_states` and the phase B rules engine remain unbuilt. The reference pipeline is their
+prerequisite and is now in place.
 
 Social Security is the same shape of problem and gets the same answer: the benefit is **read off an
 SSA statement and typed in**, never computed. The formula needs a full indexed wage history that

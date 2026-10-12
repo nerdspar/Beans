@@ -24,6 +24,7 @@ import {
   type SpendingAnswer,
   type StoredSpendingAnswer,
 } from '../retirement/api.js'
+import { ReferenceBanner } from '../retirement/ReferenceBanner.js'
 import { planAccounts, spendingReview, type PlanAccountRow } from '../retirement/setup-data.js'
 import { useWorkingSet } from '../working-set/use-working-set.js'
 
@@ -78,6 +79,8 @@ export function RetirementSetup(): ReactNode {
       <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
         {RETIREMENT_COPY.setup.blurb}
       </p>
+
+      <ReferenceBanner />
 
       <AccountsStep
         taxBuckets={plan.data.taxBuckets}

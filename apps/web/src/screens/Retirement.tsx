@@ -21,6 +21,7 @@ import {
   type PlanMember,
 } from '../retirement/api.js'
 import { dashboardView, percentFromBasisPoints } from '../retirement/present.js'
+import { ReferenceBanner } from '../retirement/ReferenceBanner.js'
 
 /**
  * The retirement dashboard (ARCHITECTURE.md §19).
@@ -117,6 +118,8 @@ export function Retirement(): ReactNode {
       <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
         {RETIREMENT_COPY.realDollarsNote}
       </p>
+
+      <ReferenceBanner />
 
       {projection.isError && <ErrorState onRetry={() => void projection.refetch()} />}
 
