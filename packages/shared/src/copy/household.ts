@@ -28,6 +28,9 @@ export const HOUSEHOLD_COPY = {
   exportTransactions: 'Transactions',
   exportTransactionsHint: 'Every transaction with its category, including voided ones.',
   exportReadings: 'Reported balances',
+  exportEverything: 'Everything, for the Beans app',
+  exportEverythingHint:
+    'One file with every account, transaction, decision and plan. Open it in Beans on your iPhone or Mac to move your household there.',
   exportReadingsHint:
     'What each institution said, on the days it said it. The only figures here Beans did not calculate.',
 

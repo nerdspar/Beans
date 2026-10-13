@@ -77,7 +77,6 @@ export function Household(): ReactNode {
 
   return (
     <div>
-
       {/*
         Renaming lives here because the name is no longer asked for at sign-up — a household of one
         needs no name, and the moment it starts to matter is the moment somebody else will see it.
@@ -207,7 +206,11 @@ export function Household(): ReactNode {
                   }}
                   className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-xs font-medium hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
                 >
-                  {copied ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
+                  {copied ? (
+                    <Check className="size-3.5" aria-hidden />
+                  ) : (
+                    <Copy className="size-3.5" aria-hidden />
+                  )}
                   {copied ? HOUSEHOLD_COPY.copied : HOUSEHOLD_COPY.copy}
                 </button>
                 <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -290,7 +293,10 @@ export function Household(): ReactNode {
                   'focus-visible:outline-2 focus-visible:outline-sky-500',
                 )}
               >
-                <Download className="size-4 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden />
+                <Download
+                  className="size-4 shrink-0 text-slate-500 dark:text-slate-400"
+                  aria-hidden
+                />
                 <span className="min-w-0">
                   <span className="block text-sm font-medium">{label}</span>
                   <span className="block text-xs text-slate-500 dark:text-slate-400">{hint}</span>
@@ -298,6 +304,31 @@ export function Household(): ReactNode {
               </a>
             </li>
           ))}
+          {/*
+            The whole household as one document, for the native app (ARCHITECTURE.md §11.3). Not a
+            CSV: it carries ids and decisions so the move is complete and safe to run twice.
+          */}
+          <li>
+            <a
+              href="/api/export/full.json"
+              className={cn(
+                'flex min-h-12 items-center gap-3 rounded-xl border px-3 py-2',
+                'border-slate-200 hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-slate-800',
+                'focus-visible:outline-2 focus-visible:outline-sky-500',
+              )}
+            >
+              <Download
+                className="size-4 shrink-0 text-slate-500 dark:text-slate-400"
+                aria-hidden
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">{HOUSEHOLD_COPY.exportEverything}</span>
+                <span className="block text-xs text-slate-500 dark:text-slate-400">
+                  {HOUSEHOLD_COPY.exportEverythingHint}
+                </span>
+              </span>
+            </a>
+          </li>
         </ul>
       </section>
     </div>
