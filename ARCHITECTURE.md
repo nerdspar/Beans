@@ -889,6 +889,24 @@ out is plaintext, deliberately: everything is encrypted at rest under a key the 
 an export is the one moment a household asks for it in the clear. Over TLS, to an authenticated
 session, `no-store`, never written to disk on the server.
 
+### 11.3 The full export — Beans leaving the server
+
+`GET /api/export/full.json` (`repositories/full-export.ts`) is the document the native app
+(`beans-apple`) imports when Beans moves off this server and onto iCloud. The CSVs above are for
+somebody leaving Beans; this is for Beans leaving its server, so it carries what the CSVs flatten
+away: ids (so a re-run import writes the same records rather than duplicates), every decision
+(categories, rules, transfers, recurring, retirement), and which history was **observed or imported
+rather than derived**. The native app rebuilds derived history itself. Handed the server's derived
+rows as if they were inputs, it would treat old output as fact and never rebuild it.
+
+Three rules, each one a way it could leak or lie:
+- **Every account-scoped read inner-joins `accounts`**, because that join is what applies account
+  visibility (§6.4). Each member exports what they can see, so a private account travels only with
+  its owner; transfer matches need both sides visible.
+- **The SimpleFIN access URL is never included.** The native app reconnects with a fresh setup token
+  and re-matches accounts by `simplefin_account_id`, the same path as reconnecting here (§10).
+- Money is a decimal string, as everywhere.
+
 ---
 
 ## 12. Frontend

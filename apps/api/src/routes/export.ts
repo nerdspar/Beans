@@ -9,6 +9,7 @@ import {
   exportReadings,
   exportTransactions,
 } from '../repositories/export.js'
+import { exportEverything } from '../repositories/full-export.js'
 import {
   NoHouseholdError,
   withHouseholdContext,
@@ -51,6 +52,30 @@ function isExportName(value: string): value is ExportName {
 export const exportRoutes: FastifyPluginAsync<ExportRoutesOptions> = async (fastify, options) => {
   const { auth, deps } = options
 
+  /*
+   * Everything, as one JSON document: what the native app imports when Beans moves off the server.
+   * Any member may take it, and each gets what they can see, so a private account travels only
+   * with its owner (§6.4). Registered as a static path, which Fastify matches before `:name`.
+   */
+  fastify.get('/api/export/full.json', async (request, reply) => {
+    const session = await getSession(auth, request.headers)
+    if (session === null) return reply.status(401).send({ error: 'Not signed in' })
+
+    try {
+      const document = await withHouseholdContext(deps, session.user.id, exportEverything)
+      return reply
+        .header('content-type', 'application/json; charset=utf-8')
+        .header('content-disposition', `attachment; filename="beans-${toIsoDate(new Date())}.json"`)
+        .header('cache-control', 'no-store')
+        .send(JSON.stringify(document))
+    } catch (error) {
+      if (error instanceof NoHouseholdError) {
+        return reply.status(409).send({ error: 'No household' })
+      }
+      return Promise.reject(error)
+    }
+  })
+
   fastify.get<{ Params: { name: string } }>('/api/export/:name', async (request, reply) => {
     const session = await getSession(auth, request.headers)
     if (session === null) return reply.status(401).send({ error: 'Not signed in' })
@@ -74,21 +99,23 @@ export const exportRoutes: FastifyPluginAsync<ExportRoutesOptions> = async (fast
 }
 
 function sendCsv(reply: FastifyReply, name: string, body: string): FastifyReply {
-  return reply
-    .header('content-type', 'text/csv; charset=utf-8')
-    /*
-     * `attachment` with a filename, so a click downloads rather than rendering a wall of text in
-     * the tab — and so the file arrives named and dated rather than as the route's last path
-     * segment.
-     */
-    .header(
-      'content-disposition',
-      `attachment; filename="${exportFilename(name, toIsoDate(new Date()))}"`,
-    )
-    /*
-     * Never cached, anywhere. This is the household's finances in the clear, and a copy sitting in
-     * a shared proxy or a browser's disk cache is the one place it should not be.
-     */
-    .header('cache-control', 'no-store')
-    .send(body)
+  return (
+    reply
+      .header('content-type', 'text/csv; charset=utf-8')
+      /*
+       * `attachment` with a filename, so a click downloads rather than rendering a wall of text in
+       * the tab — and so the file arrives named and dated rather than as the route's last path
+       * segment.
+       */
+      .header(
+        'content-disposition',
+        `attachment; filename="${exportFilename(name, toIsoDate(new Date()))}"`,
+      )
+      /*
+       * Never cached, anywhere. This is the household's finances in the clear, and a copy sitting in
+       * a shared proxy or a browser's disk cache is the one place it should not be.
+       */
+      .header('cache-control', 'no-store')
+      .send(body)
+  )
 }
